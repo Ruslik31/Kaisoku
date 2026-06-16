@@ -97,6 +97,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getInt(KEY_TRANSLATE_CONCURRENCY, 1).coerceIn(1, 4)
 		set(value) = prefs.edit { putInt(KEY_TRANSLATE_CONCURRENCY, value.coerceIn(1, 4)) }
 
+	var translateRpm: Int
+		get() = prefs.getInt(KEY_TRANSLATE_RPM, 10).coerceIn(1, 60)
+		set(value) = prefs.edit { putInt(KEY_TRANSLATE_RPM, value.coerceIn(1, 60)) }
+
 	var listMode: ListMode
 		get() = prefs.getEnumValue(KEY_LIST_MODE, ListMode.GRID)
 		set(value) = prefs.edit { putEnumValue(KEY_LIST_MODE, value) }
@@ -997,6 +1001,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_TRANSLATE_TRIGGER_MODE = "translate_trigger_mode"
 		const val KEY_TRANSLATE_OVERLAY_BG = "translate_overlay_bg"
 		const val KEY_TRANSLATE_CONCURRENCY = "translate_concurrency"
+		const val KEY_TRANSLATE_RPM = "translate_rpm"
 		const val KEY_TRANSLATE_CLEAR_CACHE = "translate_clear_cache"
 
 		// keys for non-persistent preferences

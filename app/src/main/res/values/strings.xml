@@ -22,6 +22,7 @@
     <string name="translate_overlay_bg">Overlay background</string>
     <string name="translate_overlay_bg_summary">Paint a white box behind each translated bubble</string>
     <string name="translate_concurrency">Concurrent requests</string>
+    <string name="translate_rpm">Max requests per minute</string>
     <string name="translate_clear_cache">Clear translation cache</string>
     <string name="translate_provider_openai">OpenAI-compatible</string>
     <string name="translate_provider_gemini">Native Gemini</string>

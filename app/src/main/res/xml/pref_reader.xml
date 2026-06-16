@@ -310,6 +310,14 @@
 			app:min="1"
 			app:showSeekBarValue="true" />
 
+		<SeekBarPreference
+			android:defaultValue="10"
+			android:key="translate_rpm"
+			android:max="60"
+			android:title="@string/translate_rpm"
+			app:min="1"
+			app:showSeekBarValue="true" />
+
 		<Preference
 			android:key="translate_clear_cache"
 			android:title="@string/translate_clear_cache" />
