@@ -151,16 +151,7 @@ class TranslationCoordinator @Inject constructor(
 			while (it.hasNext()) {
 				val other = it.next()
 				if (shouldMerge(merged.rect, other.rect)) {
-					merged = TranslatedBlock(
-						originalText = combineText(merged.originalText, other.originalText),
-						translatedText = combineText(merged.translatedText, other.translatedText),
-						rect = android.graphics.RectF(
-							minOf(merged.rect.left, other.rect.left),
-							minOf(merged.rect.top, other.rect.top),
-							maxOf(merged.rect.right, other.rect.right),
-							maxOf(merged.rect.bottom, other.rect.bottom),
-						),
-					)
+					merged = mergeTwo(merged, other)
 					it.remove()
 				}
 			}
@@ -169,13 +160,29 @@ class TranslationCoordinator @Inject constructor(
 		return out
 	}
 
-	private fun combineText(a: String, b: String): String {
+	private fun mergeTwo(a: TranslatedBlock, b: TranslatedBlock): TranslatedBlock {
+		// Same bubble seen twice (e.g. across a tile seam): keep the longer text AND its own
+		// rect, so we don't both duplicate the text and stretch the box across both copies.
+		if (isDuplicateText(a.translatedText, b.translatedText)) {
+			return if (b.translatedText.length > a.translatedText.length) b else a
+		}
+		return TranslatedBlock(
+			originalText = joinText(a.originalText, b.originalText),
+			translatedText = joinText(a.translatedText, b.translatedText),
+			rect = android.graphics.RectF(
+				minOf(a.rect.left, b.rect.left),
+				minOf(a.rect.top, b.rect.top),
+				maxOf(a.rect.right, b.rect.right),
+				maxOf(a.rect.bottom, b.rect.bottom),
+			),
+		)
+	}
+
+	private fun joinText(a: String, b: String): String {
 		val at = a.trim()
 		val bt = b.trim()
 		if (bt.isBlank()) return at
 		if (at.isBlank()) return bt
-		// Same bubble seen twice (e.g. across a tile seam): keep one rather than duplicating it.
-		if (isDuplicateText(at, bt)) return if (bt.length > at.length) bt else at
 		return "$at $bt"
 	}
 

@@ -21,6 +21,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.parsers.util.await
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.ceil
@@ -33,6 +34,13 @@ class MultimodalTranslator @Inject constructor(
 
 	private val rateMutex = Mutex()
 	private var lastCallAt = 0L
+
+	// Bound each request so a stalled provider can't hang the page (and spin the progress) forever.
+	private val translateClient by lazy {
+		okHttpClient.newBuilder()
+			.callTimeout(REQUEST_TIMEOUT_SEC, TimeUnit.SECONDS)
+			.build()
+	}
 
 	/**
 	 * Send the page bitmap to the configured multimodal LLM and parse the JSON response into [TranslatedBlock]s.
@@ -122,7 +130,7 @@ class MultimodalTranslator @Inject constructor(
 		while (true) {
 			rateGate()
 			val response = try {
-				okHttpClient.newCall(request).await()
+				translateClient.newCall(request).await()
 			} catch (e: IOException) {
 				throw TranslateException.Network(e)
 			}
@@ -405,5 +413,6 @@ class MultimodalTranslator @Inject constructor(
 		private const val BASE_BACKOFF_MS = 1000L
 		private const val MAX_BACKOFF_MS = 30_000L
 		private const val MAX_DUPLICATE = 3
+		private const val REQUEST_TIMEOUT_SEC = 90L
 	}
 }
