@@ -14,6 +14,9 @@ data class TranslatedBlock(
 	val rect: RectF,
 )
 
+/** Aggregate translation progress across active requests (tiles completed / total). */
+data class TranslationProgress(val done: Int, val total: Int)
+
 sealed class TranslateException(message: String, cause: Throwable? = null) : Exception(message, cause) {
 	class NoEndpoint : TranslateException("Translation endpoint is not configured")
 	class NoKey : TranslateException("Translation API key is not configured")

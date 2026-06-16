@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.reader.translate
 import android.graphics.Bitmap
 import android.graphics.RectF
 import android.util.Base64
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runInterruptible
@@ -52,6 +53,8 @@ class MultimodalTranslator @Inject constructor(
 		bitmap: Bitmap,
 		sourceLang: String,
 		targetLang: String,
+		onTotal: (Int) -> Unit = {},
+		onTileDone: () -> Unit = {},
 	): List<TranslatedBlock> = withContext(Dispatchers.IO) {
 		val endpoint = settings.translateEndpoint.trim()
 		val apiKey = settings.translateApiKey.trim()
@@ -73,9 +76,25 @@ class MultimodalTranslator @Inject constructor(
 		// width to ~100px and make the text unreadable (the model then loops on garbage). Translate
 		// the page in full-width horizontal tiles instead, then map each tile's coordinates back.
 		val tiles = planTiles(bitmap.width, bitmap.height)
+		onTotal(tiles.size)
 		val all = ArrayList<TranslatedBlock>()
+		var lastError: Throwable? = null
+		var anySuccess = false
 		for (tile in tiles) {
-			all += translateTile(bitmap, tile, sourceLang, targetLang, endpoint, apiKey, model, isNativeGoogleFormat)
+			try {
+				all += translateTile(bitmap, tile, sourceLang, targetLang, endpoint, apiKey, model, isNativeGoogleFormat)
+				anySuccess = true
+			} catch (e: CancellationException) {
+				throw e
+			} catch (e: Throwable) {
+				// Tolerate a single tile failing (rate limit, timeout, …): keep the parts already
+				// done so a long page isn't lost wholesale. Only surface an error if nothing worked.
+				lastError = e
+			}
+			onTileDone()
+		}
+		if (!anySuccess) {
+			lastError?.let { throw it }
 		}
 		sanitizeBlocks(all)
 	}

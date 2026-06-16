@@ -203,8 +203,27 @@ class ReaderActivity :
         viewModel.onTranslateConfigMissing.observeEvent(this) {
             Snackbar.make(viewBinding.container, R.string.translate_setup_required, Snackbar.LENGTH_LONG).show()
         }
-        viewModel.translationCoordinator.isBusy.observe(this) { busy ->
-            viewBinding.progressTranslate.isVisible = busy
+        viewModel.translationCoordinator.progress.observe(this) { p ->
+            val bar = viewBinding.progressTranslate
+            when {
+                p.total <= 0 -> bar.isVisible = false
+                p.done <= 0 -> {
+                    // first tile in flight — spin until we have a count to show
+                    if (!bar.isIndeterminate) {
+                        bar.isVisible = false
+                        bar.isIndeterminate = true
+                    }
+                    bar.isVisible = true
+                }
+                else -> {
+                    if (bar.isIndeterminate) {
+                        bar.isVisible = false
+                        bar.isIndeterminate = false
+                    }
+                    bar.isVisible = true
+                    bar.setProgressCompat(p.done * 100 / p.total, true)
+                }
+            }
         }
         viewModel.translationCoordinator.errors.observe(this) { error ->
             val msg = when (error) {

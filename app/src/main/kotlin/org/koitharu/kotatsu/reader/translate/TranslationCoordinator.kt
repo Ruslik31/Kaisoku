@@ -52,6 +52,20 @@ class TranslationCoordinator @Inject constructor(
 		onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
 	)
 	val errors: SharedFlow<Throwable> = _errors
+	private val totalUnits = AtomicInteger(0)
+	private val doneUnits = AtomicInteger(0)
+	private val _progress = MutableStateFlow(TranslationProgress(0, 0))
+	val progress: StateFlow<TranslationProgress> = _progress
+
+	private fun publishProgress() {
+		_progress.value = TranslationProgress(doneUnits.get(), totalUnits.get())
+	}
+
+	private fun resetProgress() {
+		totalUnits.set(0)
+		doneUnits.set(0)
+		_progress.value = TranslationProgress(0, 0)
+	}
 
 	fun stateFor(pageId: Long): StateFlow<PageTranslationState> = synchronized(statesLock) {
 		states.getOrPut(pageId) { MutableStateFlow(PageTranslationState.Idle) }
@@ -77,6 +91,8 @@ class TranslationCoordinator @Inject constructor(
 							bitmap = bitmap,
 							sourceLang = settings.translateSourceLanguage,
 							targetLang = settings.translateTargetLanguage,
+							onTotal = { n -> totalUnits.addAndGet(n); publishProgress() },
+							onTileDone = { doneUnits.incrementAndGet(); publishProgress() },
 						)
 					} catch (e: CancellationException) {
 						throw e
@@ -103,7 +119,10 @@ class TranslationCoordinator @Inject constructor(
 				state.value = PageTranslationState.Failed(e)
 				_errors.tryEmit(e)
 			} finally {
-				if (activeJobs.decrementAndGet() == 0) _isBusy.value = false
+				if (activeJobs.decrementAndGet() == 0) {
+					_isBusy.value = false
+					resetProgress()
+				}
 			}
 		}
 		synchronized(statesLock) {
@@ -124,13 +143,18 @@ class TranslationCoordinator @Inject constructor(
 						bitmap = bitmap,
 						sourceLang = settings.translateSourceLanguage,
 						targetLang = settings.translateTargetLanguage,
+						onTotal = { n -> totalUnits.addAndGet(n); publishProgress() },
+						onTileDone = { doneUnits.incrementAndGet(); publishProgress() },
 					),
 				)
 			} finally {
 				bitmap.recycle()
 			}
 		} finally {
-			if (activeJobs.decrementAndGet() == 0) _isBusy.value = false
+			if (activeJobs.decrementAndGet() == 0) {
+				_isBusy.value = false
+				resetProgress()
+			}
 		}
 	}
 
