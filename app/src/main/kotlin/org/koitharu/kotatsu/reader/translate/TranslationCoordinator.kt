@@ -152,10 +152,8 @@ class TranslationCoordinator @Inject constructor(
 				val other = it.next()
 				if (shouldMerge(merged.rect, other.rect)) {
 					merged = TranslatedBlock(
-						originalText = if (other.originalText.isBlank()) merged.originalText
-							else (merged.originalText + " " + other.originalText).trim(),
-						translatedText = if (other.translatedText.isBlank()) merged.translatedText
-							else (merged.translatedText + " " + other.translatedText).trim(),
+						originalText = combineText(merged.originalText, other.originalText),
+						translatedText = combineText(merged.translatedText, other.translatedText),
 						rect = android.graphics.RectF(
 							minOf(merged.rect.left, other.rect.left),
 							minOf(merged.rect.top, other.rect.top),
@@ -169,6 +167,25 @@ class TranslationCoordinator @Inject constructor(
 			out += merged
 		}
 		return out
+	}
+
+	private fun combineText(a: String, b: String): String {
+		val at = a.trim()
+		val bt = b.trim()
+		if (bt.isBlank()) return at
+		if (at.isBlank()) return bt
+		// Same bubble seen twice (e.g. across a tile seam): keep one rather than duplicating it.
+		if (isDuplicateText(at, bt)) return if (bt.length > at.length) bt else at
+		return "$at $bt"
+	}
+
+	private fun isDuplicateText(a: String, b: String): Boolean {
+		val x = a.lowercase()
+		val y = b.lowercase()
+		if (x == y || x.contains(y) || y.contains(x)) return true
+		val prefix = x.commonPrefixWith(y).length
+		val minLen = minOf(x.length, y.length)
+		return minLen > 0 && prefix >= minLen * 0.6
 	}
 
 	private fun shouldMerge(a: android.graphics.RectF, b: android.graphics.RectF): Boolean {

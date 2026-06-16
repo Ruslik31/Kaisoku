@@ -147,7 +147,15 @@ abstract class BasePageHolder<B : ViewBinding>(
 				when (state) {
 					is org.koitharu.kotatsu.reader.translate.PageTranslationState.Done -> {
 						translationOverlayActive = true
-						ssiv.setImage(ImageSource.cachedBitmap(state.rendered))
+						// Keep the current pan/zoom: the translated bitmap has the same dimensions,
+						// so reusing the view state stops the page from jumping on overlay swap.
+						val viewState = ssiv.getState()
+						val rendered = ImageSource.cachedBitmap(state.rendered)
+						if (viewState != null) {
+							ssiv.setImage(rendered, null, viewState)
+						} else {
+							ssiv.setImage(rendered)
+						}
 					}
 					org.koitharu.kotatsu.reader.translate.PageTranslationState.Idle,
 					is org.koitharu.kotatsu.reader.translate.PageTranslationState.Failed -> {
