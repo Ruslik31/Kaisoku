@@ -54,7 +54,7 @@ class MultimodalTranslator @Inject constructor(
 		sourceLang: String,
 		targetLang: String,
 		onTotal: (Int) -> Unit = {},
-		onTileDone: () -> Unit = {},
+		onTileDone: (success: Boolean) -> Unit = {},
 	): List<TranslatedBlock> = withContext(Dispatchers.IO) {
 		val endpoint = settings.translateEndpoint.trim()
 		val apiKey = settings.translateApiKey.trim()
@@ -81,9 +81,11 @@ class MultimodalTranslator @Inject constructor(
 		var lastError: Throwable? = null
 		var anySuccess = false
 		for (tile in tiles) {
+			var ok = false
 			try {
 				all += translateTile(bitmap, tile, sourceLang, targetLang, endpoint, apiKey, model, isNativeGoogleFormat)
 				anySuccess = true
+				ok = true
 			} catch (e: CancellationException) {
 				throw e
 			} catch (e: Throwable) {
@@ -91,7 +93,7 @@ class MultimodalTranslator @Inject constructor(
 				// done so a long page isn't lost wholesale. Only surface an error if nothing worked.
 				lastError = e
 			}
-			onTileDone()
+			onTileDone(ok)
 		}
 		if (!anySuccess) {
 			lastError?.let { throw it }
@@ -349,9 +351,13 @@ class MultimodalTranslator @Inject constructor(
 	/** Full-width horizontal slices, sized so each stays legible (~1024px wide) after scaling. */
 	private fun planTiles(width: Int, height: Int): List<Tile> {
 		val scale = minOf(1f, TARGET_WIDTH.toFloat() / width)
+		val scaledWidth = width * scale
 		val scaledHeight = height * scale
-		if (scaledHeight <= MAX_TILE_HEIGHT) return listOf(Tile(0, height))
-		val count = ceil(scaledHeight / MAX_TILE_HEIGHT).toInt().coerceIn(1, MAX_TILES)
+		// Keep tiles roughly square: vision models lose vertical accuracy on extremely tall
+		// images (boxes drift downward), so cap a tile's height relative to its width.
+		val maxTileHeight = scaledWidth * MAX_TILE_ASPECT
+		if (scaledHeight <= maxTileHeight) return listOf(Tile(0, height))
+		val count = ceil(scaledHeight / maxTileHeight).toInt().coerceIn(1, MAX_TILES)
 		val step = height / count
 		val overlap = (step * TILE_OVERLAP).toInt()
 		return (0 until count).map { i ->
@@ -425,8 +431,8 @@ class MultimodalTranslator @Inject constructor(
 		private const val IGNORE_BLOCK_MARKER = "KAISOKU_IGNORE_BLOCK"
 		private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 		private const val TARGET_WIDTH = 1024
-		private const val MAX_TILE_HEIGHT = 1536f
-		private const val MAX_TILES = 8
+		private const val MAX_TILE_ASPECT = 1.4f
+		private const val MAX_TILES = 12
 		private const val TILE_OVERLAP = 0.06f
 		private const val MAX_RETRIES = 3
 		private const val BASE_BACKOFF_MS = 1000L

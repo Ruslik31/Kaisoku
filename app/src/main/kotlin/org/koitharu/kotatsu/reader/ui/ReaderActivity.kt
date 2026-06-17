@@ -56,6 +56,7 @@ import org.koitharu.kotatsu.core.ui.dialog.setCheckbox
 import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
 import org.koitharu.kotatsu.core.ui.widgets.ZoomControl
 import org.koitharu.kotatsu.core.util.IdlingDetector
+import org.koitharu.kotatsu.core.util.ext.copyToClipboard
 import org.koitharu.kotatsu.core.util.ext.getThemeDimensionPixelOffset
 import org.koitharu.kotatsu.core.util.ext.hasGlobalPoint
 import org.koitharu.kotatsu.core.util.ext.isAnimationsEnabled
@@ -226,6 +227,15 @@ class ReaderActivity :
             }
         }
         viewModel.translationCoordinator.errors.observe(this) { error ->
+            if (error is org.koitharu.kotatsu.reader.translate.TranslateException.Partial) {
+                // Non-fatal: some tiles were kept and rendered; offer to retry the rest.
+                Snackbar.make(
+                    viewBinding.container,
+                    getString(R.string.translate_partial_failure, error.failedTiles),
+                    Snackbar.LENGTH_LONG,
+                ).setAction(R.string.retry) { viewModel.retryTranslateCurrentPage() }.show()
+                return@observe
+            }
             val msg = when (error) {
                 is org.koitharu.kotatsu.reader.translate.TranslateException.NoEndpoint,
                 is org.koitharu.kotatsu.reader.translate.TranslateException.NoKey ->
@@ -234,7 +244,9 @@ class ReaderActivity :
                     "HTTP ${error.code}: ${error.responseBody.take(120)}"
                 else -> error.localizedMessage ?: getString(R.string.error_occurred)
             }
-            Snackbar.make(viewBinding.container, msg, Snackbar.LENGTH_LONG).show()
+            Snackbar.make(viewBinding.container, msg, Snackbar.LENGTH_INDEFINITE)
+                .setAction(R.string.copy) { copyToClipboard("Kaisoku error", msg) }
+                .show()
         }
         viewModel.readerMode.observe(this, Lifecycle.State.STARTED, this::onInitReader)
         viewModel.onPageSaved.observeEvent(this, PagesSavedObserver(viewBinding.container))

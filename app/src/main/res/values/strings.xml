@@ -7,6 +7,7 @@
     <string name="ocr_recognizing">Recognizing…</string>
     <string name="ocr_no_text">No text detected.</string>
     <string name="translate_setup_required">Configure an AI provider in Settings → Reader → AI translation</string>
+    <string name="translate_partial_failure">%1$d part(s) failed — tap to retry</string>
     <string name="ai_translation">AI translation</string>
     <string name="ai_translation_summary">OCR + translate a page via your own LLM API (BYOK)</string>
     <string name="translate_provider">Provider</string>

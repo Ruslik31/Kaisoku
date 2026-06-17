@@ -23,11 +23,12 @@ sealed class TranslateException(message: String, cause: Throwable? = null) : Exc
 	class Http(val code: Int, val responseBody: String) : TranslateException("HTTP $code: ${responseBody.take(200)}")
 	class Parse(reason: String, cause: Throwable? = null) : TranslateException("Failed to parse translator response: $reason", cause)
 	class Network(cause: Throwable) : TranslateException("Network error: ${cause.message}", cause)
+	class Partial(val failedTiles: Int) : TranslateException("$failedTiles part(s) failed to translate")
 }
 
 sealed interface PageTranslationState {
 	data object Idle : PageTranslationState
 	data object Loading : PageTranslationState
-	data class Done(val rendered: Bitmap, val blocks: List<TranslatedBlock>) : PageTranslationState
+	data class Done(val rendered: Bitmap, val blocks: List<TranslatedBlock>, val isPartial: Boolean = false) : PageTranslationState
 	data class Failed(val error: Throwable) : PageTranslationState
 }

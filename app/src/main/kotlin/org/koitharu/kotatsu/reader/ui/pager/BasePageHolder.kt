@@ -121,9 +121,15 @@ abstract class BasePageHolder<B : ViewBinding>(
 		ssiv.applyDownSampling(isResumed())
 	}
 
-	fun reloadImage() {
+	fun reloadImage(preserveState: Boolean = false) {
 		val source = (viewModel.state.value as? PageState.Shown)?.source ?: return
-		ssiv.setImage(source)
+		// On untranslate, keep the current pan/zoom so going back doesn't jump either.
+		val viewState = if (preserveState) ssiv.getState() else null
+		if (viewState != null) {
+			ssiv.setImage(source, null, viewState)
+		} else {
+			ssiv.setImage(source)
+		}
 	}
 
 	fun bind(data: ReaderPage) {
@@ -161,7 +167,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 					is org.koitharu.kotatsu.reader.translate.PageTranslationState.Failed -> {
 						if (translationOverlayActive) {
 							translationOverlayActive = false
-							reloadImage()
+							reloadImage(preserveState = true)
 						}
 					}
 					org.koitharu.kotatsu.reader.translate.PageTranslationState.Loading -> Unit

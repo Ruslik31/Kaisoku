@@ -72,27 +72,34 @@ class TranslationCoordinator @Inject constructor(
 	}
 
 	/** Render-overlay variant. Result eventually appears on [stateFor]. */
-	fun requestTranslate(page: MangaPage) {
+	fun requestTranslate(page: MangaPage, force: Boolean = false) {
 		val state = stateFor(page.id) as MutableStateFlow<PageTranslationState>
-		if (state.value is PageTranslationState.Loading || state.value is PageTranslationState.Done) return
+		if (!force && (state.value is PageTranslationState.Loading || state.value is PageTranslationState.Done)) return
 		state.value = PageTranslationState.Loading
 		if (activeJobs.getAndIncrement() == 0) _isBusy.value = true
 		val newJob = scope.launch {
 			try {
 				semaphore.withPermit {
 					val key = cache.keyFor(page.id, settings)
-					cache.get(key)?.let { hit ->
-						state.value = PageTranslationState.Done(hit.bitmap, hit.blocks)
-						return@withPermit
+					if (!force) {
+						cache.get(key)?.let { hit ->
+							state.value = PageTranslationState.Done(hit.bitmap, hit.blocks)
+							return@withPermit
+						}
 					}
 					val bitmap = loadSourceBitmap(page)
+					var failedTiles = 0
 					val rawBlocks = try {
 						translator.translatePage(
 							bitmap = bitmap,
 							sourceLang = settings.translateSourceLanguage,
 							targetLang = settings.translateTargetLanguage,
 							onTotal = { n -> totalUnits.addAndGet(n); publishProgress() },
-							onTileDone = { doneUnits.incrementAndGet(); publishProgress() },
+							onTileDone = { ok ->
+								doneUnits.incrementAndGet()
+								if (!ok) failedTiles++
+								publishProgress()
+							},
 						)
 					} catch (e: CancellationException) {
 						throw e
@@ -111,7 +118,10 @@ class TranslationCoordinator @Inject constructor(
 					}
 					if (rendered !== bitmap) bitmap.recycle()
 					cache.put(key, rendered, blocks)
-					state.value = PageTranslationState.Done(rendered, blocks)
+					state.value = PageTranslationState.Done(rendered, blocks, isPartial = failedTiles > 0)
+					if (failedTiles > 0) {
+						_errors.tryEmit(TranslateException.Partial(failedTiles))
+					}
 				}
 			} catch (e: CancellationException) {
 				throw e
@@ -144,7 +154,7 @@ class TranslationCoordinator @Inject constructor(
 						sourceLang = settings.translateSourceLanguage,
 						targetLang = settings.translateTargetLanguage,
 						onTotal = { n -> totalUnits.addAndGet(n); publishProgress() },
-						onTileDone = { doneUnits.incrementAndGet(); publishProgress() },
+						onTileDone = { _ -> doneUnits.incrementAndGet(); publishProgress() },
 					),
 				)
 			} finally {

@@ -350,6 +350,16 @@ class ReaderViewModel @Inject constructor(
         translationCoordinator.requestTranslate(page)
     }
 
+    /** Re-run translation for the current page, re-attempting the tiles that failed last time. */
+    fun retryTranslateCurrentPage() {
+        val page = getCurrentPage() ?: return
+        if (!isTranslateConfigured()) {
+            onTranslateConfigMissing.call(Unit)
+            return
+        }
+        translationCoordinator.requestTranslate(page, force = true)
+    }
+
     private fun isTranslateConfigured(): Boolean =
         settings.translateApiKey.isNotBlank() && settings.translateEndpoint.isNotBlank()
 
