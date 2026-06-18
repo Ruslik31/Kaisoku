@@ -73,6 +73,12 @@
 -keep interface keiyoushi.** { *; }
 -dontwarn keiyoushi.**
 
+# QuickJS (app.cash.quickjs) — only referenced by dynamically-loaded extensions, so R8 would
+# otherwise strip it and release builds would fail with "Failed resolution of: Lapp/cash/quickjs/QuickJs;".
+-keep class app.cash.quickjs.** { *; }
+-keep interface app.cash.quickjs.** { *; }
+-dontwarn app.cash.quickjs.**
+
 -keep class okhttp3.** { *; }
 -keep interface okhttp3.** { *; }
 -keeppackagenames okhttp3.**
