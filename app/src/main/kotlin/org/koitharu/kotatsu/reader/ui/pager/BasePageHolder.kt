@@ -175,8 +175,8 @@ abstract class BasePageHolder<B : ViewBinding>(
 			}
 		}
 		if (appSettings.translateTriggerMode == org.koitharu.kotatsu.reader.translate.TranslateTriggerMode.AUTO_ON_PAGE &&
-			appSettings.translateApiKey.isNotBlank() &&
-			appSettings.translateEndpoint.isNotBlank()
+			appSettings.isPageTranslationEnabled &&
+			appSettings.isPageTranslationConfigured
 		) {
 			coordinator.requestTranslate(page)
 		}

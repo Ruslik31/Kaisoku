@@ -3,10 +3,12 @@
 	<string-array name="translate_providers">
 		<item>@string/translate_provider_openai</item>
 		<item>@string/translate_provider_gemini</item>
+		<item>@string/translate_provider_google_lens</item>
 	</string-array>
 	<string-array name="translate_providers_values" translatable="false">
 		<item>OPENAI_COMPATIBLE</item>
 		<item>GEMINI</item>
+		<item>GOOGLE_LENS</item>
 	</string-array>
 	<string-array name="translate_trigger_modes">
 		<item>@string/translate_trigger_manual</item>

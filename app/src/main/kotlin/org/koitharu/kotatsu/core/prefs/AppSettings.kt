@@ -101,6 +101,15 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getInt(KEY_TRANSLATE_RPM, 10).coerceIn(1, 60)
 		set(value) = prefs.edit { putInt(KEY_TRANSLATE_RPM, value.coerceIn(1, 60)) }
 
+	var isPageTranslationEnabled: Boolean
+		get() = prefs.getBoolean(KEY_TRANSLATE_ENABLED, true)
+		set(value) = prefs.edit { putBoolean(KEY_TRANSLATE_ENABLED, value) }
+
+	/** Whether the selected provider has everything it needs to run (Google Lens needs no key). */
+	val isPageTranslationConfigured: Boolean
+		get() = translateProvider == org.koitharu.kotatsu.reader.translate.TranslateProvider.GOOGLE_LENS ||
+			(translateApiKey.isNotBlank() && translateEndpoint.isNotBlank())
+
 	var listMode: ListMode
 		get() = prefs.getEnumValue(KEY_LIST_MODE, ListMode.GRID)
 		set(value) = prefs.edit { putEnumValue(KEY_LIST_MODE, value) }
@@ -1002,6 +1011,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_TRANSLATE_OVERLAY_BG = "translate_overlay_bg"
 		const val KEY_TRANSLATE_CONCURRENCY = "translate_concurrency"
 		const val KEY_TRANSLATE_RPM = "translate_rpm"
+		const val KEY_TRANSLATE_ENABLED = "translate_enabled"
 		const val KEY_TRANSLATE_CLEAR_CACHE = "translate_clear_cache"
 
 		// keys for non-persistent preferences

@@ -245,7 +245,13 @@
 
 	<PreferenceCategory
 		android:key="cat_ai_translation"
-		android:title="@string/ai_translation">
+		android:title="@string/ai_translation_beta">
+
+		<SwitchPreferenceCompat
+			android:defaultValue="true"
+			android:key="translate_enabled"
+			android:summary="@string/translate_enabled_summary"
+			android:title="@string/translate_enabled" />
 
 		<ListPreference
 			android:defaultValue="OPENAI_COMPATIBLE"

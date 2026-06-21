@@ -31,7 +31,7 @@ import kotlin.math.ceil
 class MultimodalTranslator @Inject constructor(
 	@MangaHttpClient private val okHttpClient: OkHttpClient,
 	private val settings: AppSettings,
-) {
+) : PageTranslator {
 
 	private val rateMutex = Mutex()
 	private var lastCallAt = 0L
@@ -49,19 +49,21 @@ class MultimodalTranslator @Inject constructor(
 	 *
 	 * @throws TranslateException with a categorised reason on any failure
 	 */
-	suspend fun translatePage(
+	override suspend fun translate(
 		bitmap: Bitmap,
 		sourceLang: String,
 		targetLang: String,
-		onTotal: (Int) -> Unit = {},
-		onTileDone: (success: Boolean) -> Unit = {},
-	): List<TranslatedBlock> = withContext(Dispatchers.IO) {
+		onTotal: (Int) -> Unit,
+		onTileDone: (success: Boolean) -> Unit,
+	): PageTranslationResult = withContext(Dispatchers.IO) {
 		val endpoint = settings.translateEndpoint.trim()
 		val apiKey = settings.translateApiKey.trim()
 		val model = settings.translateModel.trim().ifBlank {
 			when (settings.translateProvider) {
 				TranslateProvider.GEMINI -> "gemini-2.5-flash"
 				TranslateProvider.OPENAI_COMPATIBLE -> "gpt-4o-mini"
+				// Routed to GoogleLensTranslator, never here — present only for exhaustiveness.
+				TranslateProvider.GOOGLE_LENS -> ""
 			}
 		}
 
@@ -98,7 +100,7 @@ class MultimodalTranslator @Inject constructor(
 		if (!anySuccess) {
 			lastError?.let { throw it }
 		}
-		sanitizeBlocks(all)
+		PageTranslationResult.Blocks(sanitizeBlocks(all))
 	}
 
 	private suspend fun translateTile(

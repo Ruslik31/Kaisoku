@@ -9,7 +9,10 @@
     <string name="translate_setup_required">Configure an AI provider in Settings → Reader → AI translation</string>
     <string name="translate_partial_failure">%1$d part(s) failed — tap to retry</string>
     <string name="ai_translation">AI translation</string>
+    <string name="ai_translation_beta">AI translation (Beta)</string>
     <string name="ai_translation_summary">OCR + translate a page via your own LLM API (BYOK)</string>
+    <string name="translate_enabled">Enable page translation</string>
+    <string name="translate_enabled_summary">Beta — adds the translate &amp; extract-text actions in the reader</string>
     <string name="translate_provider">Provider</string>
     <string name="translate_endpoint">API endpoint</string>
     <string name="translate_api_key">API key</string>
@@ -27,6 +30,7 @@
     <string name="translate_clear_cache">Clear translation cache</string>
     <string name="translate_provider_openai">OpenAI-compatible</string>
     <string name="translate_provider_gemini">Native Gemini</string>
+    <string name="translate_provider_google_lens">Google Lens (keyless OCR + translate)</string>
     <string name="lang_auto">Auto-detect</string>
     <string name="local_storage">Local storage</string>
     <string name="favourites">Favorites</string>

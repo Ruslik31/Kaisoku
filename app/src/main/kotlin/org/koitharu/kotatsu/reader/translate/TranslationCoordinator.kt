@@ -31,11 +31,17 @@ import javax.inject.Inject
 @ActivityRetainedScoped
 class TranslationCoordinator @Inject constructor(
 	private val translator: MultimodalTranslator,
+	private val googleLensTranslator: GoogleLensTranslator,
 	private val renderer: TranslationRenderer,
 	private val cache: RenderedPageCache,
 	private val pageLoader: PageLoader,
 	private val settings: AppSettings,
 ) {
+
+	private fun translatorFor(provider: TranslateProvider): PageTranslator = when (provider) {
+		TranslateProvider.GOOGLE_LENS -> googleLensTranslator
+		else -> translator
+	}
 
 	private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 	private val states = mutableMapOf<Long, MutableStateFlow<PageTranslationState>>()
@@ -89,8 +95,8 @@ class TranslationCoordinator @Inject constructor(
 					}
 					val bitmap = loadSourceBitmap(page)
 					var failedTiles = 0
-					val rawBlocks = try {
-						translator.translatePage(
+					val result = try {
+						translatorFor(settings.translateProvider).translate(
 							bitmap = bitmap,
 							sourceLang = settings.translateSourceLanguage,
 							targetLang = settings.translateTargetLanguage,
@@ -109,14 +115,26 @@ class TranslationCoordinator @Inject constructor(
 						_errors.tryEmit(e)
 						return@withPermit
 					}
-					val blocks = mergeOverlappingBlocks(rawBlocks)
-					val rendered = try {
-						runInterruptible { renderer.render(bitmap, blocks, settings.translateOverlayBackground) }
-					} catch (e: Throwable) {
-						bitmap.recycle()
-						throw e
+					val blocks: List<TranslatedBlock>
+					val rendered: android.graphics.Bitmap
+					when (result) {
+						is PageTranslationResult.Blocks -> {
+							blocks = mergeOverlappingBlocks(result.blocks)
+							rendered = try {
+								runInterruptible { renderer.render(bitmap, blocks, settings.translateOverlayBackground) }
+							} catch (e: Throwable) {
+								bitmap.recycle()
+								throw e
+							}
+							if (rendered !== bitmap) bitmap.recycle()
+						}
+						is PageTranslationResult.Image -> {
+							// Backend already rendered the page; the source bitmap is no longer needed.
+							blocks = result.blocks
+							rendered = result.rendered
+							bitmap.recycle()
+						}
 					}
-					if (rendered !== bitmap) bitmap.recycle()
 					cache.put(key, rendered, blocks)
 					state.value = PageTranslationState.Done(rendered, blocks, isPartial = failedTiles > 0)
 					if (failedTiles > 0) {
@@ -148,15 +166,20 @@ class TranslationCoordinator @Inject constructor(
 		return try {
 			val bitmap = loadSourceBitmap(page)
 			try {
-				mergeOverlappingBlocks(
-					translator.translatePage(
-						bitmap = bitmap,
-						sourceLang = settings.translateSourceLanguage,
-						targetLang = settings.translateTargetLanguage,
-						onTotal = { n -> totalUnits.addAndGet(n); publishProgress() },
-						onTileDone = { _ -> doneUnits.incrementAndGet(); publishProgress() },
-					),
+				val result = translatorFor(settings.translateProvider).translate(
+					bitmap = bitmap,
+					sourceLang = settings.translateSourceLanguage,
+					targetLang = settings.translateTargetLanguage,
+					onTotal = { n -> totalUnits.addAndGet(n); publishProgress() },
+					onTileDone = { _ -> doneUnits.incrementAndGet(); publishProgress() },
 				)
+				when (result) {
+					is PageTranslationResult.Blocks -> mergeOverlappingBlocks(result.blocks)
+					is PageTranslationResult.Image -> {
+						result.rendered.recycle()
+						result.blocks
+					}
+				}
 			} finally {
 				bitmap.recycle()
 			}

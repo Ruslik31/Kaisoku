@@ -112,6 +112,11 @@ class ReaderConfigSheet :
         binding.switchAutoTranslate.isChecked = settings.translateTriggerMode ==
             org.koitharu.kotatsu.reader.translate.TranslateTriggerMode.AUTO_ON_PAGE
         binding.switchAutoTranslate.setOnCheckedChangeListener(this)
+        // Master beta toggle: hide the page-translate / extract-text controls when disabled.
+        val translationEnabled = settings.isPageTranslationEnabled
+        binding.buttonTranslate.isVisible = translationEnabled
+        binding.buttonOcr.isVisible = translationEnabled
+        binding.switchAutoTranslate.isVisible = translationEnabled
         binding.switchDoubleReader.setOnCheckedChangeListener(this)
         binding.switchDoubleFoldable.setOnCheckedChangeListener(this)
         binding.switchDoubleCoverPage.setOnCheckedChangeListener(this)

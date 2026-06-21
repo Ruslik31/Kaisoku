@@ -360,8 +360,7 @@ class ReaderViewModel @Inject constructor(
         translationCoordinator.requestTranslate(page, force = true)
     }
 
-    private fun isTranslateConfigured(): Boolean =
-        settings.translateApiKey.isNotBlank() && settings.translateEndpoint.isNotBlank()
+    private fun isTranslateConfigured(): Boolean = settings.isPageTranslationConfigured
 
     /** Flip between manual and auto trigger mode. Returns the new mode. */
     fun toggleAutoTrigger(): org.koitharu.kotatsu.reader.translate.TranslateTriggerMode {
