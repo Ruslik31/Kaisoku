@@ -102,7 +102,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		set(value) = prefs.edit { putInt(KEY_TRANSLATE_RPM, value.coerceIn(1, 60)) }
 
 	var isPageTranslationEnabled: Boolean
-		get() = prefs.getBoolean(KEY_TRANSLATE_ENABLED, true)
+		get() = prefs.getBoolean(KEY_TRANSLATE_ENABLED, false)
 		set(value) = prefs.edit { putBoolean(KEY_TRANSLATE_ENABLED, value) }
 
 	/** Whether the selected provider has everything it needs to run (Google Lens needs no key). */
