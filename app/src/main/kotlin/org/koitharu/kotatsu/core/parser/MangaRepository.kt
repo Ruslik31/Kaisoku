@@ -106,11 +106,16 @@ interface MangaRepository {
 		}
 
 		private fun createRepository(source: MangaSource): MangaRepository? = when (source) {
-			is MangaParserSource -> ParserMangaRepository(
-				parser = loaderContext.newParserInstance(source),
-				cache = contentCache,
-				mirrorSwitcher = mirrorSwitcher,
-			)
+			// Constructing a built-in parser can still throw (a malformed source, a removed symbol, or
+			// an unavailable source picked up from an old backup). Contain it so the source degrades to
+			// an empty one instead of taking down the whole app.
+			is MangaParserSource -> runCatchingCancellable {
+				ParserMangaRepository(
+					parser = loaderContext.newParserInstance(source),
+					cache = contentCache,
+					mirrorSwitcher = mirrorSwitcher,
+				)
+			}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
 			// A third-party plugin built against an incompatible parsers ABI (e.g. a constructor whose
 			// signature has since changed) throws NoSuchMethodError/LinkageError on construction. Contain

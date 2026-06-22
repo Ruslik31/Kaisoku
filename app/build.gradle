@@ -204,6 +204,9 @@ dependencies {
 	implementation libs.disk.lru.cache
 	implementation libs.markwon
 	implementation libs.kizzyrpc
+	implementation(libs.usagi.rpc) {
+		exclude group: 'org.json', module: 'json'
+	}
 
 	implementation libs.acra.http
 	implementation libs.acra.dialog

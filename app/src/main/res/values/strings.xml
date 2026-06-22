@@ -986,6 +986,8 @@
     <string name="discord_rpc_summary">Show your reading status on Discord</string>
     <string name="obtain">Obtain</string>
     <string name="discord_rpc_description">Reading manga on Kaisoku - a manga reader app</string>
+    <string name="discord_rpc_oauth">Sign in with OAuth</string>
+    <string name="discord_rpc_oauth_summary">Use Discord OAuth login instead of a user token</string>
     <string name="reading_s">Reading %s</string>
     <string name="read_on_s">Read on %s</string>
     <string name="rpc_skip_nsfw_summary">Do not use RPC for adult content</string>
