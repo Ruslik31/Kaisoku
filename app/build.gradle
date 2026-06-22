@@ -44,10 +44,10 @@ android {
 		if (localPropertiesFile.exists()) {
 			localProperties.load(new FileInputStream(localPropertiesFile))
 		}
-		def telegramBackupBotToken = localProperties.getProperty('tg_backup_bot_token')
-		if (telegramBackupBotToken != null && !telegramBackupBotToken.isBlank()) {
-			resValue 'string', 'tg_backup_bot_token', telegramBackupBotToken
-		}
+		// Provide the Telegram backup bot token only from the gitignored local.properties; ship an
+		// empty default so no secret is committed. Telegram backup stays disabled until configured.
+		def telegramBackupBotToken = localProperties.getProperty('tg_backup_bot_token')?.trim()
+		resValue 'string', 'tg_backup_bot_token', telegramBackupBotToken ?: ''
 	}
 	buildTypes {
 		debug {
