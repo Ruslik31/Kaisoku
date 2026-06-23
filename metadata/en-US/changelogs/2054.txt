@@ -1,0 +1,6 @@
+- New: in-reader page translation & text extraction (keyless, Google Lens)
+- New: Discord Rich Presence OAuth sign-in option
+- New manga sources and source/domain fixes
+- Fixed JS-based extension sources
+- Reader chapter-switch and page-jump fixes
+- Phone layout on tablets in portrait
