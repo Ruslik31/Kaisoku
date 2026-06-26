@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.core.exceptions.resolve.CaptchaHandler
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.network.cookies.MutableCookieJar
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.parser.ParserMangaRepository
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
@@ -48,9 +49,13 @@ open class CloudFlareActivity : BaseBrowserActivity(), CloudFlareCallback {
 	private var hiddenTimeoutJob: Job? = null
 	private var clearancePollJob: Job? = null
 	private var initialClearance: String? = null
+	private var autoSolveAttempted = false
 
 	@Inject
 	lateinit var cookieJar: MutableCookieJar
+
+	@Inject
+	lateinit var settings: AppSettings
 
 	@Inject
 	lateinit var captchaHandler: CaptchaHandler
@@ -172,6 +177,28 @@ open class CloudFlareActivity : BaseBrowserActivity(), CloudFlareCallback {
 
 	override fun onPageLoaded() {
 		viewBinding.progressBar.isInvisible = true
+		maybeAutoSolveCloudflare()
+	}
+
+	// Opt-in fallback (default off). Our primary flow stays passive — hidden silent solve + clearance
+	// cookie polling + manual — which clears non-interactive challenges without touching the page. But
+	// interactive Turnstile checkboxes need a real tap, so when enabled we make ONE automated attempt
+	// in the visible activity: locate the iframe and dispatch a genuine MotionEvent. Success is picked
+	// up by the existing clearance poll (-> onCheckPassed); failure just leaves it to the user. Skipped
+	// in hidden mode (the WebView is FLAG_NOT_TOUCHABLE there, so injected touches can't land).
+	private fun maybeAutoSolveCloudflare() {
+		if (isHidden || autoSolveAttempted || !settings.isCloudflareAutoSolverEnabled) {
+			return
+		}
+		autoSolveAttempted = true
+		lifecycleScope.launch {
+			delay(CF_AUTO_SOLVE_DELAY_MS)
+			runCatchingCancellable {
+				CloudflareSolver.solve(viewBinding.webView)
+			}.onFailure {
+				it.printStackTraceDebug()
+			}
+		}
 	}
 
 	override fun onLoopDetected() {
@@ -273,5 +300,6 @@ open class CloudFlareActivity : BaseBrowserActivity(), CloudFlareCallback {
 		const val EXTRA_AUTO_RESOLVE = "auto_resolve"
 		private const val HIDDEN_TIMEOUT_MS = 15_000L
 		private const val CLEARANCE_POLL_INTERVAL_MS = 700L
+		private const val CF_AUTO_SOLVE_DELAY_MS = 2_000L
 	}
 }
