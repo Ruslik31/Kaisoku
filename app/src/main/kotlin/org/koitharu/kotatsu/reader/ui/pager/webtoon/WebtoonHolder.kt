@@ -32,6 +32,9 @@ class WebtoonHolder(
 	private var scrollToRestore = 0
 	private var scrollPercentToRestore = -1 // percentage * 10000, or -1 if none
 	private var isInitialScrollApplied = false
+	// Guards a deferred percent restore: if the user scrolls before the image becomes ready, this
+	// returns false and the (now stale) restore is dropped instead of teleporting the view back.
+	private var restoreValidator: (() -> Boolean)? = null
 
 	init {
 		bindingInfo.progressBar.setVisibilityAfterHide(View.GONE)
@@ -42,6 +45,7 @@ class WebtoonHolder(
 		scrollPercentToRestore = -1
 		scrollToRestore = 0
 		isInitialScrollApplied = false
+		restoreValidator = null
 	}
 
 	override fun onReady() {
@@ -49,11 +53,17 @@ class WebtoonHolder(
 		when {
 			scrollPercentToRestore >= 0 -> {
 				val percent = scrollPercentToRestore
+				val validator = restoreValidator
 				scrollPercentToRestore = -1
 				scrollToRestore = 0
+				restoreValidator = null
 				isInitialScrollApplied = true
-				binding.ssiv.post {
-					applyScrollPercent(percent)
+				if (validator == null || validator()) {
+					binding.ssiv.post {
+						if (validator == null || validator()) {
+							applyScrollPercent(percent)
+						}
+					}
 				}
 			}
 
@@ -117,13 +127,16 @@ class WebtoonHolder(
 	 * If SSIV is ready, applies immediately. Otherwise defers to onReady()
 	 * when scrollRange is known and layout has settled.
 	 */
-	fun restoreScrollPercent(percentTimes10000: Int) {
+	fun restoreScrollPercent(percentTimes10000: Int, isValid: () -> Boolean = { true }) {
 		val normalized = percentTimes10000.coerceAtLeast(0)
 		if (binding.ssiv.isReady) {
+			// Applied synchronously while still current, so no staleness check is needed.
 			applyScrollPercent(normalized)
 			scrollPercentToRestore = -1
+			restoreValidator = null
 		} else {
 			scrollPercentToRestore = normalized
+			restoreValidator = isValid
 		}
 	}
 

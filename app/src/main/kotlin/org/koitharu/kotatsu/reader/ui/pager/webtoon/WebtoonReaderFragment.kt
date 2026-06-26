@@ -50,6 +50,10 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 	private var canGoNext = true
 	private var lastFirstPos = RecyclerView.NO_POSITION
 	private var lastLastPos = RecyclerView.NO_POSITION
+	// Bumped on every real user scroll; a deferred scroll restore captures the value at request time
+	// and is dropped if it no longer matches, so a late restore can't teleport the view back.
+	private var restoreToken = 0
+	private var pendingRestoreListener: RecyclerView.OnChildAttachStateChangeListener? = null
 
 	override fun onCreateViewBinding(
 		inflater: LayoutInflater,
@@ -98,6 +102,7 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 	}
 
 	override fun onDestroyView() {
+		removePendingRestoreListener()
 		recyclerLifecycleDispatcher = null
 		requireViewBinding().recyclerView.adapter = null
 		super.onDestroyView()
@@ -130,6 +135,10 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 		firstVisiblePosition: Int,
 		lastVisiblePosition: Int,
 	) {
+		// This callback only fires for real (touch) scrolls, never the programmatic restore itself, so
+		// any pending deferred restore is now stale: invalidate it and drop its attach listener.
+		restoreToken++
+		removePendingRestoreListener()
 		// Update progress from first visible holder (for continuous display)
 		val lm = recyclerView.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager
 		val firstPos = lm?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
@@ -153,19 +162,27 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 		if (firstVisiblePosition != lastFirstPos || lastVisiblePosition != lastLastPos) {
 			lastFirstPos = firstVisiblePosition
 			lastLastPos = lastVisiblePosition
-			// Compute scroll from centerPos holder (matches what ViewModel uses for chapterId/page)
-			val centerPos = (firstVisiblePosition + lastVisiblePosition) / 2
-			val centerHolder = recyclerView.findViewHolderForAdapterPosition(centerPos) as? WebtoonHolder
-			val centerPage = adapter?.getItemOrNull(centerPos)
-			val centerProgress = centerHolder?.getScrollProgress()
-				?: centerPage?.let { getSavedScrollPercent(it.chapterId, it.index) }
-				?: 0f
-			val scrollPercent = if (centerProgress >= 0f) {
-				(centerProgress * 10000).toInt()
+			val itemCount = adapter?.itemCount ?: 0
+			if (itemCount > 0 && recyclerView.isScrolledToAbsoluteBottom()) {
+				// The last page can never be the centre page (you can't scroll past it), so progress
+				// would cap below 100%. Report it explicitly as the current page at full scroll.
+				val lastIndex = itemCount - 1
+				viewModel.onCurrentPageChanged(lastIndex, lastIndex, 1f, 10000)
 			} else {
-				centerPage?.let { getSavedScrollOffset(it.chapterId, it.index) } ?: 0
+				// Compute scroll from centerPos holder (matches what ViewModel uses for chapterId/page)
+				val centerPos = (firstVisiblePosition + lastVisiblePosition) / 2
+				val centerHolder = recyclerView.findViewHolderForAdapterPosition(centerPos) as? WebtoonHolder
+				val centerPage = adapter?.getItemOrNull(centerPos)
+				val centerProgress = centerHolder?.getScrollProgress()
+					?: centerPage?.let { getSavedScrollPercent(it.chapterId, it.index) }
+					?: 0f
+				val scrollPercent = if (centerProgress >= 0f) {
+					(centerProgress * 10000).toInt()
+				} else {
+					centerPage?.let { getSavedScrollOffset(it.chapterId, it.index) } ?: 0
+				}
+				viewModel.onCurrentPageChanged(firstVisiblePosition, lastVisiblePosition, progress, scrollPercent)
 			}
-			viewModel.onCurrentPageChanged(firstVisiblePosition, lastVisiblePosition, progress, scrollPercent)
 		}
 	}
 
@@ -192,6 +209,9 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 					position,
 					scrollProgress = pendingState.scroll / 10000f,
 					scrollOffset = pendingState.scroll,
+					// Programmatic re-anchor, not a user scroll: don't trigger bounds preload, otherwise
+					// the restore feeds back into a re-emit/re-anchor loop (open/continue flicker).
+					triggerAutoLoad = false,
 				)
 			} else {
 				Snackbar.make(requireView(), R.string.not_found_404, Snackbar.LENGTH_SHORT)
@@ -205,9 +225,18 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 	override fun getCurrentState(): ReaderState? = viewBinding?.run {
 		val lm = recyclerView.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager
 			?: return@run null
+		val adapter = recyclerView.adapter as? BaseReaderAdapter<*>
+		val itemCount = adapter?.itemCount ?: 0
+		if (itemCount > 0 && recyclerView.isScrolledToAbsoluteBottom()) {
+			// At the very end, persist the last page at full scroll so resuming lands at the end and
+			// reading progress reads 100% (the first-visible page can lag behind the last index here).
+			val lastPage = adapter?.getItemOrNull(itemCount - 1)
+			if (lastPage != null) {
+				return@run ReaderState(chapterId = lastPage.chapterId, page = lastPage.index, scroll = 10000)
+			}
+		}
 		val currentItem = lm.findFirstVisibleItemPosition()
 		if (currentItem == RecyclerView.NO_POSITION) return@run null
-		val adapter = recyclerView.adapter as? BaseReaderAdapter<*>
 		val page = adapter?.getItemOrNull(currentItem) ?: return@run null
 		val holder = recyclerView.findViewHolderForAdapterPosition(currentItem) as? WebtoonHolder
 		val fallbackScroll = getSavedScrollOffset(page.chapterId, page.index)
@@ -237,16 +266,36 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 	}
 
 	private fun postRestoreScroll(rv: RecyclerView, position: Int, scrollPercent: Int) {
-		rv.addOnChildAttachStateChangeListener(object : RecyclerView.OnChildAttachStateChangeListener {
+		// Replace any earlier restore that hasn't fired yet, so listeners don't pile up across rapid
+		// chapter switches / re-anchors.
+		removePendingRestoreListener()
+		val token = restoreToken
+		val listener = object : RecyclerView.OnChildAttachStateChangeListener {
 			override fun onChildViewAttachedToWindow(view: android.view.View) {
 				val holder = rv.getChildViewHolder(view) as? WebtoonHolder
 				if (holder != null && holder.bindingAdapterPosition == position) {
 					rv.removeOnChildAttachStateChangeListener(this)
-					holder.restoreScrollPercent(scrollPercent)
+					if (pendingRestoreListener === this) {
+						pendingRestoreListener = null
+					}
+					// Skip if the user has scrolled since this restore was requested. The holder
+					// re-checks the same token when its image becomes ready (deferred restore).
+					if (token == restoreToken) {
+						holder.restoreScrollPercent(scrollPercent) { token == restoreToken }
+					}
 				}
 			}
 			override fun onChildViewDetachedFromWindow(view: android.view.View) {}
-		})
+		}
+		pendingRestoreListener = listener
+		rv.addOnChildAttachStateChangeListener(listener)
+	}
+
+	private fun removePendingRestoreListener() {
+		pendingRestoreListener?.let { listener ->
+			viewBinding?.recyclerView?.removeOnChildAttachStateChangeListener(listener)
+		}
+		pendingRestoreListener = null
 	}
 
 	override fun onZoomIn() {

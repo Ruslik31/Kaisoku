@@ -142,6 +142,29 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 		return 0
 	}
 
+	/**
+	 * True when the last page is fully scrolled to its bottom edge and there is nothing below it,
+	 * i.e. the reader has reached the very end of the loaded content. Used to register the final
+	 * page as "current" so reading progress can reach 100% (the centre-of-viewport page detection
+	 * can never reach the last index otherwise).
+	 */
+	fun isScrolledToAbsoluteBottom(): Boolean {
+		val adapter = adapter ?: return false
+		val lm = layoutManager as? LinearLayoutManager ?: return !canScrollVertically(1)
+		if (lm.findLastVisibleItemPosition() != adapter.itemCount - 1) {
+			return false
+		}
+		if (childCount <= 0) {
+			return false
+		}
+		val child = getChildAt(childCount - 1) as? WebtoonFrameLayout ?: return false
+		if (child.bottom > height) {
+			return false
+		}
+		val ssiv = child.target
+		return ssiv.getScroll() >= ssiv.getScrollRange()
+	}
+
 	fun addOnPageScrollListener(listener: OnWebtoonScrollListener) {
 		onPageScrollListeners.add(listener)
 	}
@@ -348,22 +371,7 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 			return child.target.getScroll() <= 0
 		}
 
-		private fun isAtAbsoluteBottom(): Boolean {
-			val adapter = adapter ?: return false
-			val lm = layoutManager as? LinearLayoutManager ?: return !canScrollVertically(1)
-			if (lm.findLastVisibleItemPosition() != adapter.itemCount - 1) {
-				return false
-			}
-			if (childCount <= 0) {
-				return false
-			}
-			val child = getChildAt(childCount - 1) as? WebtoonFrameLayout ?: return false
-			if (child.bottom > height) {
-				return false
-			}
-			val ssiv = child.target
-			return ssiv.getScroll() >= ssiv.getScrollRange()
-		}
+		private fun isAtAbsoluteBottom(): Boolean = isScrolledToAbsoluteBottom()
 	}
 
 	private enum class PullEdge {

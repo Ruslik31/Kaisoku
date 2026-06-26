@@ -64,6 +64,7 @@ import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.util.ifNullOrEmpty
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.parsers.util.sizeOrZero
+import org.koitharu.kotatsu.reader.domain.ChapterSwitchCursor
 import org.koitharu.kotatsu.reader.domain.ChaptersLoader
 import org.koitharu.kotatsu.reader.domain.DetectReaderModeUseCase
 import org.koitharu.kotatsu.reader.domain.PageLoader
@@ -115,6 +116,7 @@ class ReaderViewModel @Inject constructor(
     private var stateChangeJob: Job? = null
     private var lastScrollProgress: Float = -1f
     private var lastScrollOffset: Int = 0
+    private val navCursor = ChapterSwitchCursor()
 
     init {
         mangaDetails.value = intent.manga?.let { MangaDetails(it) }
@@ -377,40 +379,40 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun switchChapter(id: Long, page: Int) {
-        val prevJob = loadingJob
-        loadingJob = launchLoadingJob(Dispatchers.Default) {
-            prevJob?.cancelAndJoin()
-            content.value = ReaderContent(emptyList(), null)
-            chaptersLoader.loadSingleChapter(id)
-            val newState = ReaderState(id, page, 0)
-            content.value = ReaderContent(chaptersLoader.snapshot(), newState)
-            saveCurrentState(newState)
-        }
+        navCursor.settle(id)
+        launchChapterSwitch(id, page, scroll = 0)
     }
 
+    @MainThread
     fun switchChapterBy(delta: Int) {
+        if (delta == 0) {
+            // Reload the current chapter in place, keeping the page/scroll position.
+            val state = readingState.value ?: return
+            navCursor.settle(state.chapterId)
+            launchChapterSwitch(state.chapterId, state.page, state.scroll)
+            return
+        }
+        // Resolve the target from the navigation cursor, not the live reading state: the latter is
+        // updated asynchronously and can be stale or momentarily point at an adjacent preloaded
+        // chapter mid load, which made rapid presses misfire (no advance / jump to chapter start /
+        // wrong direction). The cursor chains presses deterministically.
+        val allChapterIds = mangaDetails.value?.allChapters?.map { it.id } ?: return
+        val targetId = navCursor.resolveRelative(
+            allChapterIds = allChapterIds,
+            liveChapterId = readingState.value?.chapterId,
+            delta = delta,
+        ) ?: return // unknown base or first/last chapter reached
+        launchChapterSwitch(targetId, page = 0, scroll = 0)
+    }
+
+    @MainThread
+    private fun launchChapterSwitch(chapterId: Long, page: Int, scroll: Int) {
         val prevJob = loadingJob
         loadingJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
-            val prevState = readingState.requireValue()
-            val newChapterId = if (delta != 0) {
-                val allChapters = mangaDetails.requireValue().allChapters
-                var index = allChapters.indexOfFirst { x -> x.id == prevState.chapterId }
-                if (index < 0) {
-                    return@launchLoadingJob
-                }
-                index += delta
-                (allChapters.getOrNull(index) ?: return@launchLoadingJob).id
-            } else {
-                prevState.chapterId
-            }
             content.value = ReaderContent(emptyList(), null)
-            chaptersLoader.loadSingleChapter(newChapterId)
-            val newState = ReaderState(
-                chapterId = newChapterId,
-                page = if (delta == 0) prevState.page else 0,
-                scroll = if (delta == 0) prevState.scroll else 0,
-            )
+            chaptersLoader.loadSingleChapter(chapterId)
+            val newState = ReaderState(chapterId, page, scroll)
             content.value = ReaderContent(chaptersLoader.snapshot(), newState)
             saveCurrentState(newState)
         }
@@ -454,7 +456,13 @@ class ReaderViewModel @Inject constructor(
     }
 
     @MainThread
-    fun onCurrentPageChanged(lowerPos: Int, upperPos: Int, scrollProgress: Float = -1f, scrollOffset: Int = 0) {
+    fun onCurrentPageChanged(
+        lowerPos: Int,
+        upperPos: Int,
+        scrollProgress: Float = -1f,
+        scrollOffset: Int = 0,
+        triggerAutoLoad: Boolean = true,
+    ) {
         lastScrollProgress = scrollProgress
         val capturedScrollOffset = scrollOffset
         val prevJob = stateChangeJob
@@ -476,7 +484,17 @@ class ReaderViewModel @Inject constructor(
                 return@launchJob
             }
             ensureActive()
-            val autoLoadAllowed = readerMode.value != ReaderMode.WEBTOON || !isWebtoonPullGestureEnabled.value
+            // Scrolling has settled with no load in flight, so the reading state reliably reflects
+            // the chapter on screen: re-anchor button navigation to it (covers natural scrolling
+            // across chapter boundaries) before the auto-load below shifts page positions.
+            navCursor.settle(readingState.value?.chapterId)
+            // A programmatic re-anchor (onPagesChanged after a restore / prev-next re-emit) reports
+            // the page change with triggerAutoLoad = false. Without this guard, the re-anchor's
+            // synthetic page change kept re-firing the bounds load below, which re-emitted content
+            // and re-anchored again — the open/continue flicker loop. Real scroll events still
+            // preload normally.
+            val autoLoadAllowed = triggerAutoLoad &&
+                (readerMode.value != ReaderMode.WEBTOON || !isWebtoonPullGestureEnabled.value)
             if (autoLoadAllowed) {
                 if (upperPos >= pages.lastIndex - BOUNDS_PAGE_OFFSET) {
                     loadPrevNextChapter(pages.last().chapterId, isNext = true)
@@ -547,6 +565,7 @@ class ReaderViewModel @Inject constructor(
                                 return@collect // manga not loaded yet if cannot get state
                             }
                             readingState.value = newState
+                            navCursor.settle(newState.chapterId)
                             val mode = runCatchingCancellable {
                                 detectReaderModeUseCase(manga, newState)
                             }.getOrDefault(settings.defaultReaderMode)
