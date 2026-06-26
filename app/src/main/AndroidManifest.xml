@@ -205,6 +205,11 @@
 			android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
 			android:windowSoftInputMode="adjustResize" />
 		<activity
+			android:name="org.koitharu.kotatsu.browsersource.ui.BrowserSourceActivity"
+			android:configChanges="orientation|screenSize|keyboardHidden"
+			android:exported="false"
+			android:windowSoftInputMode="adjustResize" />
+		<activity
 			android:name="org.koitharu.kotatsu.browser.cloudflare.CloudFlareHiddenActivity"
 			android:autoRemoveFromRecents="true"
 			android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"

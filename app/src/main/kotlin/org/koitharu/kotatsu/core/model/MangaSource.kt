@@ -10,6 +10,8 @@ import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.core.text.inSpans
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.customsource.data.CustomSourcesRepository
+import org.koitharu.kotatsu.customsource.domain.CustomMangaSource
 import org.koitharu.kotatsu.core.parser.external.ExternalMangaSource
 import org.koitharu.kotatsu.core.parser.mihon.MihonMangaSource
 import org.koitharu.kotatsu.core.util.ext.getDisplayName
@@ -49,6 +51,11 @@ fun MangaSource(name: String?): MangaSource {
 			packageName = parts.first,
 			sourceId = parts.second.toLongOrNull() ?: return UnknownMangaSource,
 		)
+	}
+	if (name.startsWith(CustomMangaSource.NAME_PREFIX)) {
+		val id = CustomMangaSource.extractId(name)
+		val cs = id?.let { CustomSourcesRepository.peekById(it) }
+		return if (cs != null) CustomMangaSource(cs) else UnresolvedMangaSource(name)
 	}
 	if (':' in name) {
 		MangaSourceRegistry.resolve(name)?.let {
@@ -142,6 +149,7 @@ fun MangaSource.getSummary(context: Context): String? = when (val source = unwra
 
 fun MangaSource.getTitle(context: Context): String = when (val source = unwrap()) {
 	is MangaParserSource -> source.title
+	is CustomMangaSource -> source.displayTitle
 	is PluginMangaSource -> source.title
 	is MihonMangaSource -> source.resolveName(context)
 	LocalMangaSource -> context.getString(R.string.local_storage)

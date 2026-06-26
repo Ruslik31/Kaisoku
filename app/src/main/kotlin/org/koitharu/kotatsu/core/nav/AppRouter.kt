@@ -29,6 +29,7 @@ import org.koitharu.kotatsu.backups.ui.backup.BackupDialogFragment
 import org.koitharu.kotatsu.backups.ui.restore.RestoreDialogFragment
 import org.koitharu.kotatsu.bookmarks.ui.AllBookmarksActivity
 import org.koitharu.kotatsu.browser.BrowserActivity
+import org.koitharu.kotatsu.browsersource.ui.AddBrowserSourceSheet
 import org.koitharu.kotatsu.browser.cloudflare.CloudFlareActivity
 import org.koitharu.kotatsu.browser.cloudflare.CloudFlareHiddenActivity
 import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
@@ -395,6 +396,10 @@ class AppRouter private constructor(
                 manga.mapTo(ArrayList(manga.size)) { ParcelableManga(it, withDescription = false) },
             )
         }.showDistinct()
+    }
+
+    fun showAddBrowserSourceSheet() {
+        AddBrowserSourceSheet.newInstance().showDistinct()
     }
 
     fun showTagDialog(tag: MangaTag) {

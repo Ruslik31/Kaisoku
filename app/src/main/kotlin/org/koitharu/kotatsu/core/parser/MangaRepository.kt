@@ -18,7 +18,9 @@ import org.koitharu.kotatsu.core.parser.external.ExternalMangaRepository
 import org.koitharu.kotatsu.core.parser.external.ExternalMangaSource
 import org.koitharu.kotatsu.core.parser.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.core.parser.mihon.MihonMangaRepository
+import org.koitharu.kotatsu.browsersource.data.BrowserSourceMangaRepository
 import org.koitharu.kotatsu.core.parser.mihon.MihonMangaSource
+import org.koitharu.kotatsu.customsource.domain.CustomMangaSource
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
@@ -149,6 +151,10 @@ interface MangaRepository {
 					cache = contentCache,
 				)
 			} ?: EmptyMangaRepository(source)
+
+			// User-defined in-app browser source: pages are stashed by BrowserSourceActivity and served
+			// back from the page store (only BROWSER_SOURCE custom sources exist in this build).
+			is CustomMangaSource -> BrowserSourceMangaRepository(source)
 
 			else -> null
 		}
