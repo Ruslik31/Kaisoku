@@ -46,11 +46,15 @@ import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
-import org.koitharu.kotatsu.parsers.util.sizeOrZero
 import java.lang.ref.WeakReference
 import javax.inject.Inject
 
 private const val FILTER_MIN_INTERVAL = 250L
+
+// How many consecutive append pages that add no new items we tolerate before stopping.
+// Some mirrors serve reordered/overlapping list pages, so a single all-duplicate page
+// must not be treated as the end of the list.
+private const val MAX_EMPTY_APPEND_PAGES = 3
 
 @HiltViewModel
 open class RemoteListViewModel @Inject constructor(
@@ -72,6 +76,7 @@ open class RemoteListViewModel @Inject constructor(
 
 	protected val repository = mangaRepositoryFactory.create(source)
 	private val mangaList = MutableStateFlow<List<Manga>?>(null)
+	private val listOffset = MutableStateFlow(0)
 	private val hasNextPage = MutableStateFlow(false)
 	private val listError = MutableStateFlow<Throwable?>(null)
 	private val mutableContent = MutableStateFlow<List<ListModel>>(listOf(LoadingState))
@@ -166,6 +171,7 @@ open class RemoteListViewModel @Inject constructor(
 		val currentLoadingCounter = loadingCounter
 		val currentRepository = repository
 		val currentMangaList = mangaList
+		val currentListOffset = listOffset
 		val currentHasNextPage = hasNextPage
 		val currentListError = listError
 		val currentErrorEvent = errorEvent
@@ -175,6 +181,7 @@ open class RemoteListViewModel @Inject constructor(
 				loadRemoteList(
 					repository = currentRepository,
 					mangaList = currentMangaList,
+					listOffset = currentListOffset,
 					hasNextPage = currentHasNextPage,
 					listError = currentListError,
 					errorEvent = currentErrorEvent,
@@ -286,6 +293,7 @@ private suspend fun buildRemoteListContent(
 private suspend fun loadRemoteList(
 	repository: MangaRepository,
 	mangaList: MutableStateFlow<List<Manga>?>,
+	listOffset: MutableStateFlow<Int>,
 	hasNextPage: MutableStateFlow<Boolean>,
 	listError: MutableStateFlow<Throwable?>,
 	errorEvent: MutableEventFlow<Throwable>,
@@ -294,21 +302,42 @@ private suspend fun loadRemoteList(
 ) {
 	try {
 		listError.value = null
-		val list = repository.getList(
-			offset = if (append) mangaList.value.sizeOrZero() else 0,
-			order = filterState.sortOrder,
-			filter = filterState.listFilter,
-		)
-		val prevList = mangaList.value.orEmpty()
 		if (!append) {
-			mangaList.value = list.distinctById()
-		} else if (list.isNotEmpty()) {
-			mangaList.value = (prevList + list).distinctById()
+			listOffset.value = 0
 		}
-		hasNextPage.value = if (append) {
-			prevList != mangaList.value
-		} else {
-			list.size > prevList.size || hasNextPage.value
+		// A single scroll-to-end may need to skip past one or more all-duplicate pages: some
+		// mirrors serve reordered/overlapping list pages, so a page made entirely of already-seen
+		// titles must not be treated as the end. We advance the offset by the number of items
+		// actually fetched (not the de-duplicated list size) and keep fetching until the visible
+		// list grows, the source returns nothing, or we exhaust the duplicate-page budget.
+		var emptyPages = 0
+		while (true) {
+			val list = repository.getList(
+				offset = listOffset.value,
+				order = filterState.sortOrder,
+				filter = filterState.listFilter,
+			)
+			val prevList = mangaList.value.orEmpty()
+			if (!append) {
+				mangaList.value = list.distinctById()
+			} else if (list.isNotEmpty()) {
+				mangaList.value = (prevList + list).distinctById()
+			}
+			listOffset.value += list.size
+			val grew = (mangaList.value?.size ?: 0) > prevList.size
+			if (list.isEmpty()) {
+				hasNextPage.value = false
+				break
+			}
+			if (!append || grew) {
+				hasNextPage.value = true
+				break
+			}
+			// Append page added nothing new; try the next page, up to a small budget.
+			if (++emptyPages >= MAX_EMPTY_APPEND_PAGES) {
+				hasNextPage.value = false
+				break
+			}
 		}
 	} catch (e: CancellationException) {
 		throw e
