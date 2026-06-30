@@ -78,6 +78,9 @@ interface NetworkModule {
 			}
 			cache(cache)
 			//addInterceptor(GZipInterceptor())
+			// Outside CloudFlareInterceptor so it can catch its CF exception, solve via the
+			// external server, and retry; no-op unless the user opted into FlareSolverr (Beta).
+			addInterceptor(FlareSolverrInterceptor(settings, contextProvider.get()))
 			addInterceptor(CloudFlareInterceptor())
 			addInterceptor(RateLimitInterceptor())
 			if (BuildConfig.DEBUG) {

@@ -583,6 +583,16 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val isCloudflareAutoSolverEnabled: Boolean
 		get() = prefs.getBoolean(KEY_CF_AUTOSOLVE, false)
 
+	val isFlareSolverrEnabled: Boolean
+		get() = prefs.getBoolean(KEY_FLARESOLVERR_ENABLED, false)
+
+	val flareSolverrUrl: String
+		get() = prefs.getString(KEY_FLARESOLVERR_URL, null)?.nullIfEmpty() ?: DEFAULT_FLARESOLVERR_URL
+
+	val flareSolverrTimeoutMs: Int
+		get() = (prefs.getString(KEY_FLARESOLVERR_TIMEOUT, null)?.toIntOrNull() ?: DEFAULT_FLARESOLVERR_TIMEOUT)
+			.coerceAtLeast(MIN_FLARESOLVERR_TIMEOUT)
+
 	val proxyType: Proxy.Type
 		get() {
 			val raw = prefs.getString(KEY_PROXY_TYPE, null) ?: return Proxy.Type.DIRECT
@@ -967,6 +977,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_TIPS_CLOSED = "tips_closed"
 		const val KEY_SSL_BYPASS = "ssl_bypass"
 		const val KEY_CF_AUTOSOLVE = "cf_autosolve"
+		const val KEY_FLARESOLVERR_ENABLED = "flaresolverr_enabled"
+		const val KEY_FLARESOLVERR_URL = "flaresolverr_url"
+		const val KEY_FLARESOLVERR_TIMEOUT = "flaresolverr_timeout"
 		const val KEY_READER_AUTOSCROLL_SPEED = "as_speed"
 		const val KEY_READER_AUTOSCROLL_FAB = "as_fab"
 		const val KEY_MIRROR_SWITCHING = "mirror_switching"
@@ -1059,5 +1072,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		// values
 		private const val READER_CROP_PAGED = 1
 		private const val READER_CROP_WEBTOON = 2
+
+		const val DEFAULT_FLARESOLVERR_URL = "http://localhost:8191/v1"
+		private const val DEFAULT_FLARESOLVERR_TIMEOUT = 60_000
+		private const val MIN_FLARESOLVERR_TIMEOUT = 10_000
 	}
 }

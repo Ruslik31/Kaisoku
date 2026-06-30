@@ -76,4 +76,31 @@
         android:summary="@string/cf_auto_solve_summary"
         android:title="@string/cf_auto_solve" />
 
+    <PreferenceCategory
+        android:title="@string/flaresolverr_title"
+        app:allowDividerAbove="true">
+
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="flaresolverr_enabled"
+            android:summary="@string/flaresolverr_summary"
+            android:title="@string/flaresolverr_enable" />
+
+        <EditTextPreference
+            android:defaultValue="http://localhost:8191/v1"
+            android:dependency="flaresolverr_enabled"
+            android:key="flaresolverr_url"
+            android:title="@string/flaresolverr_url"
+            app:useSimpleSummaryProvider="true" />
+
+        <EditTextPreference
+            android:defaultValue="60000"
+            android:dependency="flaresolverr_enabled"
+            android:inputType="number"
+            android:key="flaresolverr_timeout"
+            android:title="@string/flaresolverr_timeout"
+            app:useSimpleSummaryProvider="true" />
+
+    </PreferenceCategory>
+
 </PreferenceScreen>

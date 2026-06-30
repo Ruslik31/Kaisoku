@@ -441,6 +441,11 @@
     <string name="ignore_ssl_errors">Ignore SSL errors</string>
     <string name="cf_auto_solve">Auto-solve Cloudflare</string>
     <string name="cf_auto_solve_summary">Experimental: automatically tap the Cloudflare verification checkbox when a challenge appears. May not work on every site or device.</string>
+    <string name="flaresolverr_title">FlareSolverr (Beta)</string>
+    <string name="flaresolverr_enable">Use FlareSolverr</string>
+    <string name="flaresolverr_summary">Beta: solve Cloudflare challenges through a FlareSolverr server you run on your own computer. Enter its address below. The computer must be on and reachable on the same network. Falls back to the in-app solver if unavailable.</string>
+    <string name="flaresolverr_url">Server address</string>
+    <string name="flaresolverr_timeout">Timeout (ms)</string>
     <string name="mirror_switching">Choose mirror automatically</string>
     <string name="mirror_switching_summary">Automatically switch domains for manga sources on errors if mirrors are available</string>
     <string name="pause">Pause</string>
