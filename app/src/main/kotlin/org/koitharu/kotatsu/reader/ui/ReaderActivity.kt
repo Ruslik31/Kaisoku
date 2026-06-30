@@ -166,6 +166,14 @@ class ReaderActivity :
             updateScrollTimerButton()
             viewBinding.actionsView.setTimerActive(it)
         }
+        scrollTimer.isBoosting.observe(this) { boosting ->
+            viewBinding.boostIndicator.let { indicator ->
+                if (boosting) {
+                    indicator.text = getString(R.string.speed_value, scrollTimer.boostMultiplierValue)
+                }
+                indicator.isVisible = boosting
+            }
+        }
         viewBinding.timerControl.onVisibilityChangeListener = this
         viewBinding.timerControl.attach(scrollTimer, this)
         if (resources.getBoolean(R.bool.is_tablet)) {

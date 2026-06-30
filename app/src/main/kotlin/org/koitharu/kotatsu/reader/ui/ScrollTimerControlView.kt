@@ -52,6 +52,10 @@ class ScrollTimerControlView @JvmOverloads constructor(
 		binding.sliderTimer.addOnChangeListener(this)
 		binding.buttonFab.setOnClickListener(this)
 		binding.sliderTimer.setLabelFormatter(this)
+		binding.switchHoldBoost.setOnCheckedChangeListener(this)
+		binding.sliderBoost.addOnChangeListener(this)
+		// The boost slider value is already the multiplier, so label it directly (e.g. "x2.0").
+		binding.sliderBoost.setLabelFormatter { value -> labelPattern.format(value) }
 		binding.buttonClose.setOnClickListener(this)
 		binding.buttonFab.isGone = resources.getBoolean(R.bool.is_tablet)
 		setPadding(0, 0, 0, context.resources.getDimensionPixelOffset(R.dimen.margin_normal))
@@ -83,7 +87,34 @@ class ScrollTimerControlView @JvmOverloads constructor(
 		).observe(lifecycleOwner) {
 			binding.buttonFab.isChecked = it
 		}
+		settings.observeAsStateFlow(
+			scope = lifecycleOwner.lifecycleScope + Dispatchers.Default,
+			key = AppSettings.KEY_READER_AUTOSCROLL_HOLD,
+			valueProducer = { isReaderAutoscrollHoldBoostEnabled },
+		).observe(lifecycleOwner) {
+			binding.switchHoldBoost.setOnCheckedChangeListener(null)
+			binding.switchHoldBoost.isChecked = it
+			binding.switchHoldBoost.setOnCheckedChangeListener(this)
+			updateBoostEnabled(it)
+		}
+		settings.observeAsStateFlow(
+			scope = lifecycleOwner.lifecycleScope + Dispatchers.Default,
+			key = AppSettings.KEY_READER_AUTOSCROLL_BOOST,
+			valueProducer = { readerAutoscrollBoostMultiplier },
+		).observe(lifecycleOwner) {
+			if (abs(it - binding.sliderBoost.value) > 0.0001) {
+				binding.sliderBoost.value = it.coerceIn(
+					binding.sliderBoost.valueFrom,
+					binding.sliderBoost.valueTo,
+				)
+			}
+		}
 		updateDescription()
+	}
+
+	private fun updateBoostEnabled(enabled: Boolean) {
+		binding.sliderBoost.isEnabled = enabled
+		binding.labelBoost.isEnabled = enabled
 	}
 
 	fun onReaderModeChanged(mode: ReaderMode) {
@@ -107,14 +138,29 @@ class ScrollTimerControlView @JvmOverloads constructor(
 		value: Float,
 		fromUser: Boolean
 	) {
-		if (fromUser) {
-			settings.readerAutoscrollSpeed = value
+		when (slider.id) {
+			R.id.slider_boost -> if (fromUser) {
+				settings.readerAutoscrollBoostMultiplier = value
+			}
+
+			else -> {
+				if (fromUser) {
+					settings.readerAutoscrollSpeed = value
+				}
+				updateDescription()
+			}
 		}
-		updateDescription()
 	}
 
 	override fun onCheckedChanged(buttonView: CompoundButton, isChecked: Boolean) {
-		scrollTimer?.setActive(isChecked)
+		when (buttonView.id) {
+			R.id.switch_hold_boost -> {
+				settings.isReaderAutoscrollHoldBoostEnabled = isChecked
+				updateBoostEnabled(isChecked)
+			}
+
+			else -> scrollTimer?.setActive(isChecked)
+		}
 	}
 
 	override fun setVisibility(visibility: Int) {

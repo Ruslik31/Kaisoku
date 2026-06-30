@@ -107,6 +107,23 @@
 
 	</com.google.android.material.card.MaterialCardView>
 
+	<TextView
+		android:id="@+id/boostIndicator"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_gravity="top|center_horizontal"
+		android:layout_marginTop="48dp"
+		android:background="@drawable/bg_reader_indicator"
+		android:elevation="1000dp"
+		android:paddingHorizontal="14dp"
+		android:paddingVertical="6dp"
+		android:singleLine="true"
+		android:textAppearance="?attr/textAppearanceTitleMedium"
+		android:theme="@style/ThemeOverlay.Material3.Dark"
+		android:visibility="gone"
+		tools:text="x2.0"
+		tools:visibility="visible" />
+
 	<org.koitharu.kotatsu.reader.ui.ReaderToastView
 		android:id="@+id/toastView"
 		android:layout_width="wrap_content"

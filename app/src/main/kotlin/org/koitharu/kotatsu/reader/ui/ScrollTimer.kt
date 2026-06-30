@@ -31,6 +31,7 @@ private const val INTERACTION_SKIP_MS = 2_000L
 private const val TICK_DELAY_MS = 8L
 private const val BASE_SCROLL_DELAY_MS = 32f
 private const val SPEED_FACTOR_CHANGE_PER_SEC = 0.65f
+private const val HOLD_THRESHOLD_MS = 250L
 
 class ScrollTimer @AssistedInject constructor(
 	@Assisted resources: Resources,
@@ -47,11 +48,32 @@ class ScrollTimer @AssistedInject constructor(
 	private var resumeAt = 0L
 	private var isTouchDown = MutableStateFlow(false)
 	private val isRunning = MutableStateFlow(false)
+	private val isBoost = MutableStateFlow(false)
 	private val scrollDelta = resources.resolveDp(1)
 	private val baseScrollSpeedPxPerSec = (scrollDelta * 1000f) / BASE_SCROLL_DELAY_MS
+	private val touchSlopPx = resources.resolveDp(8).toFloat()
+
+	// "Hold to speed up" (opt-in). While the finger is held still past HOLD_THRESHOLD_MS the
+	// autoscroll speed is multiplied by boostMultiplier instead of pausing. Updated from settings.
+	@Volatile
+	private var holdBoostEnabled = false
+	@Volatile
+	private var boostMultiplier = AppSettings.AUTOSCROLL_BOOST_DEFAULT
+	@Volatile
+	private var downAtMs = 0L
+	private var downX = 0f
+	private var downY = 0f
+	@Volatile
+	private var movedBeyondSlop = false
 
 	val isActive: StateFlow<Boolean>
 		get() = isRunning
+
+	val isBoosting: StateFlow<Boolean>
+		get() = isBoost
+
+	val boostMultiplierValue: Float
+		get() = boostMultiplier
 
 	init {
 		settings.observeAsFlow(AppSettings.KEY_READER_AUTOSCROLL_SPEED) {
@@ -59,6 +81,18 @@ class ScrollTimer @AssistedInject constructor(
 		}.flowOn(Dispatchers.Default)
 			.onEach {
 				onSpeedChanged(it)
+			}.launchIn(coroutineScope)
+		settings.observeAsFlow(AppSettings.KEY_READER_AUTOSCROLL_HOLD) {
+			isReaderAutoscrollHoldBoostEnabled
+		}.flowOn(Dispatchers.Default)
+			.onEach {
+				holdBoostEnabled = it
+			}.launchIn(coroutineScope)
+		settings.observeAsFlow(AppSettings.KEY_READER_AUTOSCROLL_BOOST) {
+			readerAutoscrollBoostMultiplier
+		}.flowOn(Dispatchers.Default)
+			.onEach {
+				boostMultiplier = it
 			}.launchIn(coroutineScope)
 	}
 
@@ -77,13 +111,42 @@ class ScrollTimer @AssistedInject constructor(
 		when (event.actionMasked) {
 			MotionEvent.ACTION_DOWN -> {
 				isTouchDown.value = true
+				downAtMs = SystemClock.elapsedRealtime()
+				downX = event.x
+				downY = event.y
+				movedBeyondSlop = false
+			}
+
+			// A second pointer (pinch/zoom) is not a hold: cancel any pending boost.
+			MotionEvent.ACTION_POINTER_DOWN -> {
+				movedBeyondSlop = true
+			}
+
+			MotionEvent.ACTION_MOVE -> {
+				if (!movedBeyondSlop) {
+					val dx = event.x - downX
+					val dy = event.y - downY
+					if (dx * dx + dy * dy > touchSlopPx * touchSlopPx) {
+						movedBeyondSlop = true
+					}
+				}
 			}
 
 			MotionEvent.ACTION_UP,
 			MotionEvent.ACTION_CANCEL -> {
 				isTouchDown.value = false
+				movedBeyondSlop = false
 			}
 		}
+	}
+
+	// A boost engages only when enabled and the finger is held still past the threshold; any drag
+	// (movedBeyondSlop) or pinch keeps the existing pause behaviour instead.
+	private fun isBoostActive(): Boolean {
+		return holdBoostEnabled &&
+			isTouchDown.value &&
+			!movedBeyondSlop &&
+			SystemClock.elapsedRealtime() - downAtMs >= HOLD_THRESHOLD_MS
 	}
 
 	private fun onSpeedChanged(speed: Float) {
@@ -96,6 +159,7 @@ class ScrollTimer @AssistedInject constructor(
 	private fun restartJob() {
 		job?.cancel()
 		resumeAt = 0L
+		isBoost.value = false
 		if (!isRunning.value) {
 			job = null
 			return
@@ -106,7 +170,11 @@ class ScrollTimer @AssistedInject constructor(
 			var speedFactor = 1f
 			val speedStepPerTick = SPEED_FACTOR_CHANGE_PER_SEC * (TICK_DELAY_MS / 1000f)
 			while (isActive) {
-				if (isPaused()) {
+				val boosting = isBoostActive()
+				isBoost.value = boosting
+				// While boosting, a held finger no longer pauses: ramp the factor back up and let the
+				// boost multiplier apply below.
+				if (!boosting && isPaused()) {
 					speedFactor = (speedFactor - speedStepPerTick).coerceAtLeast(0f)
 				} else if (speedFactor < 1f) {
 					speedFactor = (speedFactor + speedStepPerTick).coerceAtMost(1f)
@@ -120,7 +188,8 @@ class ScrollTimer @AssistedInject constructor(
 					continue
 				}
 
-				val effectiveMultiplier = scrollSpeedMultiplier * speedFactor
+				val boostFactor = if (boosting) boostMultiplier else 1f
+				val effectiveMultiplier = scrollSpeedMultiplier * speedFactor * boostFactor
 				scrollAccumulator += baseScrollSpeedPxPerSec * effectiveMultiplier * (TICK_DELAY_MS / 1000f)
 				val scrollByPx = scrollAccumulator.toInt()
 				if (scrollByPx <= 0) {
