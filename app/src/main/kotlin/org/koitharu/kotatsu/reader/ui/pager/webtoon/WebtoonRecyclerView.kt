@@ -17,6 +17,14 @@ import java.util.Collections
 import java.util.LinkedList
 import java.util.WeakHashMap
 
+/**
+ * A page counts as scrolled to its bottom only once its image is ready. While `!ready` the
+ * WebtoonImageView reports getScrollRange() == 0 and getScroll() == 0, so a bare `scroll >= range`
+ * would be trivially true and falsely flag a not-yet-loaded last page as "the absolute bottom".
+ */
+internal fun isPageScrolledToBottom(ready: Boolean, scroll: Int, scrollRange: Int): Boolean =
+	ready && scroll >= scrollRange
+
 class WebtoonRecyclerView @JvmOverloads constructor(
 	context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
 ) : RecyclerView(context, attrs, defStyleAttr) {
@@ -162,7 +170,7 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 			return false
 		}
 		val ssiv = child.target
-		return ssiv.getScroll() >= ssiv.getScrollRange()
+		return isPageScrolledToBottom(ssiv.isReady, ssiv.getScroll(), ssiv.getScrollRange())
 	}
 
 	fun addOnPageScrollListener(listener: OnWebtoonScrollListener) {
