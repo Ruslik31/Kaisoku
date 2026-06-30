@@ -102,4 +102,43 @@
 		app:layout_constraintStart_toStartOf="parent"
 		app:layout_constraintTop_toBottomOf="@id/textView_description" />
 
+	<com.google.android.material.materialswitch.MaterialSwitch
+		android:id="@+id/switch_hold_boost"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:layout_marginHorizontal="@dimen/margin_normal"
+		android:layout_marginTop="@dimen/margin_small"
+		android:ellipsize="end"
+		android:singleLine="true"
+		android:text="@string/autoscroll_hold_boost"
+		android:textAppearance="?attr/textAppearanceTitleSmall"
+		app:layout_constraintEnd_toEndOf="parent"
+		app:layout_constraintStart_toStartOf="parent"
+		app:layout_constraintTop_toBottomOf="@id/button_fab" />
+
+	<TextView
+		android:id="@+id/label_boost"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="@dimen/margin_normal"
+		android:text="@string/autoscroll_boost_speed"
+		android:textAppearance="?attr/textAppearanceTitleSmall"
+		app:layout_constraintBottom_toBottomOf="@id/slider_boost"
+		app:layout_constraintStart_toStartOf="parent"
+		app:layout_constraintTop_toTopOf="@id/slider_boost" />
+
+	<com.google.android.material.slider.Slider
+		android:id="@+id/slider_boost"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:layout_marginEnd="@dimen/margin_normal"
+		android:contentDescription="@string/autoscroll_boost_speed"
+		android:stepSize="0.5"
+		android:valueFrom="1.5"
+		android:valueTo="5.0"
+		app:labelBehavior="floating"
+		app:layout_constraintEnd_toEndOf="parent"
+		app:layout_constraintStart_toEndOf="@id/label_boost"
+		app:layout_constraintTop_toBottomOf="@id/switch_hold_boost" />
+
 </merge>

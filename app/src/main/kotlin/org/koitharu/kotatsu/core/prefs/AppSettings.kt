@@ -658,6 +658,15 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getBoolean(KEY_READER_AUTOSCROLL_FAB, true)
 		set(value) = prefs.edit { putBoolean(KEY_READER_AUTOSCROLL_FAB, value) }
 
+	var isReaderAutoscrollHoldBoostEnabled: Boolean
+		get() = prefs.getBoolean(KEY_READER_AUTOSCROLL_HOLD, false)
+		set(value) = prefs.edit { putBoolean(KEY_READER_AUTOSCROLL_HOLD, value) }
+
+	@get:FloatRange(from = 1.5, to = 5.0)
+	var readerAutoscrollBoostMultiplier: Float
+		get() = prefs.getFloatCompat(KEY_READER_AUTOSCROLL_BOOST, AUTOSCROLL_BOOST_DEFAULT, AUTOSCROLL_BOOST_MIN, AUTOSCROLL_BOOST_MAX)
+		set(value) = prefs.edit { putFloat(KEY_READER_AUTOSCROLL_BOOST, value) }
+
 	val isPagesPreloadEnabled: Boolean
 		get() {
 			if (isBackgroundNetworkRestricted()) {
@@ -982,6 +991,8 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_FLARESOLVERR_TIMEOUT = "flaresolverr_timeout"
 		const val KEY_READER_AUTOSCROLL_SPEED = "as_speed"
 		const val KEY_READER_AUTOSCROLL_FAB = "as_fab"
+		const val KEY_READER_AUTOSCROLL_HOLD = "as_hold"
+		const val KEY_READER_AUTOSCROLL_BOOST = "as_boost"
 		const val KEY_MIRROR_SWITCHING = "mirror_switching"
 		const val KEY_PROXY = "proxy"
 		const val KEY_PROXY_TYPE = "proxy_type_2"
@@ -1076,5 +1087,8 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val DEFAULT_FLARESOLVERR_URL = "http://localhost:8191/v1"
 		private const val DEFAULT_FLARESOLVERR_TIMEOUT = 60_000
 		private const val MIN_FLARESOLVERR_TIMEOUT = 10_000
+		const val AUTOSCROLL_BOOST_MIN = 1.5f
+		const val AUTOSCROLL_BOOST_MAX = 5.0f
+		const val AUTOSCROLL_BOOST_DEFAULT = 2.0f
 	}
 }
