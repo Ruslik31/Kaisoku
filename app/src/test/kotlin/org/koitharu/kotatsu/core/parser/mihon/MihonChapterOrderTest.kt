@@ -6,9 +6,10 @@ import org.junit.Test
 
 class MihonChapterOrderTest {
 
-	private fun chapter(name: String) = SChapter.create().also {
+	private fun chapter(name: String, number: Float = -1f) = SChapter.create().also {
 		it.url = "/$name"
 		it.name = name
+		it.chapter_number = number
 	}
 
 	/**
@@ -19,31 +20,52 @@ class MihonChapterOrderTest {
 	@Test
 	fun reversesMihonNewestFirstToKotatsuOldestFirst() {
 		val mihonOrder = listOf(
-			chapter("Chapter 06"),
-			chapter("Chapter 05"),
-			chapter("Chapter 04"),
-			chapter("Chapter 03"),
-			chapter("Chapter 02"),
-			chapter("Chapter 01"),
+			chapter("Chapter 06", 6f),
+			chapter("Chapter 05", 5f),
+			chapter("Chapter 04", 4f),
+			chapter("Chapter 03", 3f),
+			chapter("Chapter 02", 2f),
+			chapter("Chapter 01", 1f),
 		)
-		val kotatsuOrder = mihonOrder.toKaisokuChapterOrder().map { it.name }
+		val ordered = mihonOrder.toKaisokuChapterOrder().map { it.chapter.name }
 		assertEquals(
 			listOf("Chapter 01", "Chapter 02", "Chapter 03", "Chapter 04", "Chapter 05", "Chapter 06"),
-			kotatsuOrder,
+			ordered,
 		)
 	}
 
-	/** The oldest chapter must end up first so the index-based fallback numbering counts up from it. */
+	/** Unnumbered chapters fall back to a 1-based number counting up from the oldest chapter. */
 	@Test
 	fun fallbackNumberingCountsFromOldest() {
 		val mihonOrder = listOf(chapter("newest"), chapter("middle"), chapter("oldest"))
 		val ordered = mihonOrder.toKaisokuChapterOrder()
-		assertEquals("oldest", ordered.first().name)
-		assertEquals(listOf(1, 2, 3), ordered.mapIndexed { index, _ -> index + 1 })
+		assertEquals("oldest", ordered.first().chapter.name)
+		assertEquals(listOf(1f, 2f, 3f), ordered.map { it.number })
+	}
+
+	/**
+	 * The final sort is by chapter number (like Mihon), so even a source that returns chapters in an
+	 * arbitrary order — not the usual strict newest-first — still ends up in reading order.
+	 */
+	@Test
+	fun scrambledSourceOrderIsNormalisedByChapterNumber() {
+		val scrambled = listOf(
+			chapter("Chapter 02", 2f),
+			chapter("Chapter 10.5", 10.5f),
+			chapter("Chapter 01", 1f),
+			chapter("Chapter 11", 11f),
+			chapter("Chapter 10", 10f),
+		)
+		val ordered = scrambled.toKaisokuChapterOrder()
+		assertEquals(
+			listOf("Chapter 01", "Chapter 02", "Chapter 10", "Chapter 10.5", "Chapter 11"),
+			ordered.map { it.chapter.name },
+		)
+		assertEquals(listOf(1f, 2f, 10f, 10.5f, 11f), ordered.map { it.number })
 	}
 
 	@Test
 	fun emptyListStaysEmpty() {
-		assertEquals(emptyList<String>(), emptyList<SChapter>().toKaisokuChapterOrder().map { it.name })
+		assertEquals(emptyList<String>(), emptyList<SChapter>().toKaisokuChapterOrder().map { it.chapter.name })
 	}
 }

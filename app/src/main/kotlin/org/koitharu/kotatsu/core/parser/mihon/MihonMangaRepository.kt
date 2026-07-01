@@ -28,12 +28,23 @@ import org.koitharu.kotatsu.parsers.model.RATING_UNKNOWN
 import org.koitharu.kotatsu.parsers.model.SortOrder
 import java.util.Locale
 
+internal data class OrderedMihonChapter(val chapter: SChapter, val number: Float)
+
 /**
  * Mihon/Tachiyomi sources return chapters newest-first, whereas Kotatsu (and every native parser)
- * expects them oldest-first — index 0 must be the first/oldest chapter. Reverse the Mihon list so
- * source order, chapter numbering and next/previous navigation match native sources and Mihon itself.
+ * expects them oldest-first — index 0 must be the first/oldest chapter. Reverse the list, resolve
+ * each chapter's number (source-provided `chapter_number` when > 0, else a 1-based positional
+ * fallback), then stable-sort ascending by number so any source order — not just the usual
+ * newest-first — ends up in reading order. This is bridge-layer normalization, not per-extension
+ * work: it mirrors Mihon (which orders by parsed chapter number) and the Futon/Kototoro bridges.
  */
-internal fun List<SChapter>.toKaisokuChapterOrder(): List<SChapter> = asReversed()
+internal fun List<SChapter>.toKaisokuChapterOrder(): List<OrderedMihonChapter> = asReversed()
+	.mapIndexed { index, chapter ->
+		val number = runCatching { chapter.chapter_number }.getOrDefault(-1f)
+			.takeIf { it > 0f } ?: (index + 1).toFloat()
+		OrderedMihonChapter(chapter, number)
+	}
+	.sortedBy { it.number }
 
 class MihonMangaRepository(
 	private val loadedSource: MihonExtensionManager.LoadedSource,
@@ -105,8 +116,8 @@ class MihonMangaRepository(
 		if (details.safeThumbnailUrl().isNullOrBlank() && !seedThumbnail.isNullOrBlank()) {
 			details.thumbnail_url = seedThumbnail
 		}
-		val chapters = loadChapters(seed, details).toKaisokuChapterOrder().mapIndexed { index, chapter ->
-			chapter.toKaisokuChapter(fallbackNumber = (index + 1).toFloat())
+		val chapters = loadChapters(seed, details).toKaisokuChapterOrder().map { (chapter, number) ->
+			chapter.toKaisokuChapter(number = number)
 		}
 		details.toKaisokuManga(chapters = chapters).copy(id = manga.id)
 	}
@@ -211,12 +222,12 @@ class MihonMangaRepository(
 		)
 	}
 
-	private fun SChapter.toKaisokuChapter(fallbackNumber: Float): MangaChapter {
+	private fun SChapter.toKaisokuChapter(number: Float): MangaChapter {
 		val rawUrl = safeUrl()
 		return MangaChapter(
-			id = stableId(rawUrl.ifBlank { safeName().ifBlank { fallbackNumber.toString() } }),
+			id = stableId(rawUrl.ifBlank { safeName().ifBlank { number.toString() } }),
 			title = safeName().takeIf { it.isNotBlank() },
-			number = if (safeChapterNumber() > 0f) safeChapterNumber() else fallbackNumber,
+			number = number,
 			volume = 0,
 			url = rawUrl,
 			scanlator = safeScanlator(),
@@ -435,8 +446,6 @@ class MihonMangaRepository(
 	private fun SChapter.safeUrl(): String = runCatching { url }.getOrDefault("")
 
 	private fun SChapter.safeName(): String = runCatching { name }.getOrDefault("")
-
-	private fun SChapter.safeChapterNumber(): Float = runCatching { chapter_number }.getOrDefault(-1f)
 
 	private fun SChapter.safeScanlator(): String? = runCatching { scanlator }.getOrNull()
 
