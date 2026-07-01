@@ -8,10 +8,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.ElementsIntoSet
 import okhttp3.OkHttpClient
-import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.network.BaseHttpClient
-import org.koitharu.kotatsu.core.network.CurlLoggingInterceptor
 import org.koitharu.kotatsu.scrobbling.anilist.data.AniListAuthenticator
 import org.koitharu.kotatsu.scrobbling.anilist.data.AniListInterceptor
 import org.koitharu.kotatsu.scrobbling.anilist.domain.AniListScrobbler
@@ -75,16 +73,14 @@ object ScrobblingModule {
 	@Singleton
 	fun provideKitsuRepository(
 		@ApplicationContext context: Context,
+		@BaseHttpClient baseHttpClient: OkHttpClient,
 		@ScrobblerType(ScrobblerService.KITSU) storage: ScrobblerStorage,
 		database: MangaDatabase,
 		authenticator: KitsuAuthenticator,
 	): KitsuRepository {
-		val okHttp = OkHttpClient.Builder().apply {
+		val okHttp = baseHttpClient.newBuilder().apply {
 			authenticator(authenticator)
 			addInterceptor(KitsuInterceptor(storage))
-			if (BuildConfig.DEBUG) {
-				addInterceptor(CurlLoggingInterceptor())
-			}
 		}.build()
 		return KitsuRepository(context, okHttp, storage, database)
 	}
