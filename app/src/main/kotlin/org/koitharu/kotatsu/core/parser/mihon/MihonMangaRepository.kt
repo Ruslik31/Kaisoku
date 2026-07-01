@@ -28,6 +28,13 @@ import org.koitharu.kotatsu.parsers.model.RATING_UNKNOWN
 import org.koitharu.kotatsu.parsers.model.SortOrder
 import java.util.Locale
 
+/**
+ * Mihon/Tachiyomi sources return chapters newest-first, whereas Kotatsu (and every native parser)
+ * expects them oldest-first — index 0 must be the first/oldest chapter. Reverse the Mihon list so
+ * source order, chapter numbering and next/previous navigation match native sources and Mihon itself.
+ */
+internal fun List<SChapter>.toKaisokuChapterOrder(): List<SChapter> = asReversed()
+
 class MihonMangaRepository(
 	private val loadedSource: MihonExtensionManager.LoadedSource,
 	cache: MemoryContentCache,
@@ -98,7 +105,7 @@ class MihonMangaRepository(
 		if (details.safeThumbnailUrl().isNullOrBlank() && !seedThumbnail.isNullOrBlank()) {
 			details.thumbnail_url = seedThumbnail
 		}
-		val chapters = loadChapters(seed, details).mapIndexed { index, chapter ->
+		val chapters = loadChapters(seed, details).toKaisokuChapterOrder().mapIndexed { index, chapter ->
 			chapter.toKaisokuChapter(fallbackNumber = (index + 1).toFloat())
 		}
 		details.toKaisokuManga(chapters = chapters).copy(id = manga.id)
