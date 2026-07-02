@@ -12,6 +12,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.core.text.buildSpannedString
@@ -620,13 +621,16 @@ class DetailsActivity :
 	}
 
 	private fun showTextDialog(text: String) {
-		buildAlertDialog(this) {
+		val dialog = buildAlertDialog(this) {
 			setMessage(text)
 			setNegativeButton(R.string.close, null)
 			setPositiveButton(androidx.preference.R.string.copy) { _, _ ->
 				copyToClipboard(getString(R.string.content_type_manga), text)
 			}
-		}.show()
+		}
+		dialog.show()
+		// Allow selecting part of the text so a partial copy is possible.
+		dialog.findViewById<TextView>(android.R.id.message)?.setTextIsSelectable(true)
 	}
 
 	private fun String.withEstimatedTime(time: ReadingTime?): String {
