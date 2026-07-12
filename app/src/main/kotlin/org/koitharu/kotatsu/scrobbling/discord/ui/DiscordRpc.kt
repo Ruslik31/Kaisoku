@@ -114,6 +114,13 @@ class DiscordRpc @Inject constructor(
 			// profile. Trim blanks so an empty string doesn't shadow a real fallback.
 			val coverUrl = manga.largeCoverUrl?.takeUnless { it.isBlank() }
 				?: manga.coverUrl?.takeUnless { it.isBlank() }
+			val buttons = buildDiscordRpcButtons(
+				appUrl = manga.appUrl.toString(),
+				publicUrl = manga.publicUrl,
+				openInApp = context.getString(R.string.discord_rpc_open_in_s, appName),
+				openOnSite = context.getString(R.string.discord_rpc_open_in_s, manga.source.getTitle(context)),
+				buttonTextLimit = BUTTON_TEXT_LIMIT,
+			)
 			updateRpcAsync(
 				activity = Activity(
 					applicationId = appId,
@@ -130,11 +137,8 @@ class DiscordRpc @Inject constructor(
 						smallText = context.getString(R.string.discord_rpc_description),
 						smallImage = appIcon,
 					),
-					buttons = listOf(
-						context.getString(R.string.read_on_s, appName),
-						context.getString(R.string.read_on_s, manga.source.getTitle(context)),
-					),
-					metadata = Metadata(listOf(manga.appUrl.toString(), manga.publicUrl)),
+					buttons = buttons?.labels,
+					metadata = buttons?.let { Metadata(it.urls) },
 				),
 				idle = false,
 			)

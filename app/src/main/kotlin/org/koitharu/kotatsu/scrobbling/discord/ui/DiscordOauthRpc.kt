@@ -20,7 +20,6 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
-import okio.utf8Size
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.LocalizedAppContext
 import org.koitharu.kotatsu.core.model.appUrl
@@ -112,12 +111,17 @@ class DiscordOauthRpc @Inject constructor(
 			.setAssetsSmallImage(appIcon)
 			.setAssetsSmallText(context.getString(R.string.discord_rpc_description))
 
-		val btn1Name = context.getString(R.string.read_on_s, appName)
-		val btn2Name = context.getString(R.string.read_on_s, manga.source.getTitle(context))
-		if (btn1Name.utf8Size() <= BUTTON_TEXT_LIMIT && btn2Name.utf8Size() <= BUTTON_TEXT_LIMIT) {
+		val buttons = buildDiscordRpcButtons(
+			appUrl = manga.appUrl.toString(),
+			publicUrl = manga.publicUrl,
+			openInApp = context.getString(R.string.discord_rpc_open_in_s, appName),
+			openOnSite = context.getString(R.string.discord_rpc_open_in_s, manga.source.getTitle(context)),
+			buttonTextLimit = BUTTON_TEXT_LIMIT,
+		)
+		if (buttons != null) {
 			presence.setButtons(
-				mapOf("name" to btn1Name, "url" to manga.appUrl.toString()),
-				mapOf("name" to btn2Name, "url" to manga.publicUrl),
+				mapOf("name" to buttons.labels[0], "url" to buttons.urls[0]),
+				mapOf("name" to buttons.labels[1], "url" to buttons.urls[1]),
 			)
 		}
 		updateRpcAsync(presence, idle = false, isNsfw = manga.isNsfw())

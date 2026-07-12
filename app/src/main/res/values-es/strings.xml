@@ -847,6 +847,7 @@
     <string name="discord_rpc_description">Leer manga en Kaisoku: una aplicación para leer manga</string>
     <string name="reading_s">Leyendo %s</string>
     <string name="read_on_s">Sigue leyendo en %s</string>
+    <string name="discord_rpc_open_in_s">Abrir en %s</string>
     <string name="rpc_skip_nsfw_summary">No utilice RPC para contenido de adultos</string>
     <string name="invalid_token">Token no válido: %s</string>
     <string name="show_floating_control_button">Mostrar botón de control, flotante</string>
