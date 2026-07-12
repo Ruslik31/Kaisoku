@@ -11,6 +11,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.util.ext.copyToClipboard
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.main.ui.MainActivity
 
 class CrashDialogActivity : AppCompatActivity() {
 
@@ -39,11 +40,9 @@ class CrashDialogActivity : AppCompatActivity() {
 			.setTitle(R.string.error_occurred)
 			.setIcon(R.drawable.ic_alert_outline)
 			.setMessage(message)
-			.setNegativeButton(R.string.close) { _, _ ->
-				finishAndRemoveTask()
-			}
+			.setNegativeButton(R.string.open_github_issues, null)
 			.setNeutralButton(R.string.copy_crash_report, null)
-			.setPositiveButton(R.string.open_github_issues, null)
+			.setPositiveButton(R.string.restart, null)
 			.setOnCancelListener {
 				finishAndRemoveTask()
 			}
@@ -52,10 +51,13 @@ class CrashDialogActivity : AppCompatActivity() {
 			dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
 				copyReport(showToast = true)
 			}
-			dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+			dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
 				copyReport(showToast = false)
 				openIssues()
 				finishAndRemoveTask()
+			}
+			dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+				restartApp()
 			}
 		}
 		dialog.show()
@@ -73,6 +75,17 @@ class CrashDialogActivity : AppCompatActivity() {
 			.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 		runCatching {
 			startActivity(intent)
+		}.onFailure {
+			it.printStackTraceDebug()
+		}
+	}
+
+	private fun restartApp() {
+		val intent = Intent(this, MainActivity::class.java)
+			.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+		runCatching {
+			startActivity(intent)
+			finishAndRemoveTask()
 		}.onFailure {
 			it.printStackTraceDebug()
 		}

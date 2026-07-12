@@ -112,16 +112,13 @@ class DiscordOauthRpc @Inject constructor(
 			.setAssetsSmallText(context.getString(R.string.discord_rpc_description))
 
 		val buttons = buildDiscordRpcButtons(
-			appUrl = manga.appUrl.toString(),
-			publicUrl = manga.publicUrl,
-			openInApp = context.getString(R.string.discord_rpc_open_in_s, appName),
-			openOnSite = context.getString(R.string.discord_rpc_open_in_s, manga.source.getTitle(context)),
+			communityUrl = context.getString(R.string.url_discord),
+			communityLabel = context.getString(R.string.telegram_group),
 			buttonTextLimit = BUTTON_TEXT_LIMIT,
 		)
 		if (buttons != null) {
 			presence.setButtons(
 				mapOf("name" to buttons.labels[0], "url" to buttons.urls[0]),
-				mapOf("name" to buttons.labels[1], "url" to buttons.urls[1]),
 			)
 		}
 		updateRpcAsync(presence, idle = false, isNsfw = manga.isNsfw())

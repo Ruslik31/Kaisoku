@@ -115,10 +115,8 @@ class DiscordRpc @Inject constructor(
 			val coverUrl = manga.largeCoverUrl?.takeUnless { it.isBlank() }
 				?: manga.coverUrl?.takeUnless { it.isBlank() }
 			val buttons = buildDiscordRpcButtons(
-				appUrl = manga.appUrl.toString(),
-				publicUrl = manga.publicUrl,
-				openInApp = context.getString(R.string.discord_rpc_open_in_s, appName),
-				openOnSite = context.getString(R.string.discord_rpc_open_in_s, manga.source.getTitle(context)),
+				communityUrl = context.getString(R.string.url_discord),
+				communityLabel = context.getString(R.string.telegram_group),
 				buttonTextLimit = BUTTON_TEXT_LIMIT,
 			)
 			updateRpcAsync(

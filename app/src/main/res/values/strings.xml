@@ -316,6 +316,7 @@
     <string name="crash_dialog_message_degraded">Kaisoku crashed, but the crash report couldn\'t be collected. You can still report the crash itself on GitHub Issues.</string>
     <string name="crash_collecting">Collecting crash report… please don\'t close the app.</string>
     <string name="copy_crash_report">Copy report</string>
+    <string name="restart">Restart</string>
     <string name="crash_report_copied">Crash report copied</string>
     <string name="open_github_issues">Open GitHub Issues</string>
     <string name="crash_notification_text">Preparing crash report</string>
