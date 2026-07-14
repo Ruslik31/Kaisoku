@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.history.domain
 
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -16,6 +17,7 @@ import javax.inject.Inject
 class HistoryUpdateUseCase @Inject constructor(
 	private val historyRepository: HistoryRepository,
 ) {
+	private var lastAsyncUpdate: Job? = null
 
 	suspend operator fun invoke(manga: Manga, readerState: ReaderState, percent: Float) {
 		historyRepository.addOrUpdate(
@@ -28,17 +30,24 @@ class HistoryUpdateUseCase @Inject constructor(
 		)
 	}
 
+	@Synchronized
 	fun invokeAsync(
 		manga: Manga,
 		readerState: ReaderState,
 		percent: Float
-	) = processLifecycleScope.launch(Dispatchers.Default, CoroutineStart.ATOMIC) {
-		runCatchingCancellable {
-			withContext(NonCancellable) {
-				invoke(manga, readerState, percent)
+	): Job {
+		val previousUpdate = lastAsyncUpdate
+		return processLifecycleScope.launch(Dispatchers.Default, CoroutineStart.ATOMIC) {
+			// Pause, stop, and idle can save in quick succession. Preserve their call order so an
+			// older database transaction cannot finish after and overwrite a newer reading position.
+			previousUpdate?.join()
+			runCatchingCancellable {
+				withContext(NonCancellable) {
+					invoke(manga, readerState, percent)
+				}
+			}.onFailure {
+				it.printStackTraceDebug()
 			}
-		}.onFailure {
-			it.printStackTraceDebug()
-		}
+		}.also { lastAsyncUpdate = it }
 	}
 }

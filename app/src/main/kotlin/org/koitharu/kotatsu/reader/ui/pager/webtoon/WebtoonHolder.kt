@@ -11,13 +11,14 @@ import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
 import org.koitharu.kotatsu.reader.ui.pager.BasePageHolder
 
-class WebtoonHolder(
+class WebtoonHolder internal constructor(
 	owner: LifecycleOwner,
 	binding: ItemPageWebtoonBinding,
 	loader: PageLoader,
 	readerSettingsProducer: ReaderSettings.Producer,
 	networkState: NetworkState,
 	exceptionResolver: ExceptionResolver,
+	private val pageSizeCache: WebtoonPageSizeCache,
 ) : BasePageHolder<ItemPageWebtoonBinding>(
 	binding = binding,
 	loader = loader,
@@ -32,6 +33,7 @@ class WebtoonHolder(
 	private var scrollToRestore = 0
 	private var scrollPercentToRestore = -1 // percentage * 10000, or -1 if none
 	private var isInitialScrollApplied = false
+	private var boundPageKey: WebtoonPageKey? = null
 	// Guards a deferred percent restore: if the user scrolls before the image becomes ready, this
 	// returns false and the (now stale) restore is dropped instead of teleporting the view back.
 	private var restoreValidator: (() -> Boolean)? = null
@@ -42,6 +44,14 @@ class WebtoonHolder(
 
 	override fun onBind(data: org.koitharu.kotatsu.reader.ui.pager.ReaderPage) {
 		super.onBind(data)
+		val newPageKey = WebtoonPageKey(data.chapterId, data.id)
+		if (boundPageKey != null && boundPageKey != newPageKey) {
+			// A cached holder can be rebound without entering the recycled pool first. Do not leave
+			// the previous panel visible below the new page's loading UI.
+			binding.ssiv.recycle()
+		}
+		boundPageKey = newPageKey
+		binding.ssiv.setPlaceholderSize(pageSizeCache[newPageKey])
 		scrollPercentToRestore = -1
 		scrollToRestore = 0
 		isInitialScrollApplied = false
@@ -50,6 +60,9 @@ class WebtoonHolder(
 
 	override fun onReady() {
 		binding.ssiv.colorFilter = settings.colorFilter?.toColorFilter()
+		boundPageKey?.let { key ->
+			pageSizeCache.put(key, binding.ssiv.sWidth, binding.ssiv.sHeight)
+		}
 		when {
 			scrollPercentToRestore >= 0 -> {
 				val percent = scrollPercentToRestore
@@ -77,15 +90,26 @@ class WebtoonHolder(
 			}
 
 			!isInitialScrollApplied -> {
+				val recyclerView = itemView.parent as? WebtoonRecyclerView
+				val pageKey = boundPageKey
+				val scrollGeneration = recyclerView?.scrollGeneration
+				val wasAboveViewport = itemView.bottom <= 0
+				val wasBelowViewport = recyclerView != null && itemView.top >= recyclerView.height
+				val percent = calculateUnloadedPageScrollPercent(itemView.top, itemView.height)
 				isInitialScrollApplied = true
 				binding.ssiv.post {
-					binding.ssiv.scrollTo(
-						if (itemView.top < 0) {
-							binding.ssiv.getScrollRange()
-						} else {
-							0
-						},
-					)
+					if (boundPageKey != pageKey) return@post
+					when {
+						wasAboveViewport -> binding.ssiv.scrollTo(binding.ssiv.getScrollRange())
+						wasBelowViewport -> binding.ssiv.scrollTo(0)
+						percent == 0 -> binding.ssiv.scrollTo(0)
+						recyclerView != null && recyclerView.scrollGeneration != scrollGeneration -> {
+							// The user kept moving during the ready/layout frame. A stale re-anchor is
+							// worse than leaving the newly decoded image at its current position.
+							binding.ssiv.scrollTo(binding.ssiv.getScroll())
+						}
+						else -> applyScrollPercent(percent)
+					}
 				}
 			}
 			else -> {

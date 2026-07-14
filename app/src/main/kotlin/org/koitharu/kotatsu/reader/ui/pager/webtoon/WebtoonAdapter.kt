@@ -18,6 +18,8 @@ class WebtoonAdapter(
 	exceptionResolver: ExceptionResolver,
 ) : BaseReaderAdapter<WebtoonHolder>(loader, readerSettingsProducer, networkState, exceptionResolver) {
 
+	private val pageSizeCache = WebtoonPageSizeCache()
+
 	override fun onCreateViewHolder(
 		parent: ViewGroup,
 		loader: PageLoader,
@@ -35,5 +37,6 @@ class WebtoonAdapter(
 		readerSettingsProducer = readerSettingsProducer,
 		networkState = networkState,
 		exceptionResolver = exceptionResolver,
+		pageSizeCache = pageSizeCache,
 	)
 }

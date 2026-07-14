@@ -25,6 +25,9 @@ import java.util.WeakHashMap
 internal fun isPageScrolledToBottom(ready: Boolean, scroll: Int, scrollRange: Int): Boolean =
 	ready && scroll >= scrollRange
 
+internal fun shouldReportAbsoluteBottom(atAbsoluteBottom: Boolean, wasAtAbsoluteBottom: Boolean): Boolean =
+	atAbsoluteBottom && !wasAtAbsoluteBottom
+
 class WebtoonRecyclerView @JvmOverloads constructor(
 	context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
 ) : RecyclerView(context, attrs, defStyleAttr) {
@@ -33,6 +36,8 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 	private val scrollDispatcher = WebtoonScrollDispatcher()
 	private val detachedViews = Collections.newSetFromMap(WeakHashMap<View, Boolean>())
 	private var isFixingScroll = false
+	internal var scrollGeneration = 0
+		private set
 
 	private val pullGestureTracker = PullGestureTracker()
 
@@ -182,6 +187,9 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 	}
 
 	private fun notifyScrollChanged(dy: Int) {
+		if (dy != 0) {
+			scrollGeneration++
+		}
 		val listeners = onPageScrollListeners
 		if (listeners.isEmpty()) {
 			return

@@ -13,6 +13,9 @@ import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.ReaderViewModel
 
+internal fun shouldReanchorAfterPageListUpdate(oldPosition: Int, newPosition: Int): Boolean =
+	oldPosition >= 0 && newPosition >= 0 && oldPosition != newPosition
+
 abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomControl.ZoomControlListener {
 
 	protected val viewModel by activityViewModels<ReaderViewModel>()
@@ -26,14 +29,28 @@ abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomCont
 
 		viewModel.content.observe(viewLifecycleOwner) {
 			val currentState = viewModel.getCurrentState()
+			val currentOldPosition = currentState?.let { state ->
+				readerAdapter?.indexOf(state.chapterId, state.page)
+			} ?: -1
+			val currentNewPosition = currentState?.let { state ->
+				it.pages.indexOfFirst { page ->
+					page.chapterId == state.chapterId && page.index == state.page
+				}
+			} ?: -1
 			val pendingState = when {
-				// Loading the prev/next chapter re-emits content with a null state while items already
-				// exist, and the page list shifts (front-trim on next, prepend on prev). Re-anchor to the
-				// page the user is on, otherwise the pager keeps a now-stale index and jumps to a
-				// different page (e.g. back to the start of the chapter). Guard on non-empty pages so the
-				// transient empty-list "clear" emitted by switchChapter() isn't treated as a navigation
-				// target (which would otherwise show "content not found").
-				readerAdapter?.hasItems == true -> if (it.state == null && it.pages.isNotEmpty()) currentState else null
+				// Appending a preloaded next chapter does not move the current page, and RecyclerView's
+				// diff keeps its visual position. Re-anchoring that unchanged page interrupts an active
+				// webtoon scroll and can make holders reload. Only restore when a prepend/front trim
+				// actually changed the current page's adapter position.
+				readerAdapter?.hasItems == true -> if (
+					it.state == null &&
+					it.pages.isNotEmpty() &&
+					shouldReanchorAfterPageListUpdate(currentOldPosition, currentNewPosition)
+				) {
+					currentState
+				} else {
+					null
+				}
 				it.state == null
 					&& it.pages.isNotEmpty() -> currentState
 				it.state != currentState

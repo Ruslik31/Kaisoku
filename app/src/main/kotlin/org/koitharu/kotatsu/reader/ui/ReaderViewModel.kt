@@ -117,6 +117,10 @@ class ReaderViewModel @Inject constructor(
     private var lastScrollProgress: Float = -1f
     private var lastScrollOffset: Int = 0
     private val navCursor = ChapterSwitchCursor()
+    // Page-list replacement and delayed page-state commits must be ordered together. Otherwise an
+    // old scroll callback can pass a page-count check after a same-sized chapter switch and put the
+    // reader back into the previous chapter.
+    private val contentStateLock = Any()
 
     init {
         mangaDetails.value = intent.manga?.let { MangaDetails(it) }
@@ -407,13 +411,14 @@ class ReaderViewModel @Inject constructor(
 
     @MainThread
     private fun launchChapterSwitch(chapterId: Long, page: Int, scroll: Int) {
+        stateChangeJob?.cancel()
         val prevJob = loadingJob
         loadingJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
-            content.value = ReaderContent(emptyList(), null)
+            replaceContent(ReaderContent(emptyList(), null))
             chaptersLoader.loadSingleChapter(chapterId)
             val newState = ReaderState(chapterId, page, scroll)
-            content.value = ReaderContent(chaptersLoader.snapshot(), newState)
+            replaceContent(ReaderContent(chaptersLoader.snapshot(), newState))
             saveCurrentState(newState)
         }
     }
@@ -432,7 +437,7 @@ class ReaderViewModel @Inject constructor(
                     runCatchingCancellable {
                         chaptersLoader.loadSingleChapter(state.chapterId)
                     }.onSuccess {
-                        content.value = ReaderContent(chaptersLoader.snapshot(), state)
+                        replaceContent(ReaderContent(chaptersLoader.snapshot(), state))
                     }
                 }
             }
@@ -470,14 +475,21 @@ class ReaderViewModel @Inject constructor(
         stateChangeJob = launchJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
             loadingJob?.join()
-            if (pages.size != content.value.pages.size) {
-                return@launchJob // TODO
-            }
             val centerPos = (lowerPos + upperPos) / 2
-            pages.getOrNull(centerPos)?.let { page ->
-                readingState.update { cs ->
-                    cs?.copy(chapterId = page.chapterId, page = page.index, scroll = capturedScrollOffset)
+            val isCurrentSnapshot = synchronized(contentStateLock) {
+                if (!isCurrentPageListSnapshot(pages, content.value.pages)) {
+                    false
+                } else {
+                    pages.getOrNull(centerPos)?.let { page ->
+                        readingState.update { cs ->
+                            cs?.copy(chapterId = page.chapterId, page = page.index, scroll = capturedScrollOffset)
+                        }
+                    }
+                    true
                 }
+            }
+            if (!isCurrentSnapshot) {
+                return@launchJob
             }
             notifyStateChanged()
             if (pages.isEmpty() || loadingJob?.isActive == true) {
@@ -590,7 +602,7 @@ class ReaderViewModel @Inject constructor(
                             }
                         }
                         notifyStateChanged()
-                        content.value = ReaderContent(chaptersLoader.snapshot(), readingState.value)
+                        replaceContent(ReaderContent(chaptersLoader.snapshot(), readingState.value))
                     }
             } catch (e: CancellationException) {
                 throw e
@@ -633,7 +645,13 @@ class ReaderViewModel @Inject constructor(
         loadingJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.join()
             chaptersLoader.loadPrevNextChapter(mangaDetails.requireValue(), currentId, isNext)
-            content.value = ReaderContent(chaptersLoader.snapshot(), null)
+            replaceContent(ReaderContent(chaptersLoader.snapshot(), null))
+        }
+    }
+
+    private fun replaceContent(newContent: ReaderContent) {
+        synchronized(contentStateLock) {
+            content.value = newContent
         }
     }
 

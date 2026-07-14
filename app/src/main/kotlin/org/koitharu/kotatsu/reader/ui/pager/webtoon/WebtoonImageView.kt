@@ -19,6 +19,7 @@ class WebtoonImageView @JvmOverloads constructor(
 	private val ct = PointF()
 
 	private var scrollPos = 0
+	private var placeholderSize: WebtoonImageSize? = null
 	private var debugPaint: Paint? = null
 
 	override fun onDraw(canvas: Canvas) {
@@ -48,6 +49,15 @@ class WebtoonImageView @JvmOverloads constructor(
 
 	fun getScroll() = scrollPos
 
+	internal fun setPlaceholderSize(size: WebtoonImageSize?) {
+		if (placeholderSize != size) {
+			placeholderSize = size
+			if (!isReady) {
+				requestLayout()
+			}
+		}
+	}
+
 	fun getScrollRange(): Int {
 		if (!isReady) {
 			return 0
@@ -58,12 +68,13 @@ class WebtoonImageView @JvmOverloads constructor(
 
 	override fun recycle() {
 		scrollPos = 0
+		placeholderSize = null
 		super.recycle()
 	}
 
 	override fun getSuggestedMinimumHeight(): Int {
 		var desiredHeight = super.getSuggestedMinimumHeight()
-		if (sHeight == 0) {
+		if (sHeight == 0 && placeholderSize == null) {
 			val parentHeight = parentHeight()
 			if (desiredHeight < parentHeight) {
 				desiredHeight = parentHeight
@@ -81,14 +92,21 @@ class WebtoonImageView @JvmOverloads constructor(
 		val resizeHeight = heightSpecMode != MeasureSpec.EXACTLY
 		var desiredWidth = parentWidth
 		var desiredHeight = parentHeight
-		if (sWidth > 0 && sHeight > 0) {
+		val sourceWidth = sWidth.takeIf { it > 0 } ?: placeholderSize?.width ?: 0
+		val sourceHeight = sHeight.takeIf { it > 0 } ?: placeholderSize?.height ?: 0
+		if (sourceWidth > 0 && sourceHeight > 0) {
 			if (resizeWidth && resizeHeight) {
-				desiredWidth = sWidth
-				desiredHeight = sHeight
+				desiredWidth = sourceWidth
+				desiredHeight = sourceHeight
 			} else if (resizeHeight) {
-				desiredHeight = (sHeight.toDouble() / sWidth.toDouble() * desiredWidth).toInt()
+				desiredHeight = calculateScaledPageHeight(
+					sourceWidth,
+					sourceHeight,
+					desiredWidth,
+					parentHeight(),
+				)
 			} else if (resizeWidth) {
-				desiredWidth = (sWidth.toDouble() / sHeight.toDouble() * desiredHeight).toInt()
+				desiredWidth = (sourceWidth.toDouble() / sourceHeight.toDouble() * desiredHeight).toInt()
 			}
 		}
 		desiredWidth = desiredWidth.coerceAtLeast(suggestedMinimumWidth)

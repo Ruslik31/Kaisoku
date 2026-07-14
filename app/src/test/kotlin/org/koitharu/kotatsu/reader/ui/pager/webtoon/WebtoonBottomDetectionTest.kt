@@ -35,4 +35,15 @@ class WebtoonBottomDetectionTest {
 	fun readyShortPageIsAtBottom() {
 		assertTrue(isPageScrolledToBottom(ready = true, scroll = 0, scrollRange = 0))
 	}
+
+	@Test
+	fun reachingBottomIsReportedEvenWithoutAVisiblePositionChange() {
+		assertTrue(shouldReportAbsoluteBottom(atAbsoluteBottom = true, wasAtAbsoluteBottom = false))
+	}
+
+	@Test
+	fun remainingAtBottomDoesNotSpamPageChanges() {
+		assertFalse(shouldReportAbsoluteBottom(atAbsoluteBottom = true, wasAtAbsoluteBottom = true))
+		assertFalse(shouldReportAbsoluteBottom(atAbsoluteBottom = false, wasAtAbsoluteBottom = false))
+	}
 }
