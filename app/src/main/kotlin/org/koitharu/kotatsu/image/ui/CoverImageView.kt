@@ -19,7 +19,7 @@ import coil3.request.SuccessResult
 import coil3.request.transformations
 import coil3.size.Dimension
 import coil3.size.Size
-import coil3.size.ViewSizeResolver
+import coil3.size.SizeResolver
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okio.FileNotFoundException
 import org.jsoup.HttpStatusException
@@ -46,6 +46,7 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
+import java.lang.ref.WeakReference
 import kotlin.coroutines.resume
 import androidx.appcompat.R as appcompatR
 import com.google.android.material.R as materialR
@@ -219,12 +220,15 @@ class CoverImageView @JvmOverloads constructor(
 	}
 
 	private class CoverSizeResolver(
-		override val view: CoverImageView,
-	) : ViewSizeResolver<CoverImageView> {
+		view: CoverImageView,
+	) : SizeResolver {
+
+		private val viewRef = WeakReference(view)
 
 		override suspend fun size(): Size {
+			val view = viewRef.get() ?: throw kotlinx.coroutines.CancellationException("Cover view was released")
 			// Fast path: the view is already measured.
-			getSize()?.let { return it }
+			getSize(view)?.let { return it }
 
 			// Slow path: wait for the view to be measured.
 			return suspendCancellableCoroutine { continuation ->
@@ -234,7 +238,7 @@ class CoverImageView @JvmOverloads constructor(
 					private var isResumed = false
 
 					override fun onPreDraw(): Boolean {
-						val size = getSize()
+						val size = getSize(view)
 						if (size != null) {
 							viewTreeObserver.removePreDrawListenerSafe(this)
 
@@ -255,9 +259,9 @@ class CoverImageView @JvmOverloads constructor(
 			}
 		}
 
-		private fun getSize(): Size? {
-			var width = getWidth()
-			var height = getHeight()
+		private fun getSize(view: CoverImageView): Size? {
+			var width = getWidth(view)
+			var height = getHeight(view)
 			when {
 				width == null && height == null -> {
 					return null
@@ -274,16 +278,16 @@ class CoverImageView @JvmOverloads constructor(
 			return Size(width, height)
 		}
 
-		private fun getWidth() = getDimension(
+		private fun getWidth(view: CoverImageView) = getDimension(
 			paramSize = view.layoutParams?.width ?: -1,
 			viewSize = view.width,
-			paddingSize = if (subtractPadding) view.paddingLeft + view.paddingRight else 0,
+			paddingSize = view.paddingLeft + view.paddingRight,
 		)
 
-		private fun getHeight() = getDimension(
+		private fun getHeight(view: CoverImageView) = getDimension(
 			paramSize = view.layoutParams?.height ?: -1,
 			viewSize = view.height,
-			paddingSize = if (subtractPadding) view.paddingTop + view.paddingBottom else 0,
+			paddingSize = view.paddingTop + view.paddingBottom,
 		)
 
 		private fun getDimension(paramSize: Int, viewSize: Int, paddingSize: Int): Dimension.Pixels? {
@@ -305,7 +309,7 @@ class CoverImageView @JvmOverloads constructor(
 			if (isAlive) {
 				removeOnPreDrawListener(victim)
 			} else {
-				view.viewTreeObserver.removeOnPreDrawListener(victim)
+				viewRef.get()?.viewTreeObserver?.removeOnPreDrawListener(victim)
 			}
 		}
 	}
