@@ -2,6 +2,9 @@ package org.koitharu.kotatsu.browser
 
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebChromeClient
+import android.webkit.WebViewClient
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
@@ -89,11 +92,19 @@ abstract class BaseBrowserActivity : BaseActivity<ActivityBrowserBinding>(), Bro
 	}
 
 	override fun onDestroy() {
-		super.onDestroy()
 		if (hasViewBinding()) {
-			viewBinding.webView.stopLoading()
-			viewBinding.webView.destroy()
+			val webView = viewBinding.webView
+			webView.stopLoading()
+			// Both clients can retain this Activity through their callbacks. Detach the WebView from
+			// the window and replace them before destroy() so Chromium cannot keep the destroyed
+			// Activity's complete view hierarchy alive through WebView.mContext.
+			webView.webViewClient = WebViewClient()
+			webView.webChromeClient = WebChromeClient()
+			(webView.parent as? ViewGroup)?.removeView(webView)
+			webView.removeAllViews()
+			webView.destroy()
 		}
+		super.onDestroy()
 	}
 
 	override fun onLoadingStateChanged(isLoading: Boolean) {

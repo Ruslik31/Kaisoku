@@ -18,7 +18,6 @@ import org.koitharu.kotatsu.browser.BrowserActivity
 import org.koitharu.kotatsu.browser.cloudflare.CloudFlareActivity
 import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
 import org.koitharu.kotatsu.core.exceptions.EmptyMangaException
-import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.core.exceptions.InteractiveActionRequiredException
 import org.koitharu.kotatsu.core.exceptions.ProxyConfigException
 import org.koitharu.kotatsu.core.exceptions.UnsupportedSourceException
@@ -134,14 +133,15 @@ class ExceptionResolver private constructor(
     }
 
     private suspend fun resolveCF(e: CloudFlareProtectedException, tryAutoResolve: Boolean): Boolean {
-        val ctx = host.context
-        val autoDisabled = ctx != null && SourceSettings(ctx, e.source).isCaptchaAutoResolveDisabled
-        if (tryAutoResolve && !autoDisabled) {
+        if (captchaCoordinator.isResolveActive(e.source)) {
+            return captchaCoordinator.awaitActiveResolve(e.source) == true
+        }
+        if (tryAutoResolve) {
             // Delegated to the singleton coordinator: it owns the activity lifecycle (so the result is
             // delivered even if this Fragment / Activity dies while CloudFlareActivity is still
             // running) AND owns the user-facing toast (so duplicate calls that just await the
             // in-flight resolve don't pile new toasts on top of the loading state).
-            return captchaCoordinator.resolve(e.source, e)
+            return captchaCoordinator.resolveIfEnabled(e)
         }
         // tryAutoResolve=false OR user disabled auto-solve for this source → manual visible activity.
         return suspendCancellableCoroutine { cont ->

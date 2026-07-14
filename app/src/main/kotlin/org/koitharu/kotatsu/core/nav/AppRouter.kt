@@ -742,15 +742,12 @@ class AppRouter private constructor(
             exception: CloudFlareProtectedException,
             hidden: Boolean = false,
         ): Intent {
-            val target = if (hidden) CloudFlareHiddenActivity::class.java else CloudFlareActivity::class.java
-            return Intent(context, target).apply {
+            val activityClass = if (hidden) CloudFlareHiddenActivity::class.java else CloudFlareActivity::class.java
+            return Intent(context, activityClass).apply {
                 data = exception.url.toUri()
                 putExtra(KEY_SOURCE, exception.source.name)
                 exception.headers[CommonHeaders.USER_AGENT]?.let {
                     putExtra(KEY_USER_AGENT, it)
-                }
-                if (hidden) {
-                    putExtra(CloudFlareActivity.EXTRA_HIDDEN, true)
                 }
             }
         }

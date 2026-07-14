@@ -1,10 +1,14 @@
 package org.koitharu.kotatsu.core.exceptions.resolve
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -15,112 +19,156 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.browser.cloudflare.CloudFlareActivity
+import org.koitharu.kotatsu.browser.cloudflare.CloudFlareHiddenActivity
 import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
 import org.koitharu.kotatsu.core.model.UnknownMangaSource
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.prefs.SourceSettings
+import org.koitharu.kotatsu.core.ui.DefaultActivityLifecycleCallbacks
 import org.koitharu.kotatsu.core.ui.util.ForegroundActivityHolder
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.parsers.model.MangaSource
+import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Single-threads CloudFlare auto-resolve attempts across the whole app so multiple screens
- * (catalog, details, reader, …) all hitting CAPTCHA for the same source at the same time don't
- * stomp on each other's WebView state. The coordinator OWNS the activity lifecycle —
- * [CloudFlareActivity] reports its result back via [notifyResolveResult], so the result is
- * delivered even if the screen that originally requested the resolve has since been destroyed.
- *
- * - **Same source already in-flight** → subsequent callers don't launch a new resolve, they await
- *   the existing one's result. The first session stays alive and duplicates piggy-back on it.
- * - **Different sources** → queue on the global mutex so only one resolve runs at any moment.
- */
+/** Owns the single Cloudflare verification session allowed in the app process. */
 @Singleton
 class CaptchaAutoResolveCoordinator @Inject constructor(
 	@ApplicationContext private val context: Context,
 	private val foregroundActivityHolder: ForegroundActivityHolder,
-) {
+) : DefaultActivityLifecycleCallbacks, DefaultLifecycleObserver {
 
-	private val mutex = Mutex()
-	private val inFlight = ConcurrentHashMap<MangaSource, CompletableDeferred<Boolean>>()
-	private val pendingActivityResult = ConcurrentHashMap<MangaSource, CompletableDeferred<Boolean>>()
-	// Wall-clock timestamps of the most recent successful resolve per source. Used to break tight
-	// loops where the WebView passes CloudFlare (so we report success) but the parser's next OkHttp
-	// request immediately hits CF again (different fingerprint) → new captcha event → new
-	// auto-resolve → toast retriggers every second.
-	private val recentSuccessAt = ConcurrentHashMap<MangaSource, Long>()
-
+	private val stateMutex = Mutex()
 	private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+	private val recentSuccessAt = ConcurrentHashMap<MangaSource, Long>()
+	private val mainHandler = Handler(Looper.getMainLooper())
+	private val reorderPending = AtomicBoolean(false)
 
-	/** Called by [CloudFlareActivity] when a resolve session it was running finishes. */
+	@Volatile
+	private var activeSession: ResolveSession? = null
+
+	@Volatile
+	private var hiddenActivityRef: WeakReference<CloudFlareHiddenActivity>? = null
+
+	init {
+		mainHandler.post {
+			ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+		}
+	}
+
+	fun registerHiddenActivity(activity: CloudFlareHiddenActivity) {
+		hiddenActivityRef = WeakReference(activity)
+		reorderPending.set(false)
+	}
+
+	fun unregisterHiddenActivity(activity: CloudFlareHiddenActivity) {
+		if (hiddenActivityRef?.get() === activity) {
+			hiddenActivityRef = null
+		}
+	}
+
 	fun notifyResolveResult(source: MangaSource, success: Boolean) {
-		pendingActivityResult.remove(source)?.complete(success)
+		activeSession
+			?.takeIf { it.source == source }
+			?.activityResult
+			?.complete(success)
 	}
 
-	suspend fun resolve(source: MangaSource, exception: CloudFlareProtectedException): Boolean {
-		inFlight[source]?.let { return it.await() }
-		val lastSuccess = recentSuccessAt[source]
-		if (lastSuccess != null && System.currentTimeMillis() - lastSuccess < RECENT_SUCCESS_COOLDOWN_MS) {
-			return false
-		}
-		val deferred: CompletableDeferred<Boolean> = mutex.withLock {
-			inFlight[source]?.let { return@withLock it }
-			val recheck = recentSuccessAt[source]
-			if (recheck != null && System.currentTimeMillis() - recheck < RECENT_SUCCESS_COOLDOWN_MS) {
-				return@withLock CompletableDeferred(false)
-			}
-			val fresh = CompletableDeferred<Boolean>()
-			inFlight[source] = fresh
-			// Toast only on the slow path: piggy-back awaiters via the fast path get no toast, so
-			// rapid captcha events stop stacking new toasts on top of the loading state.
-			showSolvingToast()
-			scope.launch { runOrchestration(source, exception, fresh) }
-			fresh
-		}
-		return deferred.await()
-	}
+	fun isResolveActive(source: MangaSource): Boolean = activeSession?.source == source
 
-	private suspend fun runOrchestration(
+	/** Waits for an active session for [source]. This method never starts verification. */
+	suspend fun awaitActiveResolve(source: MangaSource): Boolean? = activeSession
+		?.takeIf { it.source == source }
+		?.result
+		?.await()
+
+	/**
+	 * Runs an operation in sync with the global solver. Background and prefetch callers pass
+	 * [mayStartVerification] as false: they may wait for an existing session but never create one.
+	 */
+	suspend fun <T> runWithVerification(
 		source: MangaSource,
-		exception: CloudFlareProtectedException,
-		deferred: CompletableDeferred<Boolean>,
-	) {
+		mayStartVerification: Boolean,
+		block: suspend () -> T,
+	): T {
+		activeSession?.result?.await()
+		var retryCount = 0
+		while (true) {
+			try {
+				return block()
+			} catch (e: Exception) {
+				val cf = generateSequence<Throwable>(e) { it.cause }
+					.filterIsInstance<CloudFlareProtectedException>()
+					.firstOrNull()
+				if (
+					cf !is CloudFlareProtectedException ||
+					cf.source != source ||
+					!mayStartVerification ||
+					retryCount++ >= MAX_REQUEST_RETRIES ||
+					!resolveIfEnabled(cf)
+				) throw e
+			}
+		}
+	}
+
+	suspend fun resolveIfEnabled(exception: CloudFlareProtectedException): Boolean {
+		if (SourceSettings(context, exception.source).isCaptchaAutoResolveDisabled) return false
+		val lastSuccess = recentSuccessAt[exception.source]
+		if (lastSuccess != null && System.currentTimeMillis() - lastSuccess < RECENT_SUCCESS_COOLDOWN_MS) {
+			return true
+		}
+		return resolve(exception.source, exception)
+	}
+
+	/** Joins the current global session or atomically creates the only allowed solver session. */
+	suspend fun resolve(source: MangaSource, exception: CloudFlareProtectedException): Boolean {
+		if (source == UnknownMangaSource) return false
+		while (true) {
+			val claim = stateMutex.withLock {
+				activeSession?.let { return@withLock SessionClaim(it, isOwner = false) }
+				val session = ResolveSession(
+					source = source,
+					exception = exception,
+					activityResult = CompletableDeferred(),
+					result = CompletableDeferred(),
+				)
+				activeSession = session
+				SessionClaim(session, isOwner = true)
+			}
+			if (claim.isOwner) {
+				showSolvingToast()
+				scope.launch { runSession(claim.session) }
+			}
+			val result = claim.session.result.await()
+			if (claim.session.source == source) return result
+			// A different source owned the global slot. Once it finishes, claim a fresh session
+			// for this source instead of incorrectly treating the other source's clearance as ours.
+		}
+	}
+
+	private suspend fun runSession(session: ResolveSession) {
+		var success = false
 		try {
-			val hiddenPassed = launchAndAwait(source, exception, hidden = true)
-			val finalResult = if (hiddenPassed) {
-				true
-			} else {
-				launchAndAwait(source, exception, hidden = false)
-			}
-			if (finalResult) {
-				recentSuccessAt[source] = System.currentTimeMillis()
-			}
-			deferred.complete(finalResult)
+			launch(session)
+			success = session.activityResult.await()
+			if (success) recentSuccessAt[session.source] = System.currentTimeMillis()
 		} catch (e: Throwable) {
 			e.printStackTraceDebug()
-			deferred.complete(false)
 		} finally {
-			inFlight.remove(source)
-			pendingActivityResult.remove(source)
+			stateMutex.withLock {
+				if (activeSession === session) activeSession = null
+			}
+			hiddenActivityRef = null
+			reorderPending.set(false)
+			session.result.complete(success)
 		}
 	}
 
-	private fun showSolvingToast() {
-		Handler(Looper.getMainLooper()).post {
-			Toast.makeText(context, R.string.captcha_solving, Toast.LENGTH_LONG).show()
-		}
-	}
-
-	private suspend fun launchAndAwait(
-		source: MangaSource,
-		exception: CloudFlareProtectedException,
-		hidden: Boolean,
-	): Boolean {
-		if (source == UnknownMangaSource) return false
-		val resultDeferred = CompletableDeferred<Boolean>()
-		pendingActivityResult[source] = resultDeferred
-		val intent = AppRouter.cloudFlareResolveIntent(context, exception, hidden = hidden).apply {
+	private fun launch(session: ResolveSession) {
+		val intent = AppRouter.cloudFlareResolveIntent(context, session.exception, hidden = true).apply {
 			putExtra(CloudFlareActivity.EXTRA_AUTO_RESOLVE, true)
 		}
 		val launcher = foregroundActivityHolder.current
@@ -130,13 +178,58 @@ class CaptchaAutoResolveCoordinator @Inject constructor(
 			intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 			context.startActivity(intent)
 		}
-		return resultDeferred.await()
 	}
 
+	/** Keep the existing hidden WebView above newly opened app screens without constructing another one. */
+	override fun onActivityResumed(activity: Activity) {
+		if (activity is CloudFlareHiddenActivity) {
+			reorderPending.set(false)
+			return
+		}
+		val solver = hiddenActivityRef?.get()?.takeUnless { it.isFinishing || it.isDestroyed } ?: return
+		if (!solver.shouldStayHiddenAndFocused() || !reorderPending.compareAndSet(false, true)) return
+		mainHandler.post {
+			if (!solver.shouldStayHiddenAndFocused() || solver.isFinishing || solver.isDestroyed) {
+				reorderPending.set(false)
+				return@post
+			}
+			activity.startActivity(
+				Intent(activity, CloudFlareHiddenActivity::class.java).addFlags(
+					Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP,
+				),
+			)
+		}
+	}
+
+	/** App backgrounding cancels the one session and releases every waiter with failure. */
+	override fun onStop(owner: LifecycleOwner) {
+		val session = activeSession ?: return
+		session.activityResult.complete(false)
+		mainHandler.post {
+			hiddenActivityRef?.get()?.cancelAutomaticResolve()
+		}
+	}
+
+	private fun showSolvingToast() {
+		mainHandler.post {
+			Toast.makeText(context, R.string.captcha_solving, Toast.LENGTH_LONG).show()
+		}
+	}
+
+	private data class ResolveSession(
+		val source: MangaSource,
+		val exception: CloudFlareProtectedException,
+		val activityResult: CompletableDeferred<Boolean>,
+		val result: CompletableDeferred<Boolean>,
+	)
+
+	private data class SessionClaim(
+		val session: ResolveSession,
+		val isOwner: Boolean,
+	)
+
 	private companion object {
-		// How long to refuse a fresh auto-resolve for the same source after a successful one. Long
-		// enough to break the "WebView passes, parser still fails, captcha event re-fires" loop;
-		// short enough that a legitimate retry minutes later goes through normally.
 		const val RECENT_SUCCESS_COOLDOWN_MS = 30_000L
+		const val MAX_REQUEST_RETRIES = 2
 	}
 }
