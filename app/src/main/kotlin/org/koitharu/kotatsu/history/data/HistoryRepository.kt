@@ -33,6 +33,7 @@ import org.koitharu.kotatsu.parsers.util.almostEquals
 import org.koitharu.kotatsu.parsers.util.findById
 import org.koitharu.kotatsu.parsers.util.levenshteinDistance
 import kotlin.math.abs
+import kotlin.math.ceil
 import org.koitharu.kotatsu.scrobbling.common.domain.Scrobbler
 import org.koitharu.kotatsu.scrobbling.common.domain.tryScrobble
 import org.koitharu.kotatsu.search.domain.SearchKind
@@ -296,7 +297,7 @@ class HistoryRepository @Inject constructor(
 		val referenceIndex = if (ReadingProgress.isCompleted(percent)) {
 			referenceCount - 1
 		} else {
-			(percent * referenceCount).toInt()
+			ceil(percent.toDouble() * referenceCount).toInt() - 1
 		}
 		return referenceIndex.coerceIn(0, newChaptersCount - 1)
 	}

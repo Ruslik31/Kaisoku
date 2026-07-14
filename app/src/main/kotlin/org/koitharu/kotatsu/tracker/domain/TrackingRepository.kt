@@ -91,22 +91,39 @@ class TrackingRepository @Inject constructor(
 			.onStart { gcIfNotCalled() }
 	}
 
-	suspend fun getTracks(offset: Int, limit: Int, minActivityTime: Long): List<MangaTracking> {
-		return db.getTracksDao().findAll(offset = offset, limit = limit, minActivityTime = minActivityTime)
-			.filter { track ->
-				// Check if source has disabled chapter updates via ConfigKey
-				val manga = track.manga.toManga(emptySet(), null)
-				!isUpdateCheckingDisabled(manga)
-			}
-			.map {
-				MangaTracking(
-					manga = it.manga.toManga(emptySet(), null),
-					lastChapterId = it.track.lastChapterId,
-					lastCheck = it.track.lastCheckTime.toInstantOrNull(),
-					lastChapterDate = it.track.lastChapterDate.toInstantOrNull(),
-					newChapters = it.track.newChapters,
+	suspend fun getTracks(
+		offset: Int,
+		limit: Int,
+		minActivityTime: Long,
+		staleCheckTime: Long,
+	): List<MangaTracking> {
+		val result = ArrayList<MangaTracking>(if (limit == Int.MAX_VALUE) 16 else limit)
+		var currentOffset = offset
+		while (result.size < limit) {
+			val window = db.getTracksDao().findAll(
+				offset = currentOffset,
+				limit = limit - result.size,
+				minActivityTime = minActivityTime,
+				staleCheckTime = staleCheckTime,
+			)
+			if (window.isEmpty()) break
+			currentOffset += window.size
+			for (item in window) {
+				val manga = item.manga.toManga(emptySet(), null)
+				if (isUpdateCheckingDisabled(manga)) continue
+				result.add(
+					MangaTracking(
+						manga = manga,
+						lastChapterId = item.track.lastChapterId,
+						lastCheck = item.track.lastCheckTime.toInstantOrNull(),
+						lastChapterDate = item.track.lastChapterDate.toInstantOrNull(),
+						newChapters = item.track.newChapters,
+					),
 				)
+				if (result.size >= limit) break
 			}
+		}
+		return result
 	}
 
 	private fun isUpdateCheckingDisabled(manga: Manga): Boolean {
