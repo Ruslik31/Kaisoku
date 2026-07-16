@@ -313,7 +313,7 @@ class ReaderActivity :
     }
 
     override fun onStop() {
-        viewModel.saveCurrentState(readerManager.currentReader?.getCurrentState())
+        viewModel.saveVisibleState(readerManager.currentReader?.getCurrentState())
         super.onStop()
         viewModel.onStop()
     }
@@ -326,7 +326,7 @@ class ReaderActivity :
     override fun isNsfwContent(): Flow<Boolean> = viewModel.isMangaNsfw
 
     override fun onIdle() {
-        viewModel.saveCurrentState(readerManager.currentReader?.getCurrentState())
+        viewModel.saveVisibleState(readerManager.currentReader?.getCurrentState())
         viewModel.onIdle()
     }
 
@@ -441,8 +441,7 @@ class ReaderActivity :
     }
 
     override fun onReaderModeChanged(mode: ReaderMode) {
-        viewModel.saveCurrentState(readerManager.currentReader?.getCurrentState())
-        viewModel.switchMode(mode)
+        viewModel.switchMode(mode, readerManager.currentReader?.getModeSwitchState())
         viewBinding.timerControl.onReaderModeChanged(mode)
     }
 
@@ -457,7 +456,9 @@ class ReaderActivity :
         val autoFoldable = settings.isReaderDoubleOnFoldable && isFoldUnfolded
         val manualLandscape = (manualEnabled ?: settings.isReaderDoubleOnLandscape) && isLandscape
         val autoEnabled = autoFoldable || manualLandscape
-        readerManager.setDoubleReaderMode(autoEnabled)
+        readerManager.setDoubleReaderMode(autoEnabled) {
+            viewModel.prepareReaderReplacement(readerManager.currentReader?.getCurrentState())
+        }
     }
 
     private fun setKeepScreenOn(isKeep: Boolean) {
@@ -593,7 +594,7 @@ class ReaderActivity :
     }
 
     override fun openMenu() {
-        viewModel.saveCurrentState(readerManager.currentReader?.getCurrentState())
+        viewModel.saveVisibleState(readerManager.currentReader?.getCurrentState())
         val currentMode = readerManager.currentMode ?: return
         router.showReaderConfigSheet(currentMode)
     }

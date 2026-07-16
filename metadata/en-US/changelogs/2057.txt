@@ -2,6 +2,7 @@
 - Added and refreshed manga sources
 - Improved Cloudflare handling
 - Improved webtoon scrolling and reading progress
+- Fixed reading position jumps when switching modes
 - Improved tracker and history reliability
 - Fixed cover and browser memory retention
 - Improved crash recovery and Discord integration

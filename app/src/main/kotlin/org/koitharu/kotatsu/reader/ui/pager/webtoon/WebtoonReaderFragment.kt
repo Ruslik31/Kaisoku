@@ -32,6 +32,19 @@ import javax.inject.Inject
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
+internal fun resolveWebtoonModeSwitchPosition(
+	firstVisiblePosition: Int,
+	readingLinePosition: Int,
+	itemCount: Int,
+	isAtAbsoluteBottom: Boolean,
+): Int = when {
+	itemCount <= 0 -> RecyclerView.NO_POSITION
+	isAtAbsoluteBottom -> itemCount - 1
+	readingLinePosition in 0 until itemCount -> readingLinePosition
+	firstVisiblePosition in 0 until itemCount -> firstVisiblePosition
+	else -> RecyclerView.NO_POSITION
+}
+
 @AndroidEntryPoint
 class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>(),
 	WebtoonRecyclerView.OnWebtoonScrollListener,
@@ -161,13 +174,17 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 			?: firstPage?.let { getSavedScrollPercent(it.chapterId, it.index) }
 			?: -1f
 		viewModel.updateScrollProgress(progress)
-		viewModel.updateScrollOffset(
-			if (progress >= 0f) {
-				(progress * 10000).toInt()
-			} else {
-				firstPage?.let { getSavedScrollOffset(it.chapterId, it.index) } ?: 0
-			},
-		)
+		if (firstPage != null) {
+			viewModel.updateScrollOffset(
+				chapterId = firstPage.chapterId,
+				page = firstPage.index,
+				offset = if (progress >= 0f) {
+					(progress * 10000).toInt()
+				} else {
+					getSavedScrollOffset(firstPage.chapterId, firstPage.index)
+				},
+			)
+		}
 		val itemCount = adapter?.itemCount ?: 0
 		val atAbsoluteBottom = itemCount > 0 && recyclerView.isScrolledToAbsoluteBottom()
 		val positionsChanged = firstVisiblePosition != lastFirstPos || lastVisiblePosition != lastLastPos
@@ -264,6 +281,32 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 			chapterId = page.chapterId,
 			page = page.index,
 			scroll = scroll,
+		)
+	}
+
+	override fun getModeSwitchState(): ReaderState? = viewBinding?.run {
+		val lm = recyclerView.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager
+			?: return@run null
+		val adapter = recyclerView.adapter as? BaseReaderAdapter<*>
+		val itemCount = adapter?.itemCount ?: 0
+		val isAtAbsoluteBottom = itemCount > 0 && recyclerView.isScrolledToAbsoluteBottom()
+		val currentItem = resolveWebtoonModeSwitchPosition(
+			firstVisiblePosition = lm.findFirstVisibleItemPosition(),
+			readingLinePosition = recyclerView.findCurrentPagePosition(),
+			itemCount = itemCount,
+			isAtAbsoluteBottom = isAtAbsoluteBottom,
+		)
+		val page = adapter?.getItemOrNull(currentItem) ?: return@run null
+		if (isAtAbsoluteBottom) {
+			return@run ReaderState(chapterId = page.chapterId, page = page.index, scroll = 10000)
+		}
+		val holder = recyclerView.findViewHolderForAdapterPosition(currentItem) as? WebtoonHolder
+		val fallbackScroll = getSavedScrollOffset(page.chapterId, page.index)
+		val progress = holder?.getScrollProgress() ?: getSavedScrollPercent(page.chapterId, page.index)
+		ReaderState(
+			chapterId = page.chapterId,
+			page = page.index,
+			scroll = if (progress >= 0f) (progress * 10000).toInt() else fallbackScroll,
 		)
 	}
 

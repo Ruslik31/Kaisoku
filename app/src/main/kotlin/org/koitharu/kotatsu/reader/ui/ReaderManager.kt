@@ -46,12 +46,13 @@ class ReaderManager(
 		}
 	}
 
-	fun setDoubleReaderMode(isEnabled: Boolean) {
+	fun setDoubleReaderMode(isEnabled: Boolean, beforeReplace: () -> Unit) {
 		val mode = currentMode
 		val prevReader = currentReader?.javaClass
 		invalidateTypesMap(isEnabled)
 		val newReader = modeMap[mode]
 		if (mode != null && newReader != prevReader) {
+			beforeReplace()
 			replace(mode)
 		}
 	}

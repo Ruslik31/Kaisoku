@@ -29,6 +29,7 @@ abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomCont
 
 		viewModel.content.observe(viewLifecycleOwner) {
 			val currentState = viewModel.getCurrentState()
+			val replacementState = viewModel.getPendingReaderReplacementState(it.replacementId)
 			val currentOldPosition = currentState?.let { state ->
 				readerAdapter?.indexOf(state.chapterId, state.page)
 			} ?: -1
@@ -51,6 +52,9 @@ abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomCont
 				} else {
 					null
 				}
+				replacementState != null
+					&& it.state == replacementState
+					&& it.pages.any { page -> page.chapterId == replacementState.chapterId } -> replacementState
 				it.state == null
 					&& it.pages.isNotEmpty() -> currentState
 				it.state != currentState
@@ -59,6 +63,9 @@ abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomCont
 				else -> it.state
 			}
 			onPagesChanged(it.pages, pendingState)
+			if (pendingState != null) {
+				viewModel.onReaderStateRestored(it.replacementId, pendingState)
+			}
 		}
 	}
 
@@ -67,11 +74,11 @@ abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomCont
 	override fun onPause() {
 		super.onPause()
 		val state = getCurrentState()
-		viewModel.saveCurrentState(state)
+		viewModel.saveVisibleState(state)
 	}
 
 	override fun onDestroyView() {
-		viewModel.saveCurrentState(getCurrentState())
+		viewModel.saveVisibleState(getCurrentState())
 		readerAdapter = null
 		super.onDestroyView()
 	}
@@ -91,6 +98,13 @@ abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomCont
 	open fun scrollBy(delta: Int, smooth: Boolean): Boolean = false
 
 	abstract fun getCurrentState(): ReaderState?
+
+	/**
+	 * State used when handing the visible position to a different reader implementation. Most
+	 * readers use the same state for persistence and mode changes, while webtoon keeps a separate
+	 * precise resume anchor and visible reading-page anchor.
+	 */
+	open fun getModeSwitchState(): ReaderState? = getCurrentState()
 
 	protected abstract fun onCreateAdapter(): BaseReaderAdapter<*>
 

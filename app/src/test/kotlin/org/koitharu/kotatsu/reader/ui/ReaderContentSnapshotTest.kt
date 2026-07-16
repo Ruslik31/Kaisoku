@@ -25,4 +25,16 @@ class ReaderContentSnapshotTest {
 		val secondEmission = firstEmission.toList()
 		assertFalse(isCurrentPageListSnapshot(firstEmission, secondEmission))
 	}
+
+	@Test
+	fun matchingSnapshotAndRevisionCanCommitState() {
+		val pages = listOf(1, 2, 3)
+		assertTrue(canCommitReaderState(pages, pages, capturedRevision = 4, currentRevision = 4))
+	}
+
+	@Test
+	fun authoritativeSaveInvalidatesDelayedStateCommit() {
+		val pages = listOf(1, 2, 3)
+		assertFalse(canCommitReaderState(pages, pages, capturedRevision = 4, currentRevision = 5))
+	}
 }

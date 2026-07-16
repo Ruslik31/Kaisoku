@@ -4,7 +4,8 @@ import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 
 data class ReaderContent(
 	val pages: List<ReaderPage>,
-	val state: ReaderState?
+	val state: ReaderState?,
+	val replacementId: Long = 0,
 )
 
 /**
@@ -13,3 +14,10 @@ data class ReaderContent(
  */
 internal fun isCurrentPageListSnapshot(captured: List<*>, current: List<*>): Boolean =
 	captured === current
+
+internal fun canCommitReaderState(
+	capturedPages: List<*>,
+	currentPages: List<*>,
+	capturedRevision: Long,
+	currentRevision: Long,
+): Boolean = capturedRevision == currentRevision && isCurrentPageListSnapshot(capturedPages, currentPages)
