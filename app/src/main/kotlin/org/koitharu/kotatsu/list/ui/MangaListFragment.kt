@@ -205,7 +205,7 @@ abstract class MangaListFragment :
 	private fun resolveException(e: Throwable) {
 		if (ExceptionResolver.canResolve(e)) {
 			viewLifecycleScope.launch {
-				if (exceptionResolver.resolve(e)) {
+				if (exceptionResolver.resolve(e, tryAutoResolve = false)) {
 					viewModel.onRetry()
 				}
 			}

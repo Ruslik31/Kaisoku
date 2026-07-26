@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.parser.mihon.MihonMangaSource
 import org.koitharu.kotatsu.core.parser.mihon.MihonSourceRegistry
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.util.ext.isHttpUrl
 import org.koitharu.kotatsu.core.util.ext.restartApplication
@@ -133,21 +134,30 @@ class ExceptionResolver private constructor(
     }
 
     private suspend fun resolveCF(e: CloudFlareProtectedException, tryAutoResolve: Boolean): Boolean {
-        if (captchaCoordinator.isResolveActive(e.source)) {
-            return captchaCoordinator.awaitActiveResolve(e.source) == true
-        }
-        if (tryAutoResolve) {
+        val route = captchaResolveRoute(
+            isResolveActive = captchaCoordinator.isResolveActive(e.source),
+            tryAutoResolve = tryAutoResolve,
+            isAutoResolveDisabled = isAutoResolveDisabledFor(e),
+        )
+        return when (route) {
+            CaptchaResolveRoute.AWAIT_ACTIVE -> captchaCoordinator.awaitActiveResolve(e.source) == true
+
             // Delegated to the singleton coordinator: it owns the activity lifecycle (so the result is
             // delivered even if this Fragment / Activity dies while CloudFlareActivity is still
             // running) AND owns the user-facing toast (so duplicate calls that just await the
             // in-flight resolve don't pile new toasts on top of the loading state).
-            return captchaCoordinator.resolveIfEnabled(e)
+            CaptchaResolveRoute.AUTOMATIC -> captchaCoordinator.resolveIfEnabled(e)
+
+            CaptchaResolveRoute.MANUAL -> suspendCancellableCoroutine { cont ->
+                continuations[CloudFlareActivity.TAG] = cont
+                cloudflareContract.launch(e)
+            }
         }
-        // tryAutoResolve=false OR user disabled auto-solve for this source → manual visible activity.
-        return suspendCancellableCoroutine { cont ->
-            continuations[CloudFlareActivity.TAG] = cont
-            cloudflareContract.launch(e)
-        }
+    }
+
+    private fun isAutoResolveDisabledFor(e: CloudFlareProtectedException): Boolean {
+        val ctx = host.context ?: return false
+        return SourceSettings(ctx, e.source).isCaptchaAutoResolveDisabled
     }
 
     private suspend fun resolveAuthException(source: MangaSource): Boolean {

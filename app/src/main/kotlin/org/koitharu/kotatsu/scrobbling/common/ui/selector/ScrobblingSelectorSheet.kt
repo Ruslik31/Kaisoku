@@ -148,7 +148,7 @@ class ScrobblingSelectorSheet :
 	override fun onRetryClick(error: Throwable) {
 		if (ExceptionResolver.canResolve(error)) {
 			viewLifecycleScope.launch {
-				if (exceptionResolver.resolve(error)) {
+				if (exceptionResolver.resolve(error, tryAutoResolve = false)) {
 					viewModel.retry()
 				}
 			}
