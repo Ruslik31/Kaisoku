@@ -38,6 +38,9 @@ import java.lang.ref.WeakReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
+internal fun findBuiltInParserSource(sourceName: String): MangaParserSource? =
+	MangaParserSource.entries.firstOrNull { it.name == sourceName }
+
 interface MangaRepository {
 
 	val source: MangaSource
@@ -111,24 +114,9 @@ interface MangaRepository {
 			// Constructing a built-in parser can still throw (a malformed source, a removed symbol, or
 			// an unavailable source picked up from an old backup). Contain it so the source degrades to
 			// an empty one instead of taking down the whole app.
-			is MangaParserSource -> runCatchingCancellable {
-				ParserMangaRepository(
-					parser = loaderContext.newParserInstance(source),
-					cache = contentCache,
-					mirrorSwitcher = mirrorSwitcher,
-				)
-			}.onFailure { it.printStackTraceDebug() }.getOrNull()
+			is MangaParserSource -> createBuiltInRepository(source)
 
-			// A third-party plugin built against an incompatible parsers ABI (e.g. a constructor whose
-			// signature has since changed) throws NoSuchMethodError/LinkageError on construction. Contain
-			// it so a broken plugin degrades to an empty source instead of crashing the whole app.
-			is PluginMangaSource -> runCatchingCancellable {
-				PluginMangaRepository(
-					loadedParser = DynamicParserManager.createParser(source, loaderContext, context),
-					settings = SourceSettings(context, source),
-					cache = contentCache,
-				)
-			}.onFailure { it.printStackTraceDebug() }.getOrNull()
+			is PluginMangaSource -> createPluginRepository(source)
 
 			TestMangaSource -> TestMangaRepository(
 				loaderContext = loaderContext,
@@ -157,6 +145,39 @@ interface MangaRepository {
 			is CustomMangaSource -> BrowserSourceMangaRepository(source)
 
 			else -> null
+		}
+
+		private fun createBuiltInRepository(source: MangaParserSource): ParserMangaRepository? =
+			runCatchingCancellable {
+				ParserMangaRepository(
+					parser = loaderContext.newParserInstance(source),
+					cache = contentCache,
+					mirrorSwitcher = mirrorSwitcher,
+				)
+			}.onFailure { it.printStackTraceDebug() }.getOrNull()
+
+		private fun createPluginRepository(source: PluginMangaSource): MangaRepository? {
+			// Plugins carry their own parser classes but share MangaLoaderContext with the host. Older
+			// Android runtimes can dispatch a virtual call to the wrong slot after that abstract host
+			// API gains methods (issue #12 called getConfig() as evaluateJs() with a null continuation).
+			// Resolve domain once now so an incompatible copy is detected before it reaches any screen.
+			val plugin = runCatchingCancellable {
+				PluginMangaRepository(
+					loadedParser = DynamicParserManager.createParser(source, loaderContext, context),
+					settings = SourceSettings(context, source),
+					cache = contentCache,
+				)
+			}.onFailure { it.printStackTraceDebug() }.getOrNull()
+			val compatiblePlugin = plugin?.let { repository ->
+				runCatchingCancellable {
+					repository.domain.takeIf(String::isNotBlank)
+				}.onFailure { it.printStackTraceDebug() }.getOrNull()?.let { repository }
+			}
+			if (compatiblePlugin != null) {
+				return compatiblePlugin
+			}
+			val builtInSource = findBuiltInParserSource(source.sourceName) ?: return null
+			return createBuiltInRepository(builtInSource)
 		}
 	}
 }
