@@ -737,6 +737,7 @@
     <string name="show_pages_thumbs">Show pages thumbnails</string>
     <string name="show_pages_thumbs_summary">Enable the \"Pages\" tab on the details screen</string>
     <string name="error_no_data_received">No data was received from server</string>
+    <string name="error_empty_file_on_server">The source served an empty file for this page</string>
     <string name="unsupported_backup_message">Please select a proper Kaisoku backup file</string>
     <string name="list_ellipsize_pattern" translatable="false">(+%d)</string>
     <!-- Short hours format pattern -->

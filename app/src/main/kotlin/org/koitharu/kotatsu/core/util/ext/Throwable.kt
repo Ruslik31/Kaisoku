@@ -127,7 +127,9 @@ private fun Throwable.getDisplayMessageOrNull(resources: Resources): String? = w
         }
     }
 
-    is NoDataReceivedException -> resources.getString(R.string.error_no_data_received)
+    // The server answered normally but the object it served is empty, so retrying cannot help:
+    // say that the file is missing on the source rather than implying a connection problem.
+    is NoDataReceivedException -> resources.getString(R.string.error_empty_file_on_server)
     is IncompatiblePluginException -> {
         cause?.getDisplayMessageOrNull(resources)?.let {
             resources.getString(R.string.plugin_incompatible_with_cause, it)
