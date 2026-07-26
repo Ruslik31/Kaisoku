@@ -50,6 +50,42 @@ class WebtoonPageLayoutTest {
 	}
 
 	@Test
+	fun unresolvedLoadingPageKeepsViewportHeight() {
+		assertEquals(
+			2000,
+			calculateUnresolvedPageHeight(
+				viewportHeight = 2000,
+				compactHeight = 960,
+				useCompactHeight = false,
+			),
+		)
+	}
+
+	@Test
+	fun unresolvedFailedPageUsesCompactHeight() {
+		assertEquals(
+			960,
+			calculateUnresolvedPageHeight(
+				viewportHeight = 2000,
+				compactHeight = 960,
+				useCompactHeight = true,
+			),
+		)
+	}
+
+	@Test
+	fun compactFailedPageDoesNotExceedShortViewport() {
+		assertEquals(
+			700,
+			calculateUnresolvedPageHeight(
+				viewportHeight = 700,
+				compactHeight = 960,
+				useCompactHeight = true,
+			),
+		)
+	}
+
+	@Test
 	fun decodedDimensionsSurviveHolderReuse() {
 		val key = WebtoonPageKey(chapterId = 18L, pageId = 11L)
 		val cache = WebtoonPageSizeCache()

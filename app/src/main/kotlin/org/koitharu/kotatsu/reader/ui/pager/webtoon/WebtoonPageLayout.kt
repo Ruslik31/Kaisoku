@@ -42,6 +42,17 @@ internal fun calculateScaledPageHeight(
 		.toInt()
 }
 
+internal fun calculateUnresolvedPageHeight(
+	viewportHeight: Int,
+	compactHeight: Int,
+	useCompactHeight: Boolean,
+): Int = when {
+	!useCompactHeight -> viewportHeight.coerceAtLeast(0)
+	compactHeight <= 0 -> viewportHeight.coerceAtLeast(0)
+	viewportHeight <= 0 -> compactHeight
+	else -> compactHeight.coerceAtMost(viewportHeight)
+}
+
 internal class WebtoonPageSizeCache(
 	private val maximumSize: Int = DEFAULT_PAGE_SIZE_CACHE_LIMIT,
 ) {

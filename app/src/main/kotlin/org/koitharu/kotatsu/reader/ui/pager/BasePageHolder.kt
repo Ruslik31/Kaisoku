@@ -123,6 +123,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 
 	fun reloadImage(preserveState: Boolean = false) {
 		val source = (viewModel.state.value as? PageState.Shown)?.source ?: return
+		settings.applyBitmapConfig(ssiv)
 		// On untranslate, keep the current pan/zoom so going back doesn't jump either.
 		val viewState = if (preserveState) ssiv.getState() else null
 		if (viewState != null) {
@@ -270,6 +271,10 @@ abstract class BasePageHolder<B : ViewBinding>(
 					bindingInfo.layoutProgress.isGone = true
 				} else {
 					bindingInfo.textViewStatus.setText(R.string.preparing_)
+					// Enforce the configured bitmap config before mounting: onConfigChanged only runs
+					// for holders that are already bound, so a freshly bound or recycled holder would
+					// otherwise decode with whatever config the previous image left on the view.
+					settings.applyBitmapConfig(ssiv)
 					ssiv.setImage(state.source)
 				}
 			}
@@ -286,6 +291,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 				// where this bug shows up.
 				if (this is WebtoonHolder) return
 				if (state.preview != null && ssiv.getState() == null) {
+					settings.applyBitmapConfig(ssiv)
 					ssiv.setImage(state.preview)
 				}
 			}

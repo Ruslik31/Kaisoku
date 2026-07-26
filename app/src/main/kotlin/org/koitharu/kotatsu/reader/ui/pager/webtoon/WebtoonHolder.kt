@@ -10,6 +10,7 @@ import org.koitharu.kotatsu.databinding.ItemPageWebtoonBinding
 import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
 import org.koitharu.kotatsu.reader.ui.pager.BasePageHolder
+import org.koitharu.kotatsu.reader.ui.pager.vm.PageState
 
 class WebtoonHolder internal constructor(
 	owner: LifecycleOwner,
@@ -52,10 +53,25 @@ class WebtoonHolder internal constructor(
 		}
 		boundPageKey = newPageKey
 		binding.ssiv.setPlaceholderSize(pageSizeCache[newPageKey])
+		binding.ssiv.setCompactPlaceholderEnabled(false)
 		scrollPercentToRestore = -1
 		scrollToRestore = 0
 		isInitialScrollApplied = false
 		restoreValidator = null
+	}
+
+	override fun onStateChanged(state: PageState) {
+		if (state is PageState.Error) {
+			val recyclerView = itemView.parent as? RecyclerView
+			val isAlreadyAboveViewport = recyclerView != null && itemView.bottom <= recyclerView.paddingTop
+			if (!isAlreadyAboveViewport) {
+				// Once an unresolved image has failed, keep its retry/loading slot compact. Expanding
+				// it again for a retry would push all following panels down, while shrinking a failed
+				// holder that is already above the viewport would pull the current panel upward.
+				binding.ssiv.setCompactPlaceholderEnabled(true)
+			}
+		}
+		super.onStateChanged(state)
 	}
 
 	override fun onReady() {

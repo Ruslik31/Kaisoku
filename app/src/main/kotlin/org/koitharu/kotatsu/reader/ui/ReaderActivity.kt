@@ -302,8 +302,19 @@ class ReaderActivity :
         idlingDetector.onUserInteraction()
     }
 
+    override fun onResume() {
+        viewModel.onResume()
+        super.onResume()
+    }
+
     override fun onPause() {
+        // Block new scroll callbacks before fragments pause. Webtoon then invalidates deferred
+        // restores and BaseReaderFragment records the first (still live) visible position.
+        viewModel.onBackgrounding()
         super.onPause()
+        // Capture only the manager's current reader. Other retained fragments also receive onPause,
+        // but their positions may belong to an outgoing mode or a preloaded chapter.
+        viewModel.saveBackgroundState(readerManager.currentReader?.getCurrentState())
         viewModel.onPause()
     }
 

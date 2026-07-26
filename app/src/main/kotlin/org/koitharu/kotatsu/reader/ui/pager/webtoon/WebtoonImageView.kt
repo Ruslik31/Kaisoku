@@ -20,6 +20,7 @@ class WebtoonImageView @JvmOverloads constructor(
 
 	private var scrollPos = 0
 	private var placeholderSize: WebtoonImageSize? = null
+	private var useCompactPlaceholder = false
 	private var debugPaint: Paint? = null
 
 	override fun onDraw(canvas: Canvas) {
@@ -58,6 +59,15 @@ class WebtoonImageView @JvmOverloads constructor(
 		}
 	}
 
+	internal fun setCompactPlaceholderEnabled(enabled: Boolean) {
+		if (useCompactPlaceholder != enabled) {
+			useCompactPlaceholder = enabled
+			if (!isReady && placeholderSize == null) {
+				requestLayout()
+			}
+		}
+	}
+
 	fun getScrollRange(): Int {
 		if (!isReady) {
 			return 0
@@ -69,15 +79,16 @@ class WebtoonImageView @JvmOverloads constructor(
 	override fun recycle() {
 		scrollPos = 0
 		placeholderSize = null
+		useCompactPlaceholder = false
 		super.recycle()
 	}
 
 	override fun getSuggestedMinimumHeight(): Int {
 		var desiredHeight = super.getSuggestedMinimumHeight()
 		if (sHeight == 0 && placeholderSize == null) {
-			val parentHeight = parentHeight()
-			if (desiredHeight < parentHeight) {
-				desiredHeight = parentHeight
+			val unresolvedHeight = unresolvedPageHeight()
+			if (desiredHeight < unresolvedHeight) {
+				desiredHeight = unresolvedHeight
 			}
 		}
 		return desiredHeight
@@ -91,9 +102,13 @@ class WebtoonImageView @JvmOverloads constructor(
 		val resizeWidth = widthSpecMode != MeasureSpec.EXACTLY
 		val resizeHeight = heightSpecMode != MeasureSpec.EXACTLY
 		var desiredWidth = parentWidth
-		var desiredHeight = parentHeight
 		val sourceWidth = sWidth.takeIf { it > 0 } ?: placeholderSize?.width ?: 0
 		val sourceHeight = sHeight.takeIf { it > 0 } ?: placeholderSize?.height ?: 0
+		var desiredHeight = if (sourceWidth > 0 && sourceHeight > 0) {
+			parentHeight
+		} else {
+			unresolvedPageHeight()
+		}
 		if (sourceWidth > 0 && sourceHeight > 0) {
 			if (resizeWidth && resizeHeight) {
 				desiredWidth = sourceWidth
@@ -150,6 +165,12 @@ class WebtoonImageView @JvmOverloads constructor(
 		return ancestors.firstNotNullOfOrNull { it as? RecyclerView }?.height ?: 0
 	}
 
+	private fun unresolvedPageHeight(): Int = calculateUnresolvedPageHeight(
+		viewportHeight = parentHeight(),
+		compactHeight = context.resources.resolveDp(COMPACT_ERROR_HEIGHT_DP).roundToInt(),
+		useCompactHeight = useCompactPlaceholder,
+	)
+
 	private fun drawDebug(canvas: Canvas) {
 		val paint = debugPaint ?: Paint(Paint.ANTI_ALIAS_FLAG).apply {
 			color = android.graphics.Color.RED
@@ -166,5 +187,6 @@ class WebtoonImageView @JvmOverloads constructor(
 
 	private companion object {
 		const val DEFAULT_MAX_SCALE_MULTIPLIER = 2f
+		const val COMPACT_ERROR_HEIGHT_DP = 320f
 	}
 }

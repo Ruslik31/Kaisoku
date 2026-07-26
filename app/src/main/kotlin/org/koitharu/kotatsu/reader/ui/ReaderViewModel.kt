@@ -78,6 +78,24 @@ import javax.inject.Inject
 private const val BOUNDS_PAGE_OFFSET = 2
 private const val PREFETCH_LIMIT = 10
 
+internal fun calculateReaderPercent(
+    chapterIndex: Int,
+    chaptersCount: Int,
+    pageIndex: Int,
+    pagesCount: Int,
+): Float {
+    if (chapterIndex !in 0 until chaptersCount || pageIndex < 0 || pagesCount <= 0) {
+        return PROGRESS_NONE
+    }
+    val boundedPageIndex = pageIndex.coerceAtMost(pagesCount - 1)
+    if (chapterIndex == chaptersCount - 1 && boundedPageIndex == pagesCount - 1) {
+        // Avoid float rounding an exact end position down to 99% for some chapter counts.
+        return 1f
+    }
+    val pagePercent = (boundedPageIndex + 1) / pagesCount.toFloat()
+    return ((chapterIndex + pagePercent) / chaptersCount).coerceIn(0f, 1f)
+}
+
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
@@ -124,6 +142,7 @@ class ReaderViewModel @Inject constructor(
     private var stateRevision = 0L
     private var nextReaderReplacementId = 0L
     private var pendingReaderReplacement: Pair<Long, ReaderState>? = null
+    private val lifecycleStateGuard = ReaderLifecycleStateGuard()
 
     init {
         mangaDetails.value = intent.manga?.let { MangaDetails(it) }
@@ -235,6 +254,23 @@ class ReaderViewModel @Inject constructor(
         loadImpl()
     }
 
+    @MainThread
+    fun onBackgrounding() {
+        stateChangeJob?.cancel()
+        synchronized(contentStateLock) {
+            lifecycleStateGuard.onBackgrounding()
+            // A page callback already queued on a worker must not commit after backgrounding.
+            stateRevision++
+        }
+    }
+
+    @MainThread
+    fun onResume() {
+        synchronized(contentStateLock) {
+            lifecycleStateGuard.onResumed()
+        }
+    }
+
     fun onPause() {
         getMangaOrNull()?.let {
             statsCollector.onPause(it.id)
@@ -295,11 +331,29 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveVisibleState(state: ReaderState?) {
-        val replacementPending = synchronized(contentStateLock) {
-            pendingReaderReplacement != null
+        val save = synchronized(contentStateLock) {
+            if (pendingReaderReplacement != null) {
+                VisibleStateSave(shouldSave = false, state = null)
+            } else {
+                lifecycleStateGuard.selectVisibleState(state, readingState.value)
+            }
         }
-        if (!replacementPending) {
-            saveCurrentState(state)
+        if (save.shouldSave) {
+            saveCurrentState(save.state)
+        }
+    }
+
+    @MainThread
+    fun saveBackgroundState(state: ReaderState?) {
+        val save = synchronized(contentStateLock) {
+            if (pendingReaderReplacement != null) {
+                VisibleStateSave(shouldSave = false, state = null)
+            } else {
+                lifecycleStateGuard.captureBackgroundState(state, readingState.value)
+            }
+        }
+        if (save.shouldSave) {
+            saveCurrentState(save.state)
         }
     }
 
@@ -500,7 +554,9 @@ class ReaderViewModel @Inject constructor(
 
     @MainThread
     fun updateScrollOffset(chapterId: Long, page: Int, offset: Int) {
-        if (synchronized(contentStateLock) { pendingReaderReplacement != null }) {
+        if (synchronized(contentStateLock) {
+                pendingReaderReplacement != null || !lifecycleStateGuard.canCommitUiState()
+            }) {
             return
         }
         readingState.update { cs ->
@@ -520,7 +576,9 @@ class ReaderViewModel @Inject constructor(
         scrollOffset: Int = 0,
         triggerAutoLoad: Boolean = true,
     ) {
-        if (synchronized(contentStateLock) { pendingReaderReplacement != null }) {
+        if (synchronized(contentStateLock) {
+                pendingReaderReplacement != null || !lifecycleStateGuard.canCommitUiState()
+            }) {
             return
         }
         lastScrollProgress = scrollProgress
@@ -534,7 +592,7 @@ class ReaderViewModel @Inject constructor(
             loadingJob?.join()
             val centerPos = (lowerPos + upperPos) / 2
             val isCurrentSnapshot = synchronized(contentStateLock) {
-                if (!canCommitReaderState(
+                if (!lifecycleStateGuard.canCommitUiState() || !canCommitReaderState(
                         capturedPages = pages,
                         currentPages = content.value.pages,
                         capturedRevision = capturedRevision,
@@ -760,9 +818,7 @@ class ReaderViewModel @Inject constructor(
         if (chaptersCount == 0 || pagesCount == 0) {
             return PROGRESS_NONE
         }
-        val pagePercent = (pageIndex + 1) / pagesCount.toFloat()
-        val ppc = 1f / chaptersCount
-        return ppc * chapterIndex + ppc * pagePercent
+        return calculateReaderPercent(chapterIndex, chaptersCount, pageIndex, pagesCount)
     }
 
     private fun observeIsWebtoonZoomEnabled() = settings.observeAsFlow(
