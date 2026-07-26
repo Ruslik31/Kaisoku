@@ -124,6 +124,21 @@
 
         <SwitchPreferenceCompat
             android:defaultValue="false"
+            android:key="nav_floating"
+            android:summary="@string/floating_navigation_bar_summary"
+            android:title="@string/floating_navigation_bar" />
+
+        <org.koitharu.kotatsu.settings.utils.SliderPreference
+            android:dependency="nav_floating"
+            android:key="nav_corner_radius"
+            android:stepSize="2"
+            android:title="@string/navigation_bar_corner_radius"
+            android:valueFrom="0"
+            android:valueTo="40"
+            app:defaultValue="36" />
+
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
             android:key="exit_confirm"
             android:summary="@string/exit_confirmation_summary"
             android:title="@string/exit_confirmation" />

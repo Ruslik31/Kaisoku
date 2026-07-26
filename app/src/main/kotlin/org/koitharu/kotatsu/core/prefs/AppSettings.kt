@@ -148,6 +148,13 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val isNavBarPinned: Boolean
 		get() = prefs.getBoolean(KEY_NAV_PINNED, false)
 
+	val isNavBarFloating: Boolean
+		get() = prefs.getBoolean(KEY_NAV_FLOATING, false)
+
+	/** Corner radius of the floating navigation bar, in dp. */
+	val navBarCornerRadius: Int
+		get() = prefs.getInt(KEY_NAV_CORNER_RADIUS, 36)
+
 	val isMainFabEnabled: Boolean
 		get() = prefs.getBoolean(KEY_MAIN_FAB, true)
 
@@ -1009,6 +1016,8 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_NAV_MAIN = "nav_main"
 		const val KEY_NAV_LABELS = "nav_labels"
 		const val KEY_NAV_PINNED = "nav_pinned"
+		const val KEY_NAV_FLOATING = "nav_floating"
+		const val KEY_NAV_CORNER_RADIUS = "nav_corner_radius"
 		const val KEY_MAIN_FAB = "main_fab"
 		const val KEY_32BIT_COLOR = "enhanced_colors"
 		const val KEY_SOURCES_ORDER = "sources_sort_order"

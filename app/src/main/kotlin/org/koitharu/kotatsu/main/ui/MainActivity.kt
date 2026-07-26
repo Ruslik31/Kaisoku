@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.toColorInt
 import androidx.core.view.MenuProvider
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.children
 import androidx.core.view.inputmethod.EditorInfoCompat
@@ -162,6 +163,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		viewModel.appUpdate.observe(this, MenuInvalidator(this))
 		viewModel.onFirstStart.observeEvent(this) { router.showWelcomeSheet() }
 		viewModel.isBottomNavPinned.observe(this, ::setNavbarPinned)
+		viewModel.bottomNavStyle.observe(this, ::setNavbarStyle)
 		searchSuggestionViewModel.isIncognitoModeEnabled.observe(this, this::onIncognitoModeChanged)
 		viewBinding.bottomNav?.addOnLayoutChangeListener(this)
 		applyAmoledNavbarTintIfNeeded()
@@ -216,11 +218,30 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 				searchBarDefaultMargin + barsInsets.start(v)
 			}
 		}
-		viewBinding.bottomNav?.updatePadding(
-			left = barsInsets.left,
-			right = barsInsets.right,
-			bottom = barsInsets.bottom,
-		)
+		viewBinding.bottomNav?.let { bottomNav ->
+			// A floating bar keeps clear of the system bars through its own margins, so the insets
+			// must not also become padding inside the pill.
+			if (bottomNav.isFloating) {
+				val gap = resources.getDimensionPixelOffset(R.dimen.nav_floating_margin)
+				bottomNav.updatePadding(left = 0, right = 0, bottom = 0)
+				bottomNav.updateLayoutParams<MarginLayoutParams> {
+					leftMargin = barsInsets.left + gap
+					rightMargin = barsInsets.right + gap
+					bottomMargin = barsInsets.bottom + gap
+				}
+			} else {
+				bottomNav.updatePadding(
+					left = barsInsets.left,
+					right = barsInsets.right,
+					bottom = barsInsets.bottom,
+				)
+				bottomNav.updateLayoutParams<MarginLayoutParams> {
+					leftMargin = 0
+					rightMargin = 0
+					bottomMargin = 0
+				}
+			}
+		}
 		viewBinding.navRail?.updateLayoutParams<MarginLayoutParams> {
 			marginStart = barsInsets.start(v)
 			topMargin = barsInsets.top
@@ -458,9 +479,26 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		updateContainerBottomMargin()
 	}
 
+	private fun setNavbarStyle(style: BottomNavStyle) {
+		val bottomNavBar = viewBinding.bottomNav ?: return
+		bottomNavBar.elevation = if (style.isFloating) {
+			resources.getDimension(R.dimen.nav_floating_elevation)
+		} else {
+			0f
+		}
+		bottomNavBar.floatingCornerRadius = style.cornerRadiusDp * resources.displayMetrics.density
+		bottomNavBar.isFloating = style.isFloating
+		// The insets listener lives on the activity root, and it is what turns the style into the
+		// bar's padding/margins, so the style change has to go through a fresh insets pass.
+		ViewCompat.requestApplyInsets(viewBinding.root)
+		updateContainerBottomMargin()
+	}
+
 	private fun updateContainerBottomMargin() {
 		val bottomNavBar = viewBinding.bottomNav ?: return
-		val newMargin = if (bottomNavBar.isPinned && bottomNavBar.isShownOrShowing) bottomNavBar.height else 0
+		val bottomNavSize = bottomNavBar.height +
+			((bottomNavBar.layoutParams as? MarginLayoutParams)?.bottomMargin ?: 0)
+		val newMargin = if (bottomNavBar.isPinned && bottomNavBar.isShownOrShowing) bottomNavSize else 0
 		with(viewBinding.container) {
 			val params = layoutParams as MarginLayoutParams
 			if (params.bottomMargin != newMargin) {

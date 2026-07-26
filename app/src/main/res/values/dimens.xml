@@ -3,6 +3,8 @@
 
 	<!-- Common dimensions -->
 	<dimen name="margin_normal">16dp</dimen>
+	<dimen name="nav_floating_margin">12dp</dimen>
+	<dimen name="nav_floating_elevation">6dp</dimen>
 	<dimen name="margin_small">8dp</dimen>
 	<!-- List spacing -->
 	<dimen name="list_spacing_small">6dp</dimen>

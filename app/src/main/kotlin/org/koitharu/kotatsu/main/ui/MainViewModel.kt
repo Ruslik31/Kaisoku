@@ -4,7 +4,9 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.core.exceptions.EmptyHistoryException
@@ -52,6 +54,11 @@ class MainViewModel @Inject constructor(
 	) {
 		isNavBarPinned
 	}.flowOn(Dispatchers.Default)
+
+	val bottomNavStyle = settings.observe(AppSettings.KEY_NAV_FLOATING, AppSettings.KEY_NAV_CORNER_RADIUS)
+		.map { BottomNavStyle(settings.isNavBarFloating, settings.navBarCornerRadius) }
+		.distinctUntilChanged()
+		.flowOn(Dispatchers.Default)
 
 	val isIncognitoModeEnabled = settings.observeAsStateFlow(
 		scope = viewModelScope + Dispatchers.Default,

@@ -79,7 +79,7 @@ class HideBottomNavigationOnScrollBehavior @JvmOverloads constructor(
 	) {
 		super.onNestedPreScroll(coordinatorLayout, child, target, dx, dy, consumed, type)
 		if (!isPinned) {
-			child.translationY = (child.translationY + (dy * dyRatio)).coerceIn(0F, child.height.toFloat())
+			child.translationY = (child.translationY + (dy * dyRatio)).coerceIn(0F, child.hideOffset())
 		}
 	}
 
@@ -90,9 +90,16 @@ class HideBottomNavigationOnScrollBehavior @JvmOverloads constructor(
 		type: Int,
 	) {
 		if (!isPinned && (lastStartedType == ViewCompat.TYPE_TOUCH || type == ViewCompat.TYPE_NON_TOUCH)) {
-			animateBottomNavigationVisibility(child, child.translationY < child.height / 2)
+			animateBottomNavigationVisibility(child, child.translationY < child.hideOffset() / 2)
 		}
 	}
+
+	/**
+	 * A floating navigation bar sits above its own bottom margin, so hiding it takes more than its
+	 * own height; anchored bars keep the previous height-based offset.
+	 */
+	private fun NavigationBarView.hideOffset(): Float =
+		(this as? SlidingBottomNavigationView)?.hideOffset ?: height.toFloat()
 
 	private fun animateBottomNavigationVisibility(child: NavigationBarView, isVisible: Boolean) {
 		offsetAnimator?.cancel()
@@ -105,7 +112,7 @@ class HideBottomNavigationOnScrollBehavior @JvmOverloads constructor(
 		}
 		offsetAnimator?.setFloatValues(
 			child.translationY,
-			if (isVisible) 0F else child.height.toFloat(),
+			if (isVisible) 0F else child.hideOffset(),
 		)
 		offsetAnimator?.start()
 	}
