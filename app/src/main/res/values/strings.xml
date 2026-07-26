@@ -1056,7 +1056,7 @@
     <string name="missing_in_plugin">Source %1$s is missing from the plugin</string>
     <string name="loaded_null">Plugin factory returned an empty parser</string>
     <!-- Browser Source (in-app browser custom source) -->
-    <string name="add_browser_source">Add Browser Source</string>
+    <string name="add_browser_source">Add Browser Source (Beta)</string>
     <string name="add_source_label">Add source</string>
     <string name="browser_source_adblock_toggle">Toggle Ad Blocker</string>
     <string name="browser_source_already_added_hint">This source is already in your library</string>
@@ -1070,6 +1070,8 @@
     <string name="browser_source_open_external">Open in external browser</string>
     <string name="browser_source_preview_hint">Tap \'Add\' to save this browser source</string>
     <string name="browser_source_refresh">Refresh</string>
+    <string name="browser_source_remove_confirm">Remove this browser source? Sites you added stay reachable by adding them again.</string>
+    <string name="browser_sources">Browser sources (Beta)</string>
     <string name="browser_source_url_hint">Website URL (e.g. https://mangadex.org)</string>
     <string name="browser_source_url_invalid">Please enter a valid URL</string>
     <string name="browser_source_view_history">Reading history</string>

@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.explore.ui.adapter
 
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
+import org.koitharu.kotatsu.explore.ui.model.BrowserSourceItem
 import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.adapter.emptyHintAD
@@ -14,6 +15,7 @@ class ExploreAdapter(
 	listener: ExploreListEventListener,
 	clickListener: OnListItemClickListener<MangaSourceItem>,
 	mangaClickListener: OnListItemClickListener<Manga>,
+	browserSourceClickListener: OnListItemClickListener<BrowserSourceItem>,
 ) : BaseListAdapter<ListModel>() {
 
 	init {
@@ -25,6 +27,10 @@ class ExploreAdapter(
 		addDelegate(ListItemType.HEADER, listHeaderAD(listener))
 		addDelegate(ListItemType.EXPLORE_SOURCE_LIST, exploreSourceListItemAD(clickListener))
 		addDelegate(ListItemType.EXPLORE_SOURCE_GRID, exploreSourceGridItemAD(clickListener))
+		addDelegate(
+			ListItemType.EXPLORE_BROWSER_SOURCE,
+			exploreBrowserSourceItemAD(browserSourceClickListener),
+		)
 		addDelegate(ListItemType.HINT_EMPTY, emptyHintAD(listener))
 		addDelegate(ListItemType.STATE_LOADING, loadingStateAD())
 	}

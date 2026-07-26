@@ -17,11 +17,13 @@ import org.koitharu.kotatsu.core.util.ext.recyclerView
 import org.koitharu.kotatsu.core.util.ext.setProgressIcon
 import org.koitharu.kotatsu.core.util.ext.setTooltipCompat
 import org.koitharu.kotatsu.core.util.ext.textAndVisible
+import org.koitharu.kotatsu.customsource.domain.CustomMangaSource
 import org.koitharu.kotatsu.databinding.ItemExploreButtonsBinding
 import org.koitharu.kotatsu.databinding.ItemExploreSourceGridBinding
 import org.koitharu.kotatsu.databinding.ItemExploreSourceListBinding
 import org.koitharu.kotatsu.databinding.ItemRecommendationBinding
 import org.koitharu.kotatsu.databinding.ItemRecommendationMangaBinding
+import org.koitharu.kotatsu.explore.ui.model.BrowserSourceItem
 import org.koitharu.kotatsu.explore.ui.model.ExploreButtons
 import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
 import org.koitharu.kotatsu.explore.ui.model.RecommendationsItem
@@ -147,5 +149,28 @@ fun exploreSourceGridItemAD(
 		binding.textViewTitle.text = title
 		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
 		binding.imageViewIcon.setImageAsync(item.source)
+	}
+}
+
+fun exploreBrowserSourceItemAD(
+	listener: OnListItemClickListener<BrowserSourceItem>,
+) = adapterDelegateViewBinding<BrowserSourceItem, ListModel, ItemExploreSourceListBinding>(
+	{ layoutInflater, parent ->
+		ItemExploreSourceListBinding.inflate(
+			layoutInflater,
+			parent,
+			false,
+		)
+	},
+) {
+
+	AdapterDelegateClickListenerAdapter(this, listener).attach(itemView)
+
+	bind {
+		val mangaSource = CustomMangaSource(item.source)
+		binding.textViewTitle.text = item.source.displayName
+		binding.textViewTitle.drawableStart = null
+		binding.textViewSubtitle.text = mangaSource.getSummary(context)
+		binding.imageViewIcon.setImageAsync(mangaSource)
 	}
 }

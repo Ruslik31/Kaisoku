@@ -18,8 +18,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.browsersource.ui.BrowserSourceActivity
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.nav.router
@@ -40,6 +42,7 @@ import org.koitharu.kotatsu.core.util.ext.systemBarsInsets
 import org.koitharu.kotatsu.databinding.FragmentExploreBinding
 import org.koitharu.kotatsu.explore.ui.adapter.ExploreAdapter
 import org.koitharu.kotatsu.explore.ui.adapter.ExploreListEventListener
+import org.koitharu.kotatsu.explore.ui.model.BrowserSourceItem
 import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.list.ui.model.ListHeader
@@ -66,9 +69,12 @@ class ExploreFragment :
 
 	override fun onViewBindingCreated(binding: FragmentExploreBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
-		exploreAdapter = ExploreAdapter(this, this) { manga, view ->
-			router.openDetails(manga)
-		}
+		exploreAdapter = ExploreAdapter(
+			listener = this,
+			clickListener = this,
+			mangaClickListener = { manga, _ -> router.openDetails(manga) },
+			browserSourceClickListener = browserSourceClickListener,
+		)
 		sourceSelectionController = ListSelectionController(
 			appCompatDelegate = checkNotNull(findAppCompatDelegate()),
 			decoration = SourceSelectionDecoration(binding.root.context),
@@ -144,6 +150,32 @@ class ExploreFragment :
 
 	override fun onItemContextClick(item: MangaSourceItem, view: View): Boolean {
 		return sourceSelectionController?.onItemContextClick(view, item.id) == true
+	}
+
+	private val browserSourceClickListener = object : OnListItemClickListener<BrowserSourceItem> {
+
+		override fun onItemClick(item: BrowserSourceItem, view: View) {
+			startActivity(
+				BrowserSourceActivity.createIntent(
+					view.context,
+					item.source.id,
+					item.source.displayName,
+					item.source.cleanBaseUrl,
+				),
+			)
+		}
+
+		override fun onItemLongClick(item: BrowserSourceItem, view: View): Boolean {
+			MaterialAlertDialogBuilder(view.context)
+				.setTitle(item.source.displayName)
+				.setMessage(R.string.browser_source_remove_confirm)
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(R.string.remove) { _, _ ->
+					viewModel.removeBrowserSource(item.source.id)
+				}
+				.show()
+			return true
+		}
 	}
 
 	override fun onRetryClick(error: Throwable) = Unit

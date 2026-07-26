@@ -8,6 +8,7 @@ import android.widget.TextView
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.core.text.inSpans
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.customsource.data.CustomSourcesRepository
@@ -143,6 +144,8 @@ fun MangaSource.getSummary(context: Context): String? = when (val source = unwra
 	} ?: context.getString(R.string.mihon_source)
 
 	is ExternalMangaSource -> context.getString(R.string.external_source)
+
+	is CustomMangaSource -> source.source.baseUrl.toUri().host ?: source.source.cleanBaseUrl
 
 	else -> null
 }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
@@ -24,8 +25,12 @@ import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.combine
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.customsource.data.CustomSourcesRepository
+import org.koitharu.kotatsu.customsource.domain.CustomSource
+import org.koitharu.kotatsu.customsource.domain.CustomSourceType
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.explore.domain.ExploreRepository
+import org.koitharu.kotatsu.explore.ui.model.BrowserSourceItem
 import org.koitharu.kotatsu.explore.ui.model.ExploreButtons
 import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
 import org.koitharu.kotatsu.explore.ui.model.RecommendationsItem
@@ -45,6 +50,7 @@ class ExploreViewModel @Inject constructor(
 	private val suggestionRepository: SuggestionRepository,
 	private val exploreRepository: ExploreRepository,
 	private val sourcesRepository: MangaSourcesRepository,
+	private val customSourcesRepository: CustomSourcesRepository,
 	private val shortcutManager: AppShortcutManager,
 ) : BaseViewModel() {
 
@@ -145,9 +151,14 @@ class ExploreViewModel @Inject constructor(
 		}
 	}
 
+	fun removeBrowserSource(id: Long) {
+		customSourcesRepository.remove(id)
+	}
+
 	private fun createContentFlow(): Flow<List<ListModel>> {
 		return createExploreContentFlow(
 			enabledSources = sourcesRepository.observeEnabledSources(),
+			browserSources = customSourcesRepository.sources,
 			isSuggestionsEnabled = isSuggestionsEnabled,
 			suggestionRepository = suggestionRepository,
 			suggestionsCount = SUGGESTIONS_COUNT,
@@ -168,17 +179,22 @@ class ExploreViewModel @Inject constructor(
 
 private fun buildExploreContentList(
 	sources: List<MangaSourceInfo>,
+	browserSources: List<CustomSource>,
 	recommendation: List<Manga>,
 	isGrid: Boolean,
 	randomLoading: Boolean,
 	allSourcesEnabled: Boolean,
 	hasNewSources: Boolean,
 ): List<ListModel> {
-	val result = ArrayList<ListModel>(sources.size + 3)
+	val result = ArrayList<ListModel>(sources.size + browserSources.size + 4)
 	result += ExploreButtons(randomLoading)
 	if (recommendation.isNotEmpty()) {
 		result += ListHeader(R.string.suggestions, R.string.more, R.id.nav_suggestions)
 		result += RecommendationsItem(recommendation.toRecommendationList())
+	}
+	if (browserSources.isNotEmpty()) {
+		result += ListHeader(textRes = R.string.browser_sources)
+		browserSources.mapTo(result) { BrowserSourceItem(it) }
 	}
 	if (sources.isNotEmpty()) {
 		result += ListHeader(
@@ -187,7 +203,7 @@ private fun buildExploreContentList(
 			badge = if (!allSourcesEnabled && hasNewSources) "" else null,
 		)
 		sources.mapTo(result) { MangaSourceItem(it, isGrid) }
-	} else {
+	} else if (browserSources.isEmpty()) {
 		result += EmptyHint(
 			icon = R.drawable.ic_empty_common,
 			textPrimary = R.string.no_manga_sources,
@@ -209,6 +225,7 @@ private fun shouldShowSuggestionsTip(settings: AppSettings): Boolean {
 
 private fun createExploreContentFlow(
 	enabledSources: Flow<List<MangaSourceInfo>>,
+	browserSources: Flow<List<CustomSource>>,
 	isSuggestionsEnabled: Flow<Boolean>,
 	suggestionRepository: SuggestionRepository,
 	suggestionsCount: Int,
@@ -219,6 +236,9 @@ private fun createExploreContentFlow(
 	onError: MutableEventFlow<Throwable>,
 ): Flow<List<ListModel>> = combine(
 	enabledSources,
+	browserSources.map { sources ->
+		sources.filter { it.isEnabled && it.type == CustomSourceType.BROWSER_SOURCE }
+	},
 	observeExploreSuggestions(isSuggestionsEnabled, suggestionRepository, suggestionsCount),
 	isGrid,
 	isRandomLoading,

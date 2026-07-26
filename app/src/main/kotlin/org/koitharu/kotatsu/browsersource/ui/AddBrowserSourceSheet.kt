@@ -23,6 +23,8 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.browsersource.data.findBrowserSource
+import org.koitharu.kotatsu.browsersource.data.normaliseBrowserSourceUrl
 import org.koitharu.kotatsu.customsource.data.CustomSourcesRepository
 import org.koitharu.kotatsu.customsource.domain.CustomSource
 import org.koitharu.kotatsu.customsource.domain.CustomSourceType
@@ -129,29 +131,33 @@ class AddBrowserSourceSheet : BottomSheetDialogFragment() {
                 return@setOnClickListener
             }
 
-            // Duplicate check
-            val existing = customSourcesRepository.findByUrl(normUrl)
-            if (existing != null) {
-                urlLayout.error = getString(R.string.browser_source_duplicate)
-                return@setOnClickListener
-            }
-
             val domain = extractDomain(normUrl)
             val sourceName = name.ifBlank {
                 domain.removePrefix("www.").substringBefore(".")
                     .replaceFirstChar { it.uppercase() }
             }
 
-            val source = CustomSource(
-                id          = CustomSourcesRepository.generateId(),
-                name        = sourceName,
-                baseUrl     = normUrl,
-                type        = CustomSourceType.BROWSER_SOURCE,
-                iconUrl     = fetchedFaviconUrl,
-                createdAt   = System.currentTimeMillis(),
-                isEnabled   = true,
-            )
-            customSourcesRepository.add(source)
+            // A site that is already registered as a browser source is reopened rather than
+            // rejected: the user would otherwise have no way back to it, and a site registered
+            // under another custom-source type must not block a browser source for the same URL.
+            val existing = customSourcesRepository.getAll().findBrowserSource(normUrl)
+            val source = if (existing != null) {
+                existing.copy(
+                    name = sourceName,
+                    iconUrl = fetchedFaviconUrl ?: existing.iconUrl,
+                    isEnabled = true,
+                ).also { customSourcesRepository.update(it) }
+            } else {
+                CustomSource(
+                    id          = CustomSourcesRepository.generateId(),
+                    name        = sourceName,
+                    baseUrl     = normUrl,
+                    type        = CustomSourceType.BROWSER_SOURCE,
+                    iconUrl     = fetchedFaviconUrl,
+                    createdAt   = System.currentTimeMillis(),
+                    isEnabled   = true,
+                ).also { customSourcesRepository.add(it) }
+            }
             startActivity(
                 BrowserSourceActivity.createIntent(
                     requireContext(),
@@ -213,17 +219,7 @@ class AddBrowserSourceSheet : BottomSheetDialogFragment() {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private fun normaliseUrl(input: String): String? {
-        val withScheme = when {
-            input.startsWith("http://") || input.startsWith("https://") -> input
-            else -> "https://$input"
-        }
-        return runCatching {
-            val uri = URI(withScheme)
-            if (uri.host == null) return null
-            "${uri.scheme}://${uri.host}${if (uri.port != -1) ":${uri.port}" else ""}"
-        }.getOrNull()
-    }
+    private fun normaliseUrl(input: String): String? = normaliseBrowserSourceUrl(input)
 
     private fun extractDomain(url: String): String {
         return runCatching {

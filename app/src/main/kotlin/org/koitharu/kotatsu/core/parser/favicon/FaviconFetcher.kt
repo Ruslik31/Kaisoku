@@ -1,12 +1,10 @@
 package org.koitharu.kotatsu.core.parser.favicon
 
-import android.graphics.Color
 import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.LayerDrawable
 import android.net.Uri
 import android.os.Build
-import coil3.ColorImage
 import coil3.ImageLoader
 import coil3.asImage
 import coil3.decode.DataSource
@@ -34,6 +32,7 @@ import org.koitharu.kotatsu.core.parser.ParserMangaRepository
 import org.koitharu.kotatsu.core.parser.PluginMangaRepository
 import org.koitharu.kotatsu.core.parser.external.ExternalMangaRepository
 import org.koitharu.kotatsu.core.parser.mihon.MihonMangaRepository
+import org.koitharu.kotatsu.customsource.domain.CustomMangaSource
 import org.koitharu.kotatsu.core.util.MimeTypes
 import org.koitharu.kotatsu.core.util.ext.faviconCacheOnlyKey
 import org.koitharu.kotatsu.core.util.ext.fetch
@@ -59,16 +58,22 @@ class FaviconFetcher(
 		val mangaSource = MangaSource(uri.schemeSpecificPart)
 		val isCacheOnly = options.extras[faviconCacheOnlyKey] == true
 
+		if (mangaSource is CustomMangaSource) {
+			// Browser sources store the icon that was resolved when the site was added; there is no
+			// parser to ask for favicons, so fall through to the letter avatar when it is missing.
+			val iconUrl = mangaSource.source.iconUrl
+				?: throw NoSuchElementException("No icon for ${mangaSource.name}")
+			return imageLoader.fetch(iconUrl, options)
+		}
+
 		return when (val repo = mangaRepositoryFactory.create(mangaSource)) {
 			is ParserMangaRepository -> fetchParserFavicon(repo)
 			is PluginMangaRepository -> fetchPluginParserFavicon(repo)
 			is ExternalMangaRepository -> fetchPluginIcon(repo)
 			is MihonMangaRepository -> fetchMihonIcon(repo)
-			is EmptyMangaRepository -> ImageFetchResult(
-				image = ColorImage(Color.WHITE),
-				isSampled = false,
-				dataSource = DataSource.MEMORY,
-			)
+			// A source with no repository has no icon to fetch: fail so callers fall back to their
+			// letter avatar / placeholder instead of rendering a blank white square.
+			is EmptyMangaRepository -> throw NoSuchElementException("No favicon for ${mangaSource.name}")
 
 			is LocalMangaRepository -> imageLoader.fetch(R.drawable.ic_storage, options)
 

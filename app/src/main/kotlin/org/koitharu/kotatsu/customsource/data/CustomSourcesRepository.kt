@@ -64,15 +64,6 @@ class CustomSourcesRepository @Inject constructor(
 
     fun findById(id: Long): CustomSource? = _sources.value.find { it.id == id }
 
-    /**
-     * Finds an existing source whose normalised base URL matches [url].
-     * Used for duplicate detection before adding a new source.
-     */
-    fun findByUrl(url: String): CustomSource? {
-        val normalised = url.trimEnd('/').lowercase()
-        return _sources.value.find { it.baseUrl.trimEnd('/').lowercase() == normalised }
-    }
-
     // ── Built-in parser enable/disable ────────────────────────────────────────
 
     /**
