@@ -880,4 +880,5 @@
     <string name="private_app_directory_warning">Данный каталог вместе со всеми данными будет удалён при удалении приложения</string>
     <string name="available_pattern">%1$s доступно</string>
     <string name="enter_name">Введите имя</string>
+    <string name="translate_page">Перевести страницу</string>
 </resources>
