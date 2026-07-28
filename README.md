@@ -56,7 +56,7 @@ online content sources and Mihon/Tachiyomi-compatible extension support.**
 
 **[Kaisoku](https://github.com/glitch-228/Kaisoku) is localized in a number of different languages.**<br>
 **📌 If you would like to help improve these or add new languages,
-please head over to the [Kotatsu-Redo Weblate page](https://hosted.weblate.org/engage/kotatsu/)**
+please head over to the [Kaisoku Weblate project](https://hosted.weblate.org/projects/kaisoku/)**
 
 ### Support And Bug Reports
 
