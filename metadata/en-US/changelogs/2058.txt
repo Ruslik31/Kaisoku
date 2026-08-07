@@ -1,0 +1,5 @@
+- Added a donations section to the About screen
+- Added an optional floating bottom navigation bar
+- Added and refreshed manga sources
+- Fixed reader position stability and empty-page errors
+- Improved browser sources and source reliability
