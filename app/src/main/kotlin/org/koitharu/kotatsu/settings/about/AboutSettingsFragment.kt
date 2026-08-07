@@ -18,6 +18,7 @@ import org.koitharu.kotatsu.core.github.isStable
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.BasePreferenceFragment
+import org.koitharu.kotatsu.core.util.ext.copyToClipboard
 import org.koitharu.kotatsu.core.util.ext.isHttpUrl
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
@@ -76,6 +77,20 @@ class AboutSettingsFragment : BasePreferenceFragment(R.string.about) {
 				if (getString(R.string.url_discord).isHttpUrl()) {
 					openLink(R.string.url_discord, preference.title)
 				}
+				true
+			}
+
+			AppSettings.KEY_DONATION_TON,
+			AppSettings.KEY_DONATION_ETH,
+			AppSettings.KEY_DONATION_XMR,
+			-> {
+				val address = when (preference.key) {
+					AppSettings.KEY_DONATION_TON -> getString(R.string.wallet_ton)
+					AppSettings.KEY_DONATION_ETH -> getString(R.string.wallet_eth)
+					else -> getString(R.string.wallet_xmr)
+				}
+				requireContext().copyToClipboard(preference.title.toString(), address)
+				Snackbar.make(listView, R.string.donation_copied, Snackbar.LENGTH_SHORT).show()
 				true
 			}
 

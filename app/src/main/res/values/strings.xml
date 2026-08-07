@@ -171,6 +171,12 @@
     <string name="app_version">Version %s</string>
     <string name="check_for_updates">Check for updates</string>
     <string name="no_update_available">No updates available</string>
+    <string name="donations">Donations</string>
+    <string name="donations_summary">Support the developer</string>
+    <string name="donation_ton">TON</string>
+    <string name="donation_eth">Ethereum</string>
+    <string name="donation_xmr">Monero</string>
+    <string name="donation_copied">Wallet address copied to clipboard</string>
     <string name="right_to_left">Right-to-left</string>
     <string name="create_category">New category</string>
     <string name="scale_mode">Scale mode</string>

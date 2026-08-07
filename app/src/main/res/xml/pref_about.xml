@@ -47,4 +47,28 @@
 		android:summary="@string/url_discord"
 		android:title="@string/telegram_group" />
 
+	<PreferenceCategory
+		android:title="@string/donations"
+		app:allowDividerAbove="true">
+
+		<Preference
+			android:key="donation_ton"
+			android:persistent="false"
+			android:summary="@string/wallet_ton"
+			android:title="@string/donation_ton" />
+
+		<Preference
+			android:key="donation_eth"
+			android:persistent="false"
+			android:summary="@string/wallet_eth"
+			android:title="@string/donation_eth" />
+
+		<Preference
+			android:key="donation_xmr"
+			android:persistent="false"
+			android:summary="@string/wallet_xmr"
+			android:title="@string/donation_xmr" />
+
+	</PreferenceCategory>
+
 </PreferenceScreen>
