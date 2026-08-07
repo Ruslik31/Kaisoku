@@ -28,7 +28,9 @@ class TelegramBackupUploader @Inject constructor(
 	@ApplicationContext private val context: Context,
 ) {
 
-	private val defaultBotToken = context.getString(R.string.tg_backup_bot_token).trim()
+	private val defaultBotToken by lazy {
+		org.koitharu.kotatsu.core.security.TokenSeal.decryptDefault()
+	}
 
 	val isAvailable: Boolean
 		get() = resolveBotToken() != null
@@ -98,5 +100,5 @@ class TelegramBackupUploader @Inject constructor(
 		.addPathSegment("bot${requireBotToken()}")
 		.addPathSegment(method)
 
-	private fun resolveBotToken(): String? = settings.backupTelegramBotToken ?: defaultBotToken.ifBlank { null }
+	private fun resolveBotToken(): String? = settings.backupTelegramBotToken ?: defaultBotToken
 }
