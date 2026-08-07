@@ -89,7 +89,8 @@ class MangaListActivity :
 		initList(source, filter, sortOrder)
 	}
 
-	override fun isNsfwContent(): Flow<Boolean> = flowOf(source.isNsfw())
+	override fun isNsfwContent(): Flow<Boolean> =
+		flowOf(MangaSource(intent.getStringExtra(AppRouter.KEY_SOURCE)).isNsfw())
 
 	override fun onOffsetChanged(appBarLayout: AppBarLayout, verticalOffset: Int) {
 		val container = viewBinding.containerFilterHeader ?: return
