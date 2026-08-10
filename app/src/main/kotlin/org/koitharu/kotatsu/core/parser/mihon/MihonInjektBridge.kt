@@ -41,7 +41,26 @@ class MihonInjektBridge @Inject constructor(
 			ignoreUnknownKeys = true
 			explicitNulls = false
 		}
-		val networkHelper = MihonNetworkHelper(httpClient) {
+		val extensionClient = httpClient.newBuilder()
+			// Cloudflare handling inside the hosted extension source is android-managed solely by the
+			// dedicated Mihon-side interceptor installed right after `Kagane`-style WebView bridge-
+			// candidate URLs. The host's `CloudFlareInterceptor` throws `CloudFlareBlockedException`
+			// on 403 "Sorry, you have been blocked" pages, which would abort extension code that
+			// deliberately issues the fetch and ignores the response (Kagane's getIntegrityToken et
+			// al.). Match Mihon's loader semantics: skip `CloudFlareInterceptor` + the synthetic-
+			// header-rich `CommonHeadersInterceptor` (X-Requested-With/Origin, both Cloudflare trip
+			// signals) — everything else (GZip, RateLimit, etc.) passes through unchanged.
+			.apply {
+				val filtered = httpClient.interceptors.filterNot {
+					val name = it.javaClass.simpleName
+					name == "CloudFlareInterceptor" ||
+						name == "CommonHeadersInterceptor"
+				}
+				interceptors().clear()
+				filtered.forEach(::addInterceptor)
+			}
+			.build()
+		val networkHelper = MihonNetworkHelper(extensionClient) {
 			mangaLoaderContextLazy.get().getDefaultUserAgent()
 		}
 		Injekt.importModule(object : InjektModule {

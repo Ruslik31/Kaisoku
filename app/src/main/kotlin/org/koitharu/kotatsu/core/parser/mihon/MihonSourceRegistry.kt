@@ -35,6 +35,15 @@ object MihonSourceRegistry {
 		return definitions.values.filter { it.packageName == packageName }
 	}
 
+	fun findSourceByHost(host: String): MihonMangaSource? {
+		val h = host.lowercase()
+		return definitions.values.firstOrNull { source ->
+			val referer = defaultReferers[source.name] ?: return@firstOrNull false
+			val refHost = runCatching { android.net.Uri.parse(referer).host?.lowercase() }.getOrNull()
+			refHost != null && (refHost == h || h.endsWith(".$refHost") || refHost.endsWith(".$h"))
+		}
+	}
+
 	fun rememberPageHeaders(source: MangaSource, pageUrl: String, headers: Headers) {
 		if (headers.size == 0) {
 			return
