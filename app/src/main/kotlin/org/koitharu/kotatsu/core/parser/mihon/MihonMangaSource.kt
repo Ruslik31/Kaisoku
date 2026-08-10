@@ -14,6 +14,10 @@ class MihonMangaSource(
 	override val name: String
 		get() = "mihon:$packageName/$sourceId"
 
+	companion object {
+		const val TACHI_IDENTIFIER_PREFIX = "TACHI_"
+	}
+
 	fun resolved(): MihonMangaSource = MihonSourceRegistry.resolveSource(this) ?: this
 
 	fun matches(other: MihonMangaSource): Boolean {

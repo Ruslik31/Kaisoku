@@ -20,8 +20,10 @@ internal object MihonExtensionPackageUtil {
 	const val EXTENSION_FEATURE = "tachiyomi.extension"
 	const val METADATA_SOURCE_CLASS = "tachiyomi.extension.class"
 	const val METADATA_SOURCE_FACTORY = "tachiyomi.extension.factory"
-	const val LIB_VERSION_MIN = 1.2
-	const val LIB_VERSION_MAX = 1.9
+	const val METADATA_EXTENSION_LIB = "tachiyomix.extensionLib"
+	const val METADATA_CONTENT_WARNING = "tachiyomix.contentWarning"
+	const val LIB_VERSION_MIN = 1.4
+	const val LIB_VERSION_MAX = 1.6
 
 	private val scanFlags = PackageManager.GET_META_DATA or PackageManager.GET_CONFIGURATIONS
 
@@ -95,6 +97,58 @@ internal object MihonExtensionPackageUtil {
 				}
 			}
 		}.getOrNull()
+	}
+
+	/**
+	 * Reads the TachiyomiX 1.6+ `tachiyomix.extensionLib` manifest metadata if present, otherwise
+	 * falls back to parsing the leading `major.minor` of `versionName` (extensions-lib 1.4/1.5).
+	 * The metadata value is read type-tolerantly because Android's `Bundle` narrows manifest
+	 * `android:value="1.6"` to a Float and older manifest-toolchains can emit Double/String.
+	 */
+	fun readLibVersion(metaData: android.os.Bundle?, versionName: String?): Double? {
+		metaData?.get(METADATA_EXTENSION_LIB)?.let { raw ->
+			val parsed = when (raw) {
+				is Float -> raw.toDouble().takeUnless { it == 0.0 }
+				is Double -> raw.takeUnless { it == 0.0 }
+				is Number -> raw.toDouble().takeUnless { it == 0.0 }
+				is String -> raw.toDoubleOrNull()?.takeUnless { it == 0.0 }
+				else -> null
+			}
+			if (parsed != null) {
+				return parsed
+			}
+		}
+		return parseLibVersion(versionName)
+	}
+
+	fun isSupportedLibVersion(libVersion: Double): Boolean {
+		return libVersion in LIB_VERSION_MIN..LIB_VERSION_MAX
+	}
+
+	/**
+	 * TachiyomiX 1.6+ NSFW/content-warning flag read: `tachiyomix.contentWarning` is the Int enum
+	 * (UNSPECIFIED=0, SAFE=1, MIXED=2, NSFW=3) where MIXED and NSFW gate, OR'd with the legacy
+	 * `tachiyomi.extension.nsfw` flag which has been emitted as Int, Boolean and "1"/"true" strings.
+	 */
+	fun readNsfwFlag(metaData: android.os.Bundle): Boolean {
+		if (runCatching { metaData.getInt(METADATA_CONTENT_WARNING, 0) > 0 }.getOrDefault(false)) {
+			return true
+		}
+		val legacy = metaData.get("tachiyomi.extension.nsfw")
+		return when (legacy) {
+			is Boolean -> legacy
+			is Number -> legacy.toInt() != 0
+			is String -> legacy == "1" || legacy.equals("true", ignoreCase = true)
+			else -> false
+		}
+	}
+
+	fun readContentWarning(metaData: android.os.Bundle): Int {
+		return runCatching { metaData.getInt(METADATA_CONTENT_WARNING, 0) }.getOrDefault(0)
+	}
+
+	fun readCustomName(metaData: android.os.Bundle): String? {
+		return metaData.getString("tachiyomix.name")?.takeIf { it.isNotBlank() }
 	}
 
 	fun resolveEntryClassName(packageName: String, className: String): String {

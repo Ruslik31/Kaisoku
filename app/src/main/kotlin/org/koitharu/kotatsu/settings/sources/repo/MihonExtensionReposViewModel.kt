@@ -81,13 +81,15 @@ class MihonExtensionReposViewModel @Inject constructor(
 		val candidate = HTTP_URL_REGEX.find(value)?.value ?: value.trim()
 		val normalized = candidate.trim().trimEnd('/', '.', ',', ';', ':', ')', ']')
 		return when (normalized.substringBefore('?').removeSuffix("/")) {
-			KEIYOUSHI_ADD_REPO_URL -> SUGGESTED_REPO_URL
+			KEIYOUSHI_ADD_REPO_URL, SUGGESTED_REPO_LEGACY_URL -> SUGGESTED_REPO_URL
 			else -> normalized
 		}
 	}
 
 	companion object {
 		const val SUGGESTED_REPO_URL =
+			"https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.json"
+		private const val SUGGESTED_REPO_LEGACY_URL =
 			"https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json"
 		private const val CONTENT_STOP_TIMEOUT_MS = 5000L
 		private const val KEIYOUSHI_ADD_REPO_URL = "https://keiyoushi.github.io/add-repo"

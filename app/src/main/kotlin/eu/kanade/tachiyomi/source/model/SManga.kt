@@ -2,6 +2,7 @@
 
 package eu.kanade.tachiyomi.source.model
 
+import kotlinx.serialization.json.JsonObject
 import java.io.Serializable
 
 /**
@@ -29,6 +30,11 @@ interface SManga : Serializable {
     var update_strategy: UpdateStrategy
 
     var initialized: Boolean
+
+    /**
+     * Source-private metadata container added in tachiyomix 1.6.
+     */
+    var memo: JsonObject
 
     fun getGenres(): List<String>? {
         if (genre.isNullOrBlank()) return null
@@ -87,4 +93,6 @@ class SMangaImpl : SManga {
     override var update_strategy: UpdateStrategy = UpdateStrategy.ALWAYS_UPDATE
 
     override var initialized: Boolean = false
+
+    override var memo: JsonObject = JsonObject(emptyMap())
 }

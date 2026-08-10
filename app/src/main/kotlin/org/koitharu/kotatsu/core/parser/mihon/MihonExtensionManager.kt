@@ -107,11 +107,8 @@ class MihonExtensionManager @Inject constructor(
 			?: metaData.getString(MihonExtensionPackageUtil.METADATA_SOURCE_FACTORY)
 			?: return emptyList()
 		val apkPath = appInfo.sourceDir ?: return emptyList()
-		val libVersion = MihonExtensionPackageUtil.parseLibVersion(completeInfo.versionName)
-		if (libVersion != null &&
-			(libVersion < MihonExtensionPackageUtil.LIB_VERSION_MIN ||
-				libVersion > MihonExtensionPackageUtil.LIB_VERSION_MAX)
-		) {
+		val libVersion = MihonExtensionPackageUtil.readLibVersion(metaData, completeInfo.versionName)
+		if (libVersion != null && !MihonExtensionPackageUtil.isSupportedLibVersion(libVersion)) {
 			Log.i(TAG, "Skipping ${completeInfo.packageName}: unsupported lib version $libVersion")
 			return emptyList()
 		}

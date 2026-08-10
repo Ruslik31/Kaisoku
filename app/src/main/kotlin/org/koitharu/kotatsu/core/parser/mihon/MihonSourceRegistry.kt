@@ -29,6 +29,12 @@ object MihonSourceRegistry {
 
 	fun resolveSource(source: MihonMangaSource): MihonMangaSource? = definitions[source.name]
 
+	fun resolveSource(name: String): MihonMangaSource? = definitions[name]
+
+	fun findByPackageName(packageName: String): List<MihonMangaSource> {
+		return definitions.values.filter { it.packageName == packageName }
+	}
+
 	fun rememberPageHeaders(source: MangaSource, pageUrl: String, headers: Headers) {
 		if (headers.size == 0) {
 			return

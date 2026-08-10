@@ -2,6 +2,7 @@
 
 package eu.kanade.tachiyomi.source.model
 
+import kotlinx.serialization.json.JsonObject
 import java.io.Serializable
 
 /**
@@ -19,6 +20,11 @@ interface SChapter : Serializable {
     var chapter_number: Float
 
     var scanlator: String?
+
+    /**
+     * Source-private metadata container added in tachiyomix 1.6.
+     */
+    var memo: JsonObject
 
     fun copyFrom(other: SChapter) {
         name = other.name
@@ -49,4 +55,6 @@ class SChapterImpl : SChapter {
     override var chapter_number: Float = -1f
 
     override var scanlator: String? = null
+
+    override var memo: JsonObject = JsonObject(emptyMap())
 }

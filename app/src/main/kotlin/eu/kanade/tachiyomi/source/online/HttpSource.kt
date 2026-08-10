@@ -284,5 +284,13 @@ abstract class HttpSource : CatalogueSource {
 
     open fun prepareNewChapter(chapter: SChapter, manga: SManga) {}
 
+    /**
+     * The source's home URL used by "Open in WebView" / sharing.
+     * Defaults to [baseUrl]; sources built around a non-browsable endpoint can override it.
+     *
+     * @since tachiyomix 1.6
+     */
+    open fun getHomeUrl(): String = baseUrl
+
     override fun getFilterList() = FilterList()
 }

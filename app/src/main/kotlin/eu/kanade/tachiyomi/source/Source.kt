@@ -1,8 +1,10 @@
 package eu.kanade.tachiyomi.source
 
+import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import rx.Observable
 
 /**
@@ -59,6 +61,62 @@ interface Source {
     @Suppress("DEPRECATION")
     suspend fun getPageList(chapter: SChapter): List<Page> {
         return fetchPageList(chapter).toBlocking().first()
+    }
+
+    // ======== TachiyomiX 1.6 additions (additive; default-delegate to the 1.4/1.5 fetch* API) ========
+
+    /**
+     * Get a page with a list of manga.
+     *
+     * @since tachiyomix 1.6
+     */
+    @Suppress("DEPRECATION")
+    suspend fun getPopularManga(page: Int): eu.kanade.tachiyomi.source.model.MangasPage {
+        throw IllegalStateException("Not used")
+    }
+
+    /**
+     * Get a page with a list of latest manga updates.
+     *
+     * @since tachiyomix 1.6
+     */
+    suspend fun getLatestUpdates(page: Int): eu.kanade.tachiyomi.source.model.MangasPage {
+        throw IllegalStateException("Not used")
+    }
+
+    /**
+     * Get a page with a list of manga matching a query + filters.
+     *
+     * @since tachiyomi 1.6
+     */
+    suspend fun getSearchManga(
+        page: Int,
+        query: String,
+        filters: FilterList,
+    ): eu.kanade.tachiyomi.source.model.MangasPage {
+        throw IllegalStateException("Not used")
+    }
+
+    /**
+     * Returns the list of filters for the source. Moved up from CatalogueSource in tachiyomix 1.6.
+     */
+    fun getFilterList(): FilterList = FilterList()
+
+    /**
+     * Combined "update" for a manga: fetches details and/or chapters.
+     *
+     * @since tachiyomix 1.6
+     */
+    @Suppress("DEPRECATION")
+    suspend fun getMangaUpdate(
+        manga: SManga,
+        chapters: List<SChapter>,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+    ): SMangaUpdate {
+        val updatedManga = if (fetchDetails) getMangaDetails(manga) else manga
+        val updatedChapters = if (fetchChapters) getChapterList(manga) else chapters
+        return SMangaUpdate(updatedManga, updatedChapters)
     }
 
     @Deprecated(
