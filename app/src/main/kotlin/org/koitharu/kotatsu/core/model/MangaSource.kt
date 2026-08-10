@@ -53,6 +53,15 @@ fun MangaSource(name: String?): MangaSource {
 			sourceId = parts.second.toLongOrNull() ?: return UnknownMangaSource,
 		)
 	}
+	if (name.startsWith(MihonMangaSource.TACHI_IDENTIFIER_PREFIX)) {
+		val packageName = name.substringAfter('_')
+		val match = org.koitharu.kotatsu.core.parser.mihon.MihonSourceRegistry
+			.findByPackageName(packageName).firstOrNull()
+		if (match != null) {
+			return match
+		}
+		return MihonMangaSource(packageName = packageName, sourceId = -1)
+	}
 	if (name.startsWith(CustomMangaSource.NAME_PREFIX)) {
 		val id = CustomMangaSource.extractId(name)
 		val cs = id?.let { CustomSourcesRepository.peekById(it) }
@@ -109,6 +118,22 @@ fun MangaSource.getLocale(): Locale? = when (val source = unwrap()) {
 	is MangaParserSource -> source.locale.toLocaleOrNull()
 	is PluginMangaSource -> source.locale.toLocaleOrNull()
 	is MihonMangaSource -> source.resolved().locale?.toLocaleOrNull()
+	else -> null
+}
+
+/**
+ * True when this source is provided by an *external* plugin/extension rather than by the app:
+ * the Content-Provider plugin flow (ExternalMangaSource) or the in-app Mihon bridge (MihonMangaSource).
+ * Such sources have scrobble/control surfaces that live outside standard source-settings patterns.
+ */
+fun MangaSource.isExternalSource(): Boolean = when (unwrap()) {
+	is ExternalMangaSource, is MihonMangaSource -> true
+	else -> false
+}
+
+fun MangaSource.externalPackageName(): String? = when (val source = unwrap()) {
+	is ExternalMangaSource -> source.packageName
+	is MihonMangaSource -> source.packageName
 	else -> null
 }
 

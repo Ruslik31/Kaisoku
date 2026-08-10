@@ -6,6 +6,7 @@ import androidx.collection.ArrayMap
 import dagger.hilt.android.qualifiers.ApplicationContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.MangaSourceInfo
@@ -72,6 +73,31 @@ interface MangaRepository {
 		.cacheControl(CommonHeaders.CACHE_CONTROL_NO_STORE)
 		.tag(MangaSource::class.java, page.source)
 		.build()
+
+	/**
+	 * Builds the page Request the downloader will fire for [page]; uses [getPageUrl] unless this
+	 * repository has a cheaper in-memory path (e.g. a cached `Page` for a Mihon extension).
+	 */
+	/**
+	 * Resolves and fetches the canonical page bytes through the image-proxy connector (when one is
+	 * set up), mirroring `ImageProxyInterceptor.interceptPageRequest`.
+	 */
+	suspend fun getPageResponse(
+		page: MangaPage,
+		okHttp: OkHttpClient,
+		imageProxyInterceptor: org.koitharu.kotatsu.core.network.imageproxy.ImageProxyInterceptor,
+	): Response {
+		return imageProxyInterceptor.interceptPageRequest(getPageRequest(page), okHttp)
+	}
+
+	suspend fun getPageRequest(page: MangaPage): Request = createPageRequest(getPageUrl(page), page)
+
+	/**
+	 * Source-defined filter/search UI descriptors surfaced at the list root (e.g. the TsukiMix-style
+	 * `filter` map for Mihon extensions, or `SetupFields` for Content-Provider plugins).
+	 * `null` when the source doesn't declare any.
+	 */
+	suspend fun getExternalFilters(): Any? = null
 
 	suspend fun find(manga: Manga): Manga? {
 		val list = getList(0, SortOrder.RELEVANCE, MangaListFilter(query = manga.title))
