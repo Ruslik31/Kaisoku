@@ -135,6 +135,11 @@ abstract class BasePageHolder<B : ViewBinding>(
 
 	fun bind(data: ReaderPage) {
 		boundData = data
+		// Free the previous page before requesting the next — SubsamplingScaleImageView keeps its
+		// decoded tiles and bitmap until recycle(), so rapid paging would otherwise hold two
+		// full sets of page pixels and displayed frames for +1 frame, reproducing the visual
+		// "page glitch" Usagi fixed in 0.0.32-beta2+ via the same call at this same point.
+		ssiv.recycle()
 		ssiv.isVisible = true
 		animatedView?.isVisible = false
 		animatedView?.disposeImage()
