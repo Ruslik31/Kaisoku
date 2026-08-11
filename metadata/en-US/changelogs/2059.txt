@@ -1,0 +1,5 @@
+- Restored Keiyoushi/Mihon extension compatibility (TachiyomiX 1.6)
+- Hardened Cloudflare handling for external extensions
+- Added and refreshed manga sources
+- Fixed DesuMe, ExHentai and Kagane sources
+- Fixed in-flight image request handling on detach
