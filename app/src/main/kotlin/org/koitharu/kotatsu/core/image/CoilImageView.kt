@@ -75,6 +75,13 @@ open class CoilImageView @JvmOverloads constructor(
 	val isFailed: Boolean
 		get() = CoilUtils.result(this) is ErrorResult
 
+	override fun onDetachedFromWindow() {
+		super.onDetachedFromWindow()
+		currentRequest?.job?.cancel()
+		networkWaitingJob?.cancel()
+		networkWaitingJob = null
+	}
+
 	init {
 		context.withStyledAttributes(attrs, R.styleable.CoilImageView, defStyleAttr) {
 			allowRgb565 = getBoolean(R.styleable.CoilImageView_allowRgb565, allowRgb565)
