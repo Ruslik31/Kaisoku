@@ -70,10 +70,12 @@ class FeedViewModel @Inject constructor(
 	@Suppress("USELESS_CAST")
 	val content = combine(
 		observeHeader(),
-		quickFilter.appliedOptions,
 		combine(limit, quickFilter.appliedOptions.combineWithSettings(), ::Pair)
 			.flatMapLatest { repository.observeTrackingLog(it.first, it.second) },
-	) { header, filters, list ->
+	) { header, list ->
+		// Read at map time rather than combined in: the query above already re-runs on every filter
+		// change, so a second input would render the chips one frame ahead of their results.
+		val filters = quickFilter.appliedOptions.value
 		val result = ArrayList<ListModel>((list.size * 1.4).toInt().coerceAtLeast(3))
 		quickFilter.filterItem(filters)?.let(result::add)
 		if (header != null) {

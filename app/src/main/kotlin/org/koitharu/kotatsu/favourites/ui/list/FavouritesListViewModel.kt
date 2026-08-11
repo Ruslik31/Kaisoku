@@ -80,11 +80,13 @@ class FavouritesListViewModel @Inject constructor(
 
 	override val content = combine(
 		observeFavorites(),
-		quickFilter.appliedOptions,
 		observeListModeWithTriggers(),
 		refreshTrigger,
-	) { list, filters, mode, _ ->
-		list.mapList(mode, filters)
+	) { list, mode, _ ->
+		// Filters are read at map time rather than combined in: observeFavorites() already re-queries on
+		// every filter change, so a second input on the same flow would render the chips one frame ahead
+		// of their results.
+		list.mapList(mode, quickFilter.appliedOptions.value)
 	}.distinctUntilChanged().onEach {
 		isPaginationReady.set(true)
 	}.catch {

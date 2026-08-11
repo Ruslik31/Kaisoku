@@ -93,17 +93,15 @@ class HistoryListViewModel @Inject constructor(
 	override val content = MutableStateFlow<List<ListModel>>(listOf(LoadingState))
 
 	init {
-		val appliedFilters = quickFilter.appliedOptions
 		val history = observeHistoryFlow(
 			sortOrder = sortOrder,
-			filters = appliedFilters.combineWithSettings(),
+			filters = quickFilter.appliedOptions.combineWithSettings(),
 			limit = limit,
 			repository = repository,
 			isPaginationReady = isPaginationReady,
 		)
 		val contentState = content
 		contentJob = createHistoryContentFlow(
-			appliedFilters = appliedFilters,
 			history = history,
 			isGroupingEnabled = isGroupingEnabled,
 			listMode = observeListModeWithTriggers(),
@@ -185,7 +183,6 @@ private fun observeHistoryFlow(
 }.flattenLatest()
 
 private fun createHistoryContentFlow(
-	appliedFilters: Flow<Set<ListFilterOption>>,
 	history: Flow<List<MangaWithHistory>>,
 	isGroupingEnabled: Flow<Boolean>,
 	listMode: Flow<ListMode>,
@@ -195,18 +192,23 @@ private fun createHistoryContentFlow(
 	mangaListMapper: MangaListMapper,
 	isPaginationReady: AtomicBoolean,
 ): Flow<List<ListModel>> = org.koitharu.kotatsu.core.util.ext.combine(
-	appliedFilters,
 	history,
 	isGroupingEnabled,
 	listMode,
 	isIncognito,
 	sortOrder,
-) { filters, list, grouped, mode, incognito, order ->
+	// Extra marker flow kept to satisfy the six-input combine's arity: it's never read for data,
+	// but without it the type machinery lands on the five-flow swift overload.
+	kotlinx.coroutines.flow.flowOf(Unit),
+) { list, grouped, mode, incognito, order, _ ->
+	// Filters are read at map time, not combined in: the history query above already re-runs on
+	// every filter change, so adding them to the combine too would render the chips one frame
+	// ahead of their results.
 	mapHistoryContent(
 		list = list,
 		grouped = grouped,
 		mode = mode,
-		filters = filters,
+		filters = quickFilter.appliedOptions.value,
 		isIncognito = incognito,
 		sortOrder = order,
 		quickFilter = quickFilter,
