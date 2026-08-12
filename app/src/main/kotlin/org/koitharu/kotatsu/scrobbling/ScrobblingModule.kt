@@ -42,7 +42,7 @@ object ScrobblingModule {
 		@ScrobblerType(ScrobblerService.SHIKIMORI) storage: ScrobblerStorage,
 	): OkHttpClient = baseHttpClient.newBuilder().apply {
 		authenticator(authenticator)
-		addInterceptor(ShikimoriInterceptor(storage))
+		addInterceptor(ShikimoriInterceptor { storage.accessToken })
 	}.build()
 
 	@Provides
@@ -54,7 +54,7 @@ object ScrobblingModule {
 		@ScrobblerType(ScrobblerService.MAL) storage: ScrobblerStorage,
 	): OkHttpClient = baseHttpClient.newBuilder().apply {
 		authenticator(authenticator)
-		addInterceptor(MALInterceptor(storage))
+		addInterceptor(MALInterceptor { storage.accessToken })
 	}.build()
 
 	@Provides
@@ -66,7 +66,7 @@ object ScrobblingModule {
 		@ScrobblerType(ScrobblerService.ANILIST) storage: ScrobblerStorage,
 	): OkHttpClient = baseHttpClient.newBuilder().apply {
 		authenticator(authenticator)
-		addInterceptor(AniListInterceptor(storage))
+		addInterceptor(AniListInterceptor { storage.accessToken })
 	}.build()
 
 	@Provides
