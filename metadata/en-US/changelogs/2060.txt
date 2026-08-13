@@ -1,0 +1,4 @@
+- Fixed installed extensions disappearing from the catalog (float lib-version precision)
+- Fixed tracker login via browser OAuth
+- Fixed a tracker response leak
+- Added and refreshed manga sources
