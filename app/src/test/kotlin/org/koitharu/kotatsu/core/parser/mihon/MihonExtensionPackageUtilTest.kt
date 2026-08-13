@@ -33,4 +33,19 @@ class MihonExtensionPackageUtilTest {
         assertNull(MihonExtensionPackageUtil.parseLibVersion(""))
         assertNull(MihonExtensionPackageUtil.parseLibVersion("abc"))
     }
+
+    @Test
+    fun floatWidenedLibVersionsRoundIntoSupportedWindow() {
+        // Android stores `android:value="1.4"` / `"="1.6"` manifest meta-data as Float; widening a
+        // Float to Double drops precision (1.4f -> 1.399999976158142), which previously fell outside
+        // the 1.4..1.6 window and silently skipped the TachiyomiX extensions readLibVersion targets.
+        val minExact = 1.4f.toDouble()
+        val maxExact = 1.6f.toDouble()
+        assertFalse(MihonExtensionPackageUtil.isSupportedLibVersion(minExact))
+        assertFalse(MihonExtensionPackageUtil.isSupportedLibVersion(maxExact))
+        assertEquals(1.4, MihonExtensionPackageUtil.roundToOneDecimal(minExact), 0.001)
+        assertEquals(1.6, MihonExtensionPackageUtil.roundToOneDecimal(maxExact), 0.001)
+        assertTrue(MihonExtensionPackageUtil.isSupportedLibVersion(MihonExtensionPackageUtil.roundToOneDecimal(minExact)))
+        assertTrue(MihonExtensionPackageUtil.isSupportedLibVersion(MihonExtensionPackageUtil.roundToOneDecimal(maxExact)))
+    }
 }

@@ -9,6 +9,7 @@ import androidx.core.content.pm.PackageInfoCompat
 import java.io.File
 import java.security.MessageDigest
 import java.util.Locale
+import kotlin.math.roundToInt
 
 internal data class MihonInstalledExtensionPackage(
 	val packageInfo: PackageInfo,
@@ -99,6 +100,8 @@ internal object MihonExtensionPackageUtil {
 		}.getOrNull()
 	}
 
+	internal fun roundToOneDecimal(value: Double): Double = (value * 10.0).roundToInt() / 10.0
+
 	/**
 	 * Reads the TachiyomiX 1.6+ `tachiyomix.extensionLib` manifest metadata if present, otherwise
 	 * falls back to parsing the leading `major.minor` of `versionName` (extensions-lib 1.4/1.5).
@@ -108,10 +111,10 @@ internal object MihonExtensionPackageUtil {
 	fun readLibVersion(metaData: android.os.Bundle?, versionName: String?): Double? {
 		metaData?.get(METADATA_EXTENSION_LIB)?.let { raw ->
 			val parsed = when (raw) {
-				is Float -> raw.toDouble().takeUnless { it == 0.0 }
-				is Double -> raw.takeUnless { it == 0.0 }
-				is Number -> raw.toDouble().takeUnless { it == 0.0 }
-				is String -> raw.toDoubleOrNull()?.takeUnless { it == 0.0 }
+				is Float -> roundToOneDecimal(raw.toDouble()).takeUnless { it == 0.0 }
+				is Double -> roundToOneDecimal(raw).takeUnless { it == 0.0 }
+				is Number -> roundToOneDecimal(raw.toDouble()).takeUnless { it == 0.0 }
+				is String -> roundToOneDecimal(raw.toDoubleOrNull() ?: return@let null).takeUnless { it == 0.0 }
 				else -> null
 			}
 			if (parsed != null) {
