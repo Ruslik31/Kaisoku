@@ -154,7 +154,7 @@ android {
 
     defaultConfig {
 		applicationId 'io.github.glitch228.kaisoku'
-		minSdk = 23
+		minSdk = 26
 		targetSdk = 36
 		versionCode = 2060
 		versionName = '9.8.3-beta3'
