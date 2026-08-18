@@ -559,6 +559,10 @@ class ReaderViewModel @Inject constructor(
             }) {
             return
         }
+        // Block scroll callbacks during initial load (prevents stale positions from overwriting restored state)
+        if (loadingJob?.isActive == true) {
+            return
+        }
         readingState.update { cs ->
             if (cs?.chapterId == chapterId && cs.page == page) {
                 cs.copy(scroll = offset)
@@ -579,6 +583,10 @@ class ReaderViewModel @Inject constructor(
         if (synchronized(contentStateLock) {
                 pendingReaderReplacement != null || !lifecycleStateGuard.canCommitUiState()
             }) {
+            return
+        }
+        // Block scroll callbacks during initial load (prevents stale positions from overwriting restored state)
+        if (loadingJob?.isActive == true) {
             return
         }
         lastScrollProgress = scrollProgress
