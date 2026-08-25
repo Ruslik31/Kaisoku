@@ -129,6 +129,7 @@ class ReaderViewModel @Inject constructor(
     private val intent = MangaIntent(savedStateHandle)
 
     private var loadingJob: Job? = null
+    private var preloadJob: Job? = null
     private var pageSaveJob: Job? = null
     private var bookmarkJob: Job? = null
     private var stateChangeJob: Job? = null
@@ -559,7 +560,8 @@ class ReaderViewModel @Inject constructor(
             }) {
             return
         }
-        // Block scroll callbacks during initial load (prevents stale positions from overwriting restored state)
+        // Block scroll callbacks during initial load / chapter switch (prevents stale positions from overwriting restored state)
+        // Preloads use a separate job and do not block position updates.
         if (loadingJob?.isActive == true) {
             return
         }
@@ -585,7 +587,8 @@ class ReaderViewModel @Inject constructor(
             }) {
             return
         }
-        // Block scroll callbacks during initial load (prevents stale positions from overwriting restored state)
+        // Block scroll callbacks during initial load / chapter switch (prevents stale positions from overwriting restored state)
+        // Preloads use a separate job and do not block position updates.
         if (loadingJob?.isActive == true) {
             return
         }
@@ -769,8 +772,8 @@ class ReaderViewModel @Inject constructor(
 
     @AnyThread
     private fun loadPrevNextChapter(currentId: Long, isNext: Boolean) {
-        val prevJob = loadingJob
-        loadingJob = launchLoadingJob(Dispatchers.Default) {
+        val prevJob = preloadJob
+        preloadJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.join()
             chaptersLoader.loadPrevNextChapter(mangaDetails.requireValue(), currentId, isNext)
             replaceContent(ReaderContent(chaptersLoader.snapshot(), null))
