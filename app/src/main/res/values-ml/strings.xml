@@ -25,4 +25,5 @@
     <string name="passwords_mismatch">പൊരുത്തപ്പെടാത്ത പാസ്‌വേഡുകൾ</string>
     <string name="password_length_hint">പാസ്‌വേഡിൽ കുറഞ്ഞത് നാലു അക്ഷരങ്ങൾ ഉണ്ടായിരിക്കണം</string>
     <string name="welcome">സ്വാഗതം</string>
+    <string name="ocr_no_text">ഒരു വാചകവും കണ്ടെത്തിയില്ല.</string>
 </resources>
