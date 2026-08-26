@@ -24,6 +24,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.browsersource.ui.BrowserSourceActivity
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.parser.external.ExternalMangaSource
 import org.koitharu.kotatsu.core.ui.BaseFragment
@@ -205,6 +206,8 @@ class ExploreFragment :
 		menu.findItem(R.id.action_disable)?.isVisible = !viewModel.isAllSourcesEnabled.value &&
 			selectedSources.all { it.mangaSource is MangaParserSource }
 		menu.findItem(R.id.action_delete)?.isVisible = selectedSources.all { it.mangaSource is ExternalMangaSource }
+		menu.findItem(R.id.action_mark_nsfw)?.isVisible = selectedSources.any { !it.isNsfw() }
+		menu.findItem(R.id.action_unmark_nsfw)?.isVisible = selectedSources.all { it.isNsfw() }
 		return super.onPrepareActionMode(controller, mode, menu)
 	}
 
@@ -245,6 +248,16 @@ class ExploreFragment :
 
 			R.id.action_unpin -> {
 				viewModel.setSourcesPinned(selectedSources, isPinned = false)
+				mode?.finish()
+			}
+
+			R.id.action_mark_nsfw -> {
+				viewModel.setSourcesNsfw(selectedSources, isNsfw = true)
+				mode?.finish()
+			}
+
+			R.id.action_unmark_nsfw -> {
+				viewModel.setSourcesNsfw(selectedSources, isNsfw = false)
 				mode?.finish()
 			}
 

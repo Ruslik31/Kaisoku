@@ -14,4 +14,6 @@ interface SourceConfigListener : OnTipCloseListener<SourceConfigItem.Tip> {
 	fun onItemPinClick(item: SourceConfigItem.SourceItem)
 
 	fun onItemEnabledChanged(item: SourceConfigItem.SourceItem, isEnabled: Boolean)
+
+	fun onItemNsfwClick(item: SourceConfigItem.SourceItem)
 }

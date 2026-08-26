@@ -800,6 +800,13 @@
     <string name="source_unpinned">Source unpinned</string>
     <string name="sources_unpinned">Sources unpinned</string>
     <string name="sources_pinned">Sources pinned</string>
+    <string name="mark_as_nsfw">Mark as NSFW</string>
+    <string name="unmark_as_nsfw">Unmark as NSFW</string>
+    <string name="source_marked_nsfw">Source marked as NSFW</string>
+    <string name="source_unmarked_nsfw">Source unmarked as NSFW</string>
+    <string name="sources_marked_nsfw">Sources marked as NSFW</string>
+    <string name="sources_unmarked_nsfw">Sources unmarked as NSFW</string>
+    <string name="nsfw_source_summary">Mark this source as NSFW regardless of its own rating</string>
     <string name="recent_sources">Recent sources</string>
     <string name="percent_read">Percent read</string>
     <string name="percent_left">Percent left</string>

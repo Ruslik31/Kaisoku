@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.settings.sources.model
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import org.koitharu.kotatsu.core.model.hasNsfwOverride
 import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.parsers.model.MangaSource
@@ -19,6 +20,10 @@ sealed interface SourceConfigItem : ListModel {
 
 		val isNsfw: Boolean
 			get() = source.isNsfw()
+
+		/** True when [isNsfw] comes from a manual mark rather than the source's own rating. */
+		val hasNsfwOverride: Boolean
+			get() = source.hasNsfwOverride()
 
 		override fun areItemsTheSame(other: ListModel): Boolean {
 			return other is SourceItem && other.source == source

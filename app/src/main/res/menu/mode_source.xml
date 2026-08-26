@@ -29,6 +29,18 @@
 		app:showAsAction="ifRoom|withText" />
 
 	<item
+		android:id="@+id/action_mark_nsfw"
+		android:icon="@drawable/ic_nsfw"
+		android:title="@string/mark_as_nsfw"
+		app:showAsAction="ifRoom|withText" />
+
+	<item
+		android:id="@+id/action_unmark_nsfw"
+		android:icon="@drawable/ic_nsfw"
+		android:title="@string/unmark_as_nsfw"
+		app:showAsAction="ifRoom|withText" />
+
+	<item
 		android:id="@+id/action_shortcut"
 		android:icon="@drawable/ic_shortcut"
 		android:title="@string/create_shortcut"

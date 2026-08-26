@@ -85,12 +85,14 @@ private fun showSourceMenu(
 	menu.menu.findItem(R.id.action_pin)?.isVisible = item.isEnabled
 	menu.menu.findItem(R.id.action_pin)?.isChecked = item.isPinned
 	menu.menu.findItem(R.id.action_lift)?.isVisible = item.isDraggable
+	menu.menu.findItem(R.id.action_mark_nsfw)?.isChecked = item.isNsfw
 	menu.setOnMenuItemClickListener {
 		when (it.itemId) {
 			R.id.action_settings -> listener.onItemSettingsClick(item)
 			R.id.action_lift -> listener.onItemLiftClick(item)
 			R.id.action_shortcut -> listener.onItemShortcutClick(item)
 			R.id.action_pin -> listener.onItemPinClick(item)
+			R.id.action_mark_nsfw -> listener.onItemNsfwClick(item)
 		}
 		true
 	}
