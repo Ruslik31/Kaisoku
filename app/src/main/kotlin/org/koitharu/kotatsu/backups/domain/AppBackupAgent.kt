@@ -53,6 +53,7 @@ class AppBackupAgent : BackupAgent() {
 					db = MangaDatabase(context = applicationContext),
 					settings = AppSettings(applicationContext),
 					mihonExtensionManager = backupEntryPoint.mihonExtensionManager,
+					nsfwOverridesLoader = backupEntryPoint.nsfwOverridesLoader,
 				),
 				savedFiltersRepository = SavedFiltersRepository(
 					context = applicationContext,
@@ -87,6 +88,7 @@ class AppBackupAgent : BackupAgent() {
 						db = MangaDatabase(context = applicationContext),
 						settings = AppSettings(applicationContext),
 						mihonExtensionManager = backupEntryPoint.mihonExtensionManager,
+						nsfwOverridesLoader = backupEntryPoint.nsfwOverridesLoader,
 					),
 					savedFiltersRepository = SavedFiltersRepository(
 						context = applicationContext,
