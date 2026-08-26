@@ -163,15 +163,16 @@ class MihonExtensionManager @Inject constructor(
 					Log.w(TAG, "Ignoring non-catalogue Mihon source ${source.javaClass.name}")
 					return@mapNotNull null
 				}
-				// Mihon's manifest flag is extension-wide, not source-wide.
-				// Treating it as a hard source NSFW bit hides mixed catalogues such as MangaDex
-				// from Kaisoku when "Disable NSFW" is enabled.
+				// Mihon's manifest flag is extension-wide, not source-wide, so it can be wrong
+				// for mixed catalogues (e.g. an NSFW-flagged extension shipping a safe source).
+				// A manual per-source override (NsfwSourceOverrides) always takes precedence
+				// over this inherited value.
 				val wrapper = MihonMangaSource(
 					packageName = completeInfo.packageName,
 					sourceId = catalogueSource.id,
 					displayName = catalogueSource.name,
 					locale = catalogueSource.lang.takeIf { it.isNotBlank() },
-					isNsfwSource = false,
+					isNsfwSource = MihonExtensionPackageUtil.readNsfwFlag(metaData),
 				)
 				MihonSourceRegistry.register(
 					sourceInstance = catalogueSource,

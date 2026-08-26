@@ -6,6 +6,7 @@ import org.koitharu.kotatsu.parsers.model.MangaSource
 data class ExternalMangaSource(
 	val packageName: String,
 	val authority: String,
+	val isNsfwSource: Boolean = false,
 ) : MangaSource {
 
 	override val name: String
