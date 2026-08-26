@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.db.entity.MangaSourceEntity
+import org.koitharu.kotatsu.core.db.entity.SourceNsfwOverride
 import org.koitharu.kotatsu.explore.data.SourcesSortOrder
 import org.koitharu.kotatsu.parsers.network.CloudFlareHelper
 import org.koitharu.kotatsu.parsers.network.CloudFlareHelper.PROTECTION_CAPTCHA
@@ -58,6 +59,12 @@ abstract class MangaSourcesDao {
 	@Query("UPDATE sources SET cf_state = :state WHERE source = :source")
 	abstract suspend fun setCfState(source: String, state: Int)
 
+	@Query("SELECT source, nsfw_override FROM sources WHERE nsfw_override IS NOT NULL")
+	abstract suspend fun findAllNsfwOverrides(): List<SourceNsfwOverride>
+
+	@Query("SELECT nsfw_override FROM sources WHERE source = :source")
+	abstract fun observeNsfwOverride(source: String): Flow<Int?>
+
 	@Insert(onConflict = OnConflictStrategy.IGNORE)
 	@Transaction
 	abstract suspend fun insertIfAbsent(entries: Collection<MangaSourceEntity>)
@@ -93,6 +100,26 @@ abstract class MangaSourcesDao {
 		}
 	}
 
+	/**
+	 * @param value `null` to inherit the source's intrinsic rating, `0` to force SFW, `1` to force NSFW.
+	 */
+	@Transaction
+	open suspend fun setNsfwOverride(source: String, value: Int?) {
+		if (updateNsfwOverride(source, value) == 0) {
+			val entity = MangaSourceEntity(
+				source = source,
+				isEnabled = false,
+				sortKey = getMaxSortKey() + 1,
+				addedIn = BuildConfig.VERSION_CODE,
+				lastUsedAt = 0,
+				isPinned = false,
+				cfState = CloudFlareHelper.PROTECTION_NOT_DETECTED,
+				nsfwOverride = value,
+			)
+			upsert(entity)
+		}
+	}
+
 	fun dumpEnabled(): Flow<MangaSourceEntity> = flow {
 		val window = 10
 		var offset = 0
@@ -108,6 +135,9 @@ abstract class MangaSourcesDao {
 
 	@Query("UPDATE sources SET enabled = :isEnabled WHERE source = :source")
 	protected abstract suspend fun updateIsEnabled(source: String, isEnabled: Boolean): Int
+
+	@Query("UPDATE sources SET nsfw_override = :value WHERE source = :source")
+	protected abstract suspend fun updateNsfwOverride(source: String, value: Int?): Int
 
 	@RawQuery(observedEntities = [MangaSourceEntity::class])
 	protected abstract fun observeImpl(query: SupportSQLiteQuery): Flow<List<MangaSourceEntity>>

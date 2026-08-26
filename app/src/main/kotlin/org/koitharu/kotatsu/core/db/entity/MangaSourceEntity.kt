@@ -18,4 +18,9 @@ data class MangaSourceEntity(
 	@ColumnInfo(name = "used_at") val lastUsedAt: Long,
 	@ColumnInfo(name = "pinned") val isPinned: Boolean,
 	@ColumnInfo(name = "cf_state") val cfState: Int,
+	/**
+	 * Manual NSFW override: `null` inherits the source's intrinsic rating,
+	 * `0` forces SFW, `1` forces NSFW.
+	 */
+	@ColumnInfo(name = "nsfw_override") val nsfwOverride: Int? = null,
 )
