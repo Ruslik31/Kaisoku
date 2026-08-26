@@ -83,13 +83,31 @@ fun MangaSource(name: String?): MangaSource {
 
 fun Collection<String>.toMangaSources() = map(::MangaSource)
 
-fun MangaSource.isNsfw(): Boolean = when (this) {
-	is MangaSourceInfo -> mangaSource.isNsfw()
-	is MangaParserSource -> contentType == ContentType.HENTAI
-	is PluginMangaSource -> contentType == ContentType.HENTAI
-	is MihonMangaSource -> resolved().isNsfwSource
+/**
+ * Effective NSFW state of a source: a manual override if the user set one, the intrinsic
+ * rating otherwise.
+ */
+fun MangaSource.isNsfw(): Boolean {
+	val source = unwrap()
+	return NsfwSourceOverrides.peek(source.name) ?: source.intrinsicIsNsfw()
+}
+
+/**
+ * NSFW state declared by the source itself - its parser content type, or the NSFW flag of the
+ * extension/plugin providing it. Ignores any manual override.
+ */
+fun MangaSource.intrinsicIsNsfw(): Boolean = when (val source = unwrap()) {
+	is MangaParserSource -> source.contentType == ContentType.HENTAI
+	is PluginMangaSource -> source.contentType == ContentType.HENTAI
+	is MihonMangaSource -> source.resolved().isNsfwSource
+	is ExternalMangaSource -> source.isNsfwSource
 	else -> false
 }
+
+/**
+ * True when the user manually marked this source as NSFW or SFW, overriding [intrinsicIsNsfw].
+ */
+fun MangaSource.hasNsfwOverride(): Boolean = NsfwSourceOverrides.peek(unwrap().name) != null
 
 @get:StringRes
 val ContentType.titleResId
