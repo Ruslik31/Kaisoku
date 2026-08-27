@@ -7,6 +7,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.FormBody
@@ -31,13 +32,15 @@ import java.util.UUID
 import javax.inject.Inject
 
 private const val SCHEME_MP = "mp:"
-private const val DISCORD_OAUTH_REDIRECT_URI = "kotatsu://discord-auth"
+internal const val DISCORD_OAUTH_REDIRECT_URI = "kaisoku://discord-auth"
+private const val OAUTH_SCOPES_PRESENCE = "openid%20identify%20sdk.social_layer_presence"
+private const val OAUTH_SCOPES_BASIC = "openid%20identify"
 
 @Reusable
 class DiscordRepository @Inject constructor(
 	@ApplicationContext context: Context,
 	private val settings: AppSettings,
-	@BaseHttpClient private val httpClient: OkHttpClient,
+	@BaseHttpClient private val httpClient: dagger.Lazy<OkHttpClient>,
 ) {
 
 	private val appId = context.getString(R.string.discord_app_id)
@@ -54,7 +57,7 @@ class DiscordRepository @Inject constructor(
 			.header(CommonHeaders.AUTHORIZATION, token)
 			.post("{\"urls\":[\"${url}\"]}".toRequestBody("application/json".toMediaType()))
 			.build()
-		val body = httpClient.newCall(request).await().parseRaw()
+		val body = httpClient.get().newCall(request).await().parseRaw()
 		when (val json = Json.parseToJsonElement(body)) {
 			is JsonObject -> throw RuntimeException(json.jsonObject["message"]?.jsonPrimitive?.content)
 			is JsonArray -> {
@@ -71,13 +74,23 @@ class DiscordRepository @Inject constructor(
 
 	fun isMediaProxyUrl(url: String) = url.startsWith(SCHEME_MP)
 
-	suspend fun checkToken(token: String) {
+	suspend fun checkToken(token: String): String {
 		val request = Request.Builder()
 			.url("https://discord.com/api/v10/users/@me")
 			.header(CommonHeaders.AUTHORIZATION, token)
 			.get()
 			.build()
-		httpClient.newCall(request).await().ensureSuccess().closeQuietly()
+		val response = httpClient.get().newCall(request).await().ensureSuccess()
+		val raw = try {
+			response.parseRaw()
+		} finally {
+			response.closeQuietly()
+		}
+		return when (val json = Json.parseToJsonElement(raw)) {
+			is JsonObject -> json["global_name"]?.jsonPrimitive?.contentOrNull
+				?: json["username"]?.jsonPrimitive?.contentOrNull.orEmpty()
+			else -> throw RuntimeException("Unexpected response: $json")
+		}
 	}
 
 	// --- OAuth (sdk.social_layer_presence) path; used only when isDiscordRpcOauth is on ---
@@ -102,7 +115,7 @@ class DiscordRepository @Inject constructor(
 			.build()
 		var response: okhttp3.Response? = null
 		return try {
-			response = httpClient.newCall(request).await()
+			response = httpClient.get().newCall(request).await()
 			if (response.isSuccessful) response.parseRaw().trim() else null
 		} catch (_: Exception) {
 			null
@@ -111,30 +124,38 @@ class DiscordRepository @Inject constructor(
 		}
 	}
 
-	val oauthUrl: String
-		get() {
-			val verifier = UUID.randomUUID().toString() + UUID.randomUUID().toString()
-			settings.discordCodeVerifier = verifier
-			val challenge = generateCodeChallenge(verifier)
-			val state = UUID.randomUUID().toString()
-			return "discord://action/oauth2/authorize?client_id=$appId" +
-				"&scope=openid%20sdk.social_layer_presence" +
-				"&response_type=code" +
-				"&state=$state" +
-				"&code_challenge=$challenge" +
-				"&code_challenge_method=S256" +
-				"&redirect_uri=$DISCORD_OAUTH_REDIRECT_URI"
+	fun oauthUrl(basicScopes: Boolean = false): String {
+		val verifier = settings.discordCodeVerifier ?: run {
+			val newVerifier = UUID.randomUUID().toString() + UUID.randomUUID().toString()
+			settings.discordCodeVerifier = newVerifier
+			newVerifier
 		}
+		val challenge = generateCodeChallenge(verifier)
+		val state = UUID.randomUUID().toString()
+		return "discord://action/oauth2/authorize?client_id=$appId" +
+			"&scope=${if (basicScopes) OAUTH_SCOPES_BASIC else OAUTH_SCOPES_PRESENCE}" +
+			"&response_type=code" +
+			"&state=$state" +
+			"&code_challenge=$challenge" +
+			"&code_challenge_method=S256" +
+			"&redirect_uri=$DISCORD_OAUTH_REDIRECT_URI"
+	}
 
-	val oauthFallbackUrl: String
-		get() = "https://discord.com/oauth2/authorize?client_id=$appId" +
-			"&scope=openid%20sdk.social_layer_presence" +
+	fun oauthFallbackUrl(basicScopes: Boolean = false): String =
+		"https://discord.com/oauth2/authorize?client_id=$appId" +
+			"&scope=${if (basicScopes) OAUTH_SCOPES_BASIC else OAUTH_SCOPES_PRESENCE}" +
 			"&response_type=code&redirect_uri=$DISCORD_OAUTH_REDIRECT_URI" +
 			"&code_challenge=${generateCodeChallenge(settings.discordCodeVerifier.orEmpty())}" +
 			"&code_challenge_method=S256"
 
 	suspend fun authorize(code: String) {
-		val verifier = settings.discordCodeVerifier ?: throw IllegalStateException("Code verifier is missing")
+		val verifier = settings.discordCodeVerifier
+		if (verifier == null) {
+			if (settings.discordToken != null) {
+				return
+			}
+			throw IllegalStateException("Code verifier is missing")
+		}
 		val request = Request.Builder()
 			.url("https://discord.com/api/v10/oauth2/token")
 			.post(
@@ -146,7 +167,7 @@ class DiscordRepository @Inject constructor(
 					.add("code_verifier", verifier)
 					.build(),
 			).build()
-		val response = httpClient.newCall(request).await().ensureSuccess()
+		val response = httpClient.get().newCall(request).await().ensureSuccess()
 		val raw = try {
 			response.parseRaw()
 		} finally {
@@ -157,7 +178,9 @@ class DiscordRepository @Inject constructor(
 		val tokenType = json["token_type"]?.jsonPrimitive?.content ?: "Bearer"
 		settings.discordToken = "$tokenType $accessToken"
 		settings.discordRefreshToken = json["refresh_token"]?.jsonPrimitive?.content
+		settings.discordScopes = json["scope"]?.jsonPrimitive?.contentOrNull
 		settings.discordCodeVerifier = null
+		settings.discordLastExchangedCode = code
 	}
 
 	suspend fun refreshToken() {
@@ -171,7 +194,7 @@ class DiscordRepository @Inject constructor(
 					.add("refresh_token", refreshToken)
 					.build(),
 			).build()
-		val response = httpClient.newCall(request).await().ensureSuccess()
+		val response = httpClient.get().newCall(request).await().ensureSuccess()
 		val raw = try {
 			response.parseRaw()
 		} finally {
