@@ -7,8 +7,8 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import android.os.StrictMode
+import android.os.SystemClock
 import android.os.strictmode.Violation
-import android.os.strictmode.DiskWriteViolation
 import androidx.annotation.RequiresApi
 import androidx.core.app.PendingIntentCompat
 import androidx.core.content.getSystemService
@@ -38,6 +38,16 @@ class StrictModeNotifier(
 		nm
 	}
 
+	private val lastShown = HashMap<String, Long>()
+
+	init {
+		runCatching {
+			context.getSystemService<NotificationManager>()?.cancelAll()
+		}.onFailure {
+			it.printStackTraceDebug()
+		}
+	}
+
 	override fun onVmViolation(v: Violation) = showNotification(v)
 
 	override fun onThreadViolation(v: Violation) = showNotification(v)
@@ -45,8 +55,20 @@ class StrictModeNotifier(
 	override fun onViolation(violation: FragmentViolation) = showNotification(violation)
 
 	private fun showNotification(violation: Throwable) {
-		if (violation.isPlatformOnlyDiskWrite()) {
+		if (violation.isFrameworkOnly()) {
 			return
+		}
+		val now = SystemClock.elapsedRealtime()
+		val key = violation.message + "\n" + (violation.stackTrace.firstOrNull()?.toString().orEmpty())
+		synchronized(lastShown) {
+			val last = lastShown[key]
+			if (last != null && now - last < THROTTLE_MS) {
+				return
+			}
+			lastShown[key] = now
+			if (lastShown.size > MAX_KEYS) {
+				lastShown.clear()
+			}
 		}
 		runCatching {
 			Notification.Builder(context, CHANNEL_ID)
@@ -77,12 +99,27 @@ class StrictModeNotifier(
 		}
 	}
 
-	private fun Throwable.isPlatformOnlyDiskWrite(): Boolean {
-		return this is DiskWriteViolation && stackTrace.none { it.className.startsWith("org.koitharu.kotatsu.") }
+	private fun Throwable.isFrameworkOnly(): Boolean {
+		val frames = stackTrace
+		val ioIndex = frames.indexOfFirst {
+			it.className.startsWith("java.io.FileOutput") || it.className.startsWith("java.io.FileInput")
+		}
+		if (ioIndex in 0 until frames.size - 1) {
+			val culprit = frames[ioIndex + 1].className
+			return !(culprit.startsWith("org.koitharu.") ||
+				culprit.startsWith("okhttp3.") ||
+				culprit.startsWith("okio.") ||
+				culprit.startsWith("androidx.") ||
+				culprit.startsWith("kotlinx.") ||
+				culprit.startsWith("coil3."))
+		}
+		return frames.none { it.className.startsWith("org.koitharu.kotatsu.") }
 	}
 
 	private companion object {
 
 		const val CHANNEL_ID = "strict_mode"
+		const val THROTTLE_MS = 2_000L
+		const val MAX_KEYS = 64
 	}
 }
