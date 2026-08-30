@@ -240,9 +240,6 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 					position,
 					scrollProgress = pendingState.scroll / 10000f,
 					scrollOffset = pendingState.scroll,
-					// Programmatic re-anchor, not a user scroll: don't trigger bounds preload, otherwise
-					// the restore feeds back into a re-emit/re-anchor loop (open/continue flicker).
-					triggerAutoLoad = false,
 				)
 			} else {
 				Snackbar.make(requireView(), R.string.not_found_404, Snackbar.LENGTH_SHORT)

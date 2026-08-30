@@ -129,9 +129,7 @@ abstract class BasePagerReaderFragment : BaseReaderFragment<FragmentReaderPagerB
 			items.join()
 			if (position != -1) {
 				requireViewBinding().pager.setCurrentItem(position, false)
-				// Programmatic re-anchor, not a user navigation: don't trigger bounds preload,
-				// otherwise the restore can feed back into a re-emit/re-anchor loop.
-				notifyPageChanged(position, triggerAutoLoad = false)
+				notifyPageChanged(position)
 			} else {
 				Snackbar.make(requireView(), R.string.not_found_404, Snackbar.LENGTH_SHORT)
 					.show()
@@ -184,8 +182,8 @@ abstract class BasePagerReaderFragment : BaseReaderFragment<FragmentReaderPagerB
 		pager.offscreenPageLimit = 2
 	}
 
-	protected open fun notifyPageChanged(page: Int, triggerAutoLoad: Boolean = true) {
-		viewModel.onCurrentPageChanged(page, page, triggerAutoLoad = triggerAutoLoad)
+	protected open fun notifyPageChanged(page: Int) {
+		viewModel.onCurrentPageChanged(page, page)
 	}
 
 	companion object {

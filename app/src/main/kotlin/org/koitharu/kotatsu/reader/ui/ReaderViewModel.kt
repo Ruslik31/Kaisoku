@@ -580,7 +580,6 @@ class ReaderViewModel @Inject constructor(
         upperPos: Int,
         scrollProgress: Float = -1f,
         scrollOffset: Int = 0,
-        triggerAutoLoad: Boolean = true,
     ) {
         if (synchronized(contentStateLock) {
                 pendingReaderReplacement != null || !lifecycleStateGuard.canCommitUiState()
@@ -631,13 +630,8 @@ class ReaderViewModel @Inject constructor(
             // the chapter on screen: re-anchor button navigation to it (covers natural scrolling
             // across chapter boundaries) before the auto-load below shifts page positions.
             navCursor.settle(readingState.value?.chapterId)
-            // A programmatic re-anchor (onPagesChanged after a restore / prev-next re-emit) reports
-            // the page change with triggerAutoLoad = false. Without this guard, the re-anchor's
-            // synthetic page change kept re-firing the bounds load below, which re-emitted content
-            // and re-anchored again — the open/continue flicker loop. Real scroll events still
-            // preload normally.
-            val autoLoadAllowed = triggerAutoLoad &&
-                (readerMode.value != ReaderMode.WEBTOON || !isWebtoonPullGestureEnabled.value)
+            val autoLoadAllowed =
+                readerMode.value != ReaderMode.WEBTOON || !isWebtoonPullGestureEnabled.value
             if (autoLoadAllowed) {
                 if (upperPos >= pages.lastIndex - BOUNDS_PAGE_OFFSET) {
                     loadPrevNextChapter(pages.last().chapterId, isNext = true)
