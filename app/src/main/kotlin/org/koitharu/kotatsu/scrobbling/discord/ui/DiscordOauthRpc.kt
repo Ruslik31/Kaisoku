@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.scrobbling.discord.ui
 
 import android.content.Context
 import android.os.SystemClock
+import android.util.Log
 import androidx.annotation.AnyThread
 import com.discord.oauth2rpc.API
 import com.discord.oauth2rpc.DiscordAssetRegistrar
@@ -12,7 +13,6 @@ import coil3.ImageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import dagger.hilt.android.ViewModelLifecycle
-import dagger.hilt.android.lifecycle.RetainedLifecycle
 import dagger.hilt.android.scopes.ViewModelScoped
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,6 +40,8 @@ private const val STATUS_ONLINE = "online"
 private const val STATUS_IDLE = "idle"
 private const val BUTTON_TEXT_LIMIT = 32
 private const val DEBOUNCE_TIMEOUT = 3_000L // 3 sec
+private const val PRESENCE_SCOPE = "sdk.social_layer_presence"
+private const val TAG = "DiscordOauth"
 
 /**
  * Discord rich presence over OAuth2 (sdk.social_layer_presence), as an alternative to the
@@ -53,7 +55,7 @@ class DiscordOauthRpc @Inject constructor(
 	private val repository: DiscordRepository,
 	private val imageLoader: ImageLoader,
 	lifecycle: ViewModelLifecycle,
-) : RetainedLifecycle.OnClearedListener {
+) {
 
 	private val coroutineScope = lifecycle.lifecycleScope + Dispatchers.Default
 	private val appId = context.getString(R.string.discord_app_id)
@@ -65,18 +67,16 @@ class DiscordOauthRpc @Inject constructor(
 	private var rpcUpdateJob: Job? = null
 	private var assetRegistrar: DiscordAssetRegistrar? = null
 	private var registrarToken: String? = null
-	private val apiInstance = API()
+	private val apiInstance: Lazy<API> = lazy { API() }
 
 	@Volatile
 	private var lastPresence: RichPresence? = null
 
-	init {
-		lifecycle.addOnClearedListener(this)
-	}
-
-	override fun onCleared() {
+	fun close() {
 		clearRpc()
-		apiInstance.close()
+		if (apiInstance.isInitialized()) {
+			apiInstance.value.close()
+		}
 	}
 
 	fun clearRpc() = synchronized(this) {
@@ -178,31 +178,46 @@ class DiscordOauthRpc @Inject constructor(
 	}
 
 	private fun getRpc(): GatewayClient? = rpc ?: synchronized(this) {
-		rpc ?: settings.discordToken?.takeIf { settings.isDiscordRpcEnabled }?.let { token ->
-			GatewayClient().apply {
-				onReady = { lastPresence?.let { updateRpcAsync(it, idle = false, isNsfw = false) } }
-				onResumed = { lastPresence?.let { updateRpcAsync(it, idle = false, isNsfw = false) } }
-				coroutineScope.launch {
-					try {
-						var currentToken = token
-						runCatchingCancellable { repository.checkToken(currentToken) }.onFailure {
-							repository.refreshToken()
-							currentToken = settings.discordToken ?: token
+		rpc ?: run {
+			val token = settings.discordToken?.takeIf { settings.isDiscordRpcEnabled }
+			if (token != null && !settings.discordScopes.orEmpty().contains(PRESENCE_SCOPE)) {
+				Log.w(TAG, "token lacks presence scope; not connecting")
+				return@synchronized null
+			}
+			token?.let { currentTokenValue ->
+				GatewayClient().apply {
+					onReady = {
+						Log.i(TAG, "gateway ready")
+						lastPresence?.let { updateRpcAsync(it, idle = false, isNsfw = false) }
+					}
+					onResumed = {
+						Log.i(TAG, "gateway resumed")
+						lastPresence?.let { updateRpcAsync(it, idle = false, isNsfw = false) }
+					}
+					coroutineScope.launch {
+						try {
+							var currentToken = currentTokenValue
+							runCatchingCancellable { repository.checkToken(currentToken) }.onFailure {
+								repository.refreshToken()
+								currentToken = settings.discordToken ?: currentTokenValue
+							}
+							Log.i(TAG, "connecting to gateway")
+							connect(GatewayConnectOptions(token = currentToken))
+						} catch (e: Exception) {
+							Log.w(TAG, "gateway connect failed", e)
+							e.printStackTraceDebug().also { clearRpc() }
 						}
-						connect(GatewayConnectOptions(token = currentToken))
-					} catch (e: Exception) {
-						e.printStackTraceDebug().also { clearRpc() }
 					}
 				}
-			}
-		}.also { rpc = it }
+			}.also { rpc = it }
+		}
 	}
 
 	private fun getRegistrar(): DiscordAssetRegistrar? {
 		val currentToken = settings.discordToken ?: return null
 		if (assetRegistrar == null || registrarToken != currentToken) {
 			registrarToken = currentToken
-			assetRegistrar = DiscordAssetRegistrar(apiInstance, appId, currentToken)
+			assetRegistrar = DiscordAssetRegistrar(apiInstance.value, appId, currentToken)
 		}
 		return assetRegistrar
 	}

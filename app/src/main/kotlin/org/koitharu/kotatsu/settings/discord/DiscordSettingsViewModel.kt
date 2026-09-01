@@ -51,17 +51,18 @@ class DiscordSettingsViewModel @Inject constructor(
 			return@flow
 		}
 		emit(TokenState.CHECKING to token)
-		if (validateToken(token)) {
-			emit(TokenState.VALID to token)
+		val checked = runCatchingCancellable { repository.checkToken(token).takeIf(String::isNotEmpty) }
+		val state = checked.fold(
+			onSuccess = { TokenState.VALID },
+			onFailure = { e ->
+				if (e.isNetworkError()) TokenState.VALID else TokenState.INVALID
+			},
+		)
+		val label = if (state == TokenState.VALID && settings.isDiscordRpcOauth) {
+			checked.getOrNull() ?: settings.discordAccountName ?: token
 		} else {
-			emit(TokenState.INVALID to token)
+			token
 		}
+		emit(state to label)
 	}
-
-	private suspend fun validateToken(token: String) = runCatchingCancellable {
-		repository.checkToken(token)
-	}.fold(
-		onSuccess = { true },
-		onFailure = { it.isNetworkError() },
-	)
 }

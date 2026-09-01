@@ -702,6 +702,21 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val isDiscordRpcOauth: Boolean
 		get() = prefs.getBoolean(KEY_DISCORD_RPC_OAUTH, false)
 
+	val isDiscordOauthBrowser: Boolean
+		get() = prefs.getBoolean(KEY_DISCORD_OAUTH_BROWSER, false)
+
+	var discordAccountName: String?
+		get() = prefs.getString(KEY_DISCORD_ACCOUNT_NAME, null)
+		set(value) = prefs.edit { putString(KEY_DISCORD_ACCOUNT_NAME, value?.nullIfEmpty()) }
+
+	var discordScopes: String?
+		get() = prefs.getString(KEY_DISCORD_SCOPES, null)
+		set(value) = prefs.edit { putString(KEY_DISCORD_SCOPES, value?.nullIfEmpty()) }
+
+	var discordLastExchangedCode: String?
+		get() = prefs.getString(KEY_DISCORD_LAST_CODE, null)
+		set(value) = prefs.edit { putString(KEY_DISCORD_LAST_CODE, value?.nullIfEmpty()) }
+
 	var discordRefreshToken: String?
 		get() = prefs.getString(KEY_DISCORD_REFRESH_TOKEN, null)?.trim()?.nullIfEmpty()
 		set(value) = prefs.edit { putString(KEY_DISCORD_REFRESH_TOKEN, value?.nullIfEmpty()) }
@@ -1051,6 +1066,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_DISCORD_RPC_SKIP_NSFW = "discord_rpc_skip_nsfw"
 		const val KEY_DISCORD_TOKEN = "discord_token"
 		const val KEY_DISCORD_RPC_OAUTH = "discord_rpc_oauth"
+		const val KEY_DISCORD_OAUTH_BROWSER = "discord_oauth_browser"
+		const val KEY_DISCORD_ACCOUNT_NAME = "discord_account_name"
+		const val KEY_DISCORD_SCOPES = "discord_scopes"
+		const val KEY_DISCORD_LAST_CODE = "discord_last_code"
 		const val KEY_DISCORD_REFRESH_TOKEN = "discord_refresh_token"
 		const val KEY_DISCORD_CODE_VERIFIER = "discord_code_verifier"
 		const val KEY_DISCORD_OAUTH_SIGNIN = "discord_oauth_signin"

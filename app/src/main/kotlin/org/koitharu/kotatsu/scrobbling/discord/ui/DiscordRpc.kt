@@ -13,6 +13,7 @@ import dagger.Lazy
 import dagger.hilt.android.ViewModelLifecycle
 import dagger.hilt.android.lifecycle.RetainedLifecycle
 import dagger.hilt.android.scopes.ViewModelScoped
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
@@ -62,6 +63,9 @@ class DiscordRpc @Inject constructor(
 	private var rpcUpdateJob: Job? = null
 
 	@Volatile
+	private var oauthConstructed = false
+
+	@Volatile
 	private var lastActivity: Activity? = null
 
 	init {
@@ -69,6 +73,50 @@ class DiscordRpc @Inject constructor(
 	}
 
 	override fun onCleared() {
+		try {
+			closeKizzy()
+		} catch (e: Exception) {
+			e.printStackTraceDebug()
+		}
+		if (oauthConstructed) {
+			runCatching { oauthRpc.get().close() }.onFailure { it.printStackTraceDebug() }
+		}
+	}
+
+	fun clearRpc(): Unit {
+		val oauth = oauth()
+		dispatch {
+			if (oauth != null) {
+				oauth.clearRpc()
+			} else {
+				closeKizzy()
+			}
+		}
+	}
+
+	fun setIdle(): Unit {
+		val oauth = oauth()
+		dispatch {
+			if (oauth != null) {
+				oauth.setIdle()
+			} else {
+				lastActivity?.let { activity ->
+					getRpc()?.updateRpcAsync(activity, idle = true)
+				}
+			}
+		}
+	}
+
+	private fun oauth(): DiscordOauthRpc? {
+		if (!settings.isDiscordRpcOauth) {
+			return null
+		}
+		val oauth = oauthRpc.get()
+		oauthConstructed = true
+		return oauth
+	}
+
+	private fun closeKizzy() {
 		synchronized(this) {
 			rpc?.closeRPC()
 			rpc = null
@@ -76,70 +124,64 @@ class DiscordRpc @Inject constructor(
 		}
 	}
 
-	fun clearRpc() {
-		if (settings.isDiscordRpcOauth) {
-			oauthRpc.get().clearRpc()
-			return
-		}
-		synchronized(this) {
-			rpc?.closeRPC()
-			rpc = null
-			lastUpdate = 0L
-		}
-	}
-
-	fun setIdle() {
-		if (settings.isDiscordRpcOauth) {
-			oauthRpc.get().setIdle()
-			return
-		}
-		lastActivity?.let { activity ->
-			getRpc()?.updateRpcAsync(activity, idle = true)
+	private fun dispatch(block: suspend () -> Unit): Unit {
+		coroutineScope.launch {
+			try {
+				block()
+			} catch (e: CancellationException) {
+				throw e
+			} catch (e: Exception) {
+				e.printStackTraceDebug()
+			}
 		}
 	}
 
 	@AnyThread
-	fun updateRpc(manga: Manga, state: ReaderUiState) {
-		if (settings.isDiscordRpcOauth) {
-			oauthRpc.get().updateRpc(manga, state)
-			return
-		}
-		getRpc()?.run {
-			if (settings.isDiscordRpcSkipNsfw && manga.isNsfw()) {
-				clearRpc()
-				return
+	fun updateRpc(manga: Manga, state: ReaderUiState): Unit {
+		val oauth = oauth()
+		dispatch {
+			if (oauth != null) {
+				oauth.updateRpc(manga, state)
+				return@dispatch
 			}
-			// Prefer the high-res cover when the source ships one — small thumbnails get
-			// rejected by Discord's media proxy and show as the placeholder card on the user
-			// profile. Trim blanks so an empty string doesn't shadow a real fallback.
-			val coverUrl = manga.largeCoverUrl?.takeUnless { it.isBlank() }
-				?: manga.coverUrl?.takeUnless { it.isBlank() }
-			val buttons = buildDiscordRpcButtons(
-				communityUrl = context.getString(R.string.url_discord),
-				communityLabel = context.getString(R.string.telegram_group),
-				buttonTextLimit = BUTTON_TEXT_LIMIT,
-			)
-			updateRpcAsync(
-				activity = Activity(
-					applicationId = appId,
-					name = appName,
-					details = manga.title,
-					state = state.getChapterTitle(context.resources),
-					type = 3,
-					timestamps = Timestamps(
-						start = lastActivity?.timestamps?.start ?: System.currentTimeMillis(),
+			val client = getRpc() ?: return@dispatch
+			if (settings.isDiscordRpcSkipNsfw && manga.isNsfw()) {
+				closeKizzy()
+				return@dispatch
+			}
+			client.run {
+				// Prefer the high-res cover when the source ships one — small thumbnails get
+				// rejected by Discord's media proxy and show as the placeholder card on the user
+				// profile. Trim blanks so an empty string doesn't shadow a real fallback.
+				val coverUrl = manga.largeCoverUrl?.takeUnless { it.isBlank() }
+					?: manga.coverUrl?.takeUnless { it.isBlank() }
+				val buttons = buildDiscordRpcButtons(
+					communityUrl = context.getString(R.string.url_discord),
+					communityLabel = context.getString(R.string.telegram_group),
+					buttonTextLimit = BUTTON_TEXT_LIMIT,
+				)
+				updateRpcAsync(
+					activity = Activity(
+						applicationId = appId,
+						name = appName,
+						details = manga.title,
+						state = state.getChapterTitle(context.resources),
+						type = 3,
+						timestamps = Timestamps(
+							start = lastActivity?.timestamps?.start ?: System.currentTimeMillis(),
+						),
+						assets = Assets(
+							largeImage = coverUrl,
+							largeText = context.getString(R.string.reading_s, manga.title),
+							smallText = context.getString(R.string.discord_rpc_description),
+							smallImage = appIcon,
+						),
+						buttons = buttons?.labels,
+						metadata = buttons?.let { Metadata(it.urls) },
 					),
-					assets = Assets(
-						largeImage = coverUrl,
-						largeText = context.getString(R.string.reading_s, manga.title),
-						smallText = context.getString(R.string.discord_rpc_description),
-						smallImage = appIcon,
-					),
-					buttons = buttons?.labels,
-					metadata = buttons?.let { Metadata(it.urls) },
-				),
-				idle = false,
-			)
+					idle = false,
+				)
+			}
 		}
 	}
 

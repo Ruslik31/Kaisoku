@@ -19,6 +19,8 @@ import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.scrobbling.discord.ui.DiscordAuthActivity
 import org.koitharu.kotatsu.scrobbling.discord.ui.DiscordOauthActivity
 
+private const val PRESENCE_SCOPE = "sdk.social_layer_presence"
+
 @AndroidEntryPoint
 class DiscordSettingsFragment : BasePreferenceFragment(R.string.discord) {
 
@@ -52,6 +54,7 @@ class DiscordSettingsFragment : BasePreferenceFragment(R.string.discord) {
 	private fun updateAuthMethodVisibility(isOauth: Boolean) {
 		findPreference<EditTextPreference>(AppSettings.KEY_DISCORD_TOKEN)?.isVisible = !isOauth
 		findPreference<Preference>(AppSettings.KEY_DISCORD_OAUTH_SIGNIN)?.isVisible = isOauth
+		findPreference<Preference>(AppSettings.KEY_DISCORD_OAUTH_BROWSER)?.isVisible = isOauth
 	}
 
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -75,7 +78,42 @@ class DiscordSettingsFragment : BasePreferenceFragment(R.string.discord) {
 		super.onDisplayPreferenceDialog(preference)
 	}
 
+	private fun bindOauthState(state: TokenState, label: String?) {
+		val pref = findPreference<Preference>(AppSettings.KEY_DISCORD_OAUTH_SIGNIN) ?: return
+		when (state) {
+			TokenState.VALID -> {
+				val hasPresence = settings.discordScopes.orEmpty().contains(PRESENCE_SCOPE)
+				if (hasPresence) {
+					pref.icon = null
+					pref.summary = getString(R.string.discord_signed_in_as, label.orEmpty())
+				} else {
+					pref.icon = getWarningIcon()
+					pref.summary = getString(R.string.discord_signed_in_no_presence, label.orEmpty())
+				}
+			}
+
+			TokenState.CHECKING -> {
+				pref.icon = null
+				pref.setSummary(R.string.loading_)
+			}
+
+			TokenState.INVALID -> {
+				pref.icon = getWarningIcon()
+				pref.setSummary(R.string.discord_oauth_reconnect)
+			}
+
+			TokenState.REQUIRED, TokenState.EMPTY -> {
+				pref.icon = null
+				pref.setSummary(R.string.discord_rpc_oauth_summary)
+			}
+		}
+	}
+
 	private fun bindTokenPreference(state: TokenState, token: String?) {
+		if (settings.isDiscordRpcOauth) {
+			bindOauthState(state, token)
+			return
+		}
 		val pref = findPreference<EditTextPreference>(AppSettings.KEY_DISCORD_TOKEN) ?: return
 		when (state) {
 			TokenState.EMPTY -> {
