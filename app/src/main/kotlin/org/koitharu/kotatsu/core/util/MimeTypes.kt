@@ -24,7 +24,8 @@ object MimeTypes {
 	}
 
 	fun getExtension(mimeType: MimeType?): String? {
-		return MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType?.toString() ?: return null)?.nullIfEmpty()
+		if (mimeType == null) return null
+		return MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType.toString())?.nullIfEmpty()
 	}
 
 	@Blocking

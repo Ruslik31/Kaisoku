@@ -199,6 +199,7 @@ class DownloadWorker @AssistedInject constructor(
 			checkNotNull(destination) { applicationContext.getString(R.string.cannot_find_available_storage) }
 			val tempFiles = ConcurrentLinkedQueue<File>()
 			var output: LocalMangaOutput? = null
+			var isCompleted = false
 			try {
 				if (manga.isLocal) {
 					manga = localMangaRepository.getRemoteManga(manga)
@@ -236,13 +237,14 @@ class DownloadWorker @AssistedInject constructor(
 						repo.getPages(chapter.value)
 					} ?: continue
 					val pageCounter = AtomicInteger(0)
+					val successfulPages = AtomicInteger(0)
 					channelFlow {
 						val semaphore = Semaphore(MAX_PAGES_PARALLELISM)
 						for ((pageIndex, page) in pages.withIndex()) {
 							checkIsPaused()
 							launch {
 								semaphore.withPermit {
-									runFailsafe {
+								val downloaded = runFailsafe {
 										val url = repo.getPageUrl(page)
 										val file = cache[url]
 											?: downloadFile(
@@ -259,11 +261,15 @@ class DownloadWorker @AssistedInject constructor(
 											pageNumber = pageIndex,
 											type = getMediaType(url, file),
 										)
-										if (file.extension == "tmp") {
-											file.deleteAwait()
-										}
+									if (file.extension == "tmp") {
+										file.deleteAwait()
 									}
+									true
+								}
+								if (downloaded == true) {
+									successfulPages.incrementAndGet()
 									send(pageIndex)
+								}
 								}
 							}
 						}
@@ -287,6 +293,9 @@ class DownloadWorker @AssistedInject constructor(
 							),
 						)
 					}
+					if (successfulPages.get() != pages.size) {
+						continue
+					}
 					if (output.flushChapter(chapter.value)) {
 						runCatchingCancellable {
 							localStorageChanges.emit(LocalMangaParser(output.rootFile).getManga(withDetails = false))
@@ -300,6 +309,7 @@ class DownloadWorker @AssistedInject constructor(
 				val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
 				localStorageChanges.emit(localManga)
 				publishState(currentState.copy(localManga = localManga, eta = -1L, isStuck = false))
+				isCompleted = true
 			} catch (e: Exception) {
 				if (e !is CancellationException) {
 					publishState(
@@ -313,8 +323,13 @@ class DownloadWorker @AssistedInject constructor(
 			} finally {
 				withContext(NonCancellable) {
 					applicationContext.unregisterReceiver(pausingReceiver)
-					output?.closeQuietly()
 					output?.cleanup()
+					output?.closeQuietly()
+					if (!isCompleted && output != null && output.rootFile.exists()) {
+						runCatchingCancellable {
+							localStorageChanges.emit(LocalMangaParser(output.rootFile).getManga(withDetails = false))
+						}.onFailure(Throwable::printStackTraceDebug)
+					}
 					tempFiles.forEach { it.deleteAwait() }
 				}
 			}

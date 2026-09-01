@@ -142,10 +142,9 @@ class BackupRepository @Inject constructor(
                     )
                 }
             }
-            progress?.emit(commonProgress)
             commonProgress++
+            progress?.emit(commonProgress)
         }
-        progress?.emit(commonProgress)
     }
 
     suspend fun restoreBackup(
@@ -211,8 +210,8 @@ class BackupRepository @Inject constructor(
 
                     null -> CompositeResult.EMPTY // skip unknown entries
                 }
-                progress?.emit(commonProgress)
                 commonProgress++
+                progress?.emit(commonProgress)
             }
             input.closeEntry()
             entry = input.nextEntry
@@ -224,7 +223,6 @@ class BackupRepository @Inject constructor(
                 }
             }
         }
-        progress?.emit(commonProgress)
         return result
     }
 
