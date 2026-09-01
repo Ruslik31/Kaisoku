@@ -62,6 +62,7 @@ class ServicesSettingsFragment : BasePreferenceFragment(R.string.services),
 		bindScrobblerSummary(AppSettings.KEY_ANILIST, ScrobblerService.ANILIST)
 		bindScrobblerSummary(AppSettings.KEY_MAL, ScrobblerService.MAL)
 		bindScrobblerSummary(AppSettings.KEY_KITSU, ScrobblerService.KITSU)
+		bindScrobblerSummary(AppSettings.KEY_MANGABAKA, ScrobblerService.MANGABAKA)
 	}
 
 	override fun onSharedPreferenceChanged(prefs: SharedPreferences?, key: String?) {
@@ -91,6 +92,11 @@ class ServicesSettingsFragment : BasePreferenceFragment(R.string.services),
 
 			AppSettings.KEY_KITSU -> {
 				handleScrobblerClick(ScrobblerService.KITSU)
+				true
+			}
+
+			AppSettings.KEY_MANGABAKA -> {
+				handleScrobblerClick(ScrobblerService.MANGABAKA)
 				true
 			}
 

@@ -24,9 +24,17 @@ interface ScrobblerRepository {
 
 	suspend fun getMangaInfo(id: Long): ScrobblerMangaInfo
 
-	suspend fun createRate(mangaId: Long, scrobblerMangaId: Long)
+	/** @return true when an existing remote entry was adopted without overwriting it. */
+	suspend fun createRate(mangaId: Long, scrobblerMangaId: Long): Boolean
 
 	suspend fun updateRate(rateId: Int, mangaId: Long, chapter: Int)
 
-	suspend fun updateRate(rateId: Int, mangaId: Long, rating: Float, status: String?, comment: String?)
+	suspend fun updateRate(
+		rateId: Int,
+		mangaId: Long,
+		rating: Float,
+		status: String?,
+		comment: String?,
+		setStartDate: Boolean,
+	)
 }

@@ -67,9 +67,8 @@ abstract class Scrobbler(
 		return repository.findManga(query, offset)
 	}
 
-	suspend fun linkManga(mangaId: Long, targetId: Long) {
+	suspend fun linkManga(mangaId: Long, targetId: Long): Boolean =
 		repository.createRate(mangaId, targetId)
-	}
 
 	suspend fun scrobble(manga: Manga, chapterId: Long) {
 		var chapters = manga.chapters
@@ -88,6 +87,14 @@ abstract class Scrobbler(
 		}
 		val entity = db.getScrobblingDao().find(scrobblerService.id, manga.id) ?: return
 		repository.updateRate(entity.id, entity.mangaId, number)
+		if (entity.status == statuses[ScrobblingStatus.PLANNED]) {
+			updateScrobblingInfo(
+				mangaId = manga.id,
+				rating = entity.rating,
+				status = ScrobblingStatus.READING,
+				comment = entity.comment,
+			)
+		}
 	}
 
 	suspend fun getScrobblingInfoOrNull(mangaId: Long): ScrobblingInfo? {

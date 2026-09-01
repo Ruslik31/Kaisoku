@@ -157,19 +157,22 @@ class ScrobblingSelectorViewModel @Inject constructor(
 		}
 		doneJob = launchLoadingJob(Dispatchers.Default) {
 			val prevInfo = currentScrobbler.getScrobblingInfoOrNull(manga.id)
-			currentScrobbler.linkManga(manga.id, targetId)
+			val adoptedRemoteEntry = currentScrobbler.linkManga(manga.id, targetId)
 			val history = historyRepository.getOne(manga)
-			currentScrobbler.updateScrobblingInfo(
-				mangaId = manga.id,
-				rating = prevInfo?.rating ?: 0f,
-				status = prevInfo?.status ?: when {
-					history == null -> ScrobblingStatus.PLANNED
-					ReadingProgress.isCompleted(history.percent) -> ScrobblingStatus.COMPLETED
-					else -> ScrobblingStatus.READING
-				},
-				comment = prevInfo?.comment,
-			)
-			if (history != null) {
+			if (!adoptedRemoteEntry) {
+				currentScrobbler.updateScrobblingInfo(
+					mangaId = manga.id,
+					rating = prevInfo?.rating ?: 0f,
+					status = prevInfo?.status ?: when {
+						history == null -> ScrobblingStatus.PLANNED
+						ReadingProgress.isCompleted(history.percent) -> ScrobblingStatus.COMPLETED
+						else -> ScrobblingStatus.READING
+					},
+					comment = prevInfo?.comment,
+				)
+			}
+			val remoteProgress = currentScrobbler.getScrobblingInfoOrNull(manga.id)?.chapter ?: 0
+			if (history != null && (!adoptedRemoteEntry || remoteProgress <= 0)) {
 				currentScrobbler.scrobble(
 					manga = manga,
 					chapterId = history.chapterId,

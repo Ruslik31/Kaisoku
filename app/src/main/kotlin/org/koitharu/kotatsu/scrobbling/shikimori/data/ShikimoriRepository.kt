@@ -27,7 +27,7 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerUser
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private const val DOMAIN = "shikimori.one"
+private const val DOMAIN = "shikimori.io"
 internal const val REDIRECT_URI = "kotatsu://shikimori-auth"
 private const val BASE_URL = "https://$DOMAIN/"
 private const val MANGA_PAGE_SIZE = 10
@@ -108,8 +108,12 @@ class ShikimoriRepository @Inject constructor(
 		return if (pageOffset != 0) list.drop(pageOffset) else list
 	}
 
-	override suspend fun createRate(mangaId: Long, scrobblerMangaId: Long) {
+	override suspend fun createRate(mangaId: Long, scrobblerMangaId: Long): Boolean {
 		val user = cachedUser ?: loadUser()
+		findExistingRate(user.id, scrobblerMangaId)?.let {
+			saveRate(it, mangaId)
+			return true
+		}
 		val payload = JSONObject()
 		payload.put(
 			"user_rate",
@@ -127,6 +131,20 @@ class ShikimoriRepository @Inject constructor(
 		val request = Request.Builder().url(url).post(payload.toRequestBody()).build()
 		val response = okHttp.newCall(request).await().parseJson()
 		saveRate(response, mangaId)
+		return false
+	}
+
+	private suspend fun findExistingRate(userId: Long, scrobblerMangaId: Long): JSONObject? {
+		val url = BASE_URL.toHttpUrl().newBuilder()
+			.addPathSegment("api")
+			.addPathSegment("v2")
+			.addPathSegment("user_rates")
+			.addQueryParameter("user_id", userId.toString())
+			.addQueryParameter("target_id", scrobblerMangaId.toString())
+			.addQueryParameter("target_type", "Manga")
+			.build()
+		val response = okHttp.newCall(Request.Builder().url(url).get().build()).await().parseJsonArray()
+		return response.optJSONObject(0)
 	}
 
 	override suspend fun updateRate(rateId: Int, mangaId: Long, chapter: Int) {
@@ -148,7 +166,14 @@ class ShikimoriRepository @Inject constructor(
 		saveRate(response, mangaId)
 	}
 
-	override suspend fun updateRate(rateId: Int, mangaId: Long, rating: Float, status: String?, comment: String?) {
+	override suspend fun updateRate(
+		rateId: Int,
+		mangaId: Long,
+		rating: Float,
+		status: String?,
+		comment: String?,
+		setStartDate: Boolean,
+	) {
 		val payload = JSONObject()
 		payload.put(
 			"user_rate",

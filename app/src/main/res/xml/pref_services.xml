@@ -54,6 +54,12 @@
 			app:icon="@drawable/ic_mal" />
 
 		<Preference
+			android:key="mangabaka"
+			android:summary="@string/loading_"
+			android:title="@string/mangabaka"
+			app:icon="@drawable/ic_sync" />
+
+		<Preference
 			android:key="shikimori"
 			android:summary="@string/loading_"
 			android:title="@string/shikimori"

@@ -36,6 +36,7 @@ class KitsuScrobbler @Inject constructor(
 			rating = rating,
 			status = statuses[status],
 			comment = comment,
+			setStartDate = status == ScrobblingStatus.READING && entity.status != statuses[ScrobblingStatus.READING],
 		)
 	}
 

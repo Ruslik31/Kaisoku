@@ -23,6 +23,7 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerType
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerUser
 import java.security.SecureRandom
+import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -113,7 +114,11 @@ class MALRepository @Inject constructor(
 		return ScrobblerMangaInfo(response)
 	}
 
-	override suspend fun createRate(mangaId: Long, scrobblerMangaId: Long) {
+	override suspend fun createRate(mangaId: Long, scrobblerMangaId: Long): Boolean {
+		findExistingRate(scrobblerMangaId)?.let {
+			saveRate(it, mangaId, scrobblerMangaId)
+			return true
+		}
 		val body = FormBody.Builder()
 			.add("status", "reading")
 			.add("score", "0")
@@ -129,6 +134,7 @@ class MALRepository @Inject constructor(
 			.build()
 		val response = okHttp.newCall(request).await().parseJson()
 		saveRate(response, mangaId, scrobblerMangaId)
+		return false
 	}
 
 	override suspend fun updateRate(rateId: Int, mangaId: Long, chapter: Int) {
@@ -147,11 +153,21 @@ class MALRepository @Inject constructor(
 		saveRate(response, mangaId, rateId.toLong())
 	}
 
-	override suspend fun updateRate(rateId: Int, mangaId: Long, rating: Float, status: String?, comment: String?) {
+	override suspend fun updateRate(
+		rateId: Int,
+		mangaId: Long,
+		rating: Float,
+		status: String?,
+		comment: String?,
+		setStartDate: Boolean,
+	) {
 		val body = FormBody.Builder()
 			.add("status", status.toString())
 			.add("score", rating.toInt().toString())
 			.add("comments", comment.orEmpty())
+		if (setStartDate) {
+			body.add("start_date", LocalDate.now().toString())
+		}
 		val url = BASE_API_URL.toHttpUrl().newBuilder()
 			.addPathSegment("manga")
 			.addPathSegment(rateId.toString())
@@ -163,6 +179,16 @@ class MALRepository @Inject constructor(
 			.build()
 		val response = okHttp.newCall(request).await().parseJson()
 		saveRate(response, mangaId, rateId.toLong())
+	}
+
+	private suspend fun findExistingRate(scrobblerMangaId: Long): JSONObject? {
+		val url = BASE_API_URL.toHttpUrl().newBuilder()
+			.addPathSegment("manga")
+			.addPathSegment(scrobblerMangaId.toString())
+			.addQueryParameter("fields", "my_list_status")
+			.build()
+		val response = okHttp.newCall(Request.Builder().url(url).get().build()).await().parseJson()
+		return response.optJSONObject("my_list_status")
 	}
 
 	private suspend fun saveRate(json: JSONObject, mangaId: Long, scrobblerMangaId: Long) {
