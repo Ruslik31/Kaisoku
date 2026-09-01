@@ -41,6 +41,7 @@ class SourceSettingsViewModel @Inject constructor(
 	val isAuthorized = MutableStateFlow<Boolean?>(null)
 	val browserUrl = MutableStateFlow<String?>(null)
 	val isEnabled = mangaSourcesRepository.observeIsEnabled(source)
+	val isNsfw = mangaSourcesRepository.observeIsNsfw(source)
 	private var usernameLoadJob: Job? = null
 
 	init {
@@ -120,6 +121,14 @@ class SourceSettingsViewModel @Inject constructor(
 	fun setEnabled(value: Boolean) {
 		launchJob(Dispatchers.Default) {
 			mangaSourcesRepository.setSourcesEnabled(setOf(source), value)
+		}
+	}
+
+	fun setNsfw(value: Boolean) {
+		launchJob(Dispatchers.Default) {
+			val rollback = mangaSourcesRepository.setNsfwOverride(setOf(source), value)
+			val message = if (value) R.string.source_marked_nsfw else R.string.source_unmarked_nsfw
+			onActionDone.call(ReversibleAction(message, rollback))
 		}
 	}
 

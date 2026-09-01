@@ -39,6 +39,7 @@ import org.koitharu.kotatsu.core.exceptions.resolve.CaptchaHandler
 import org.koitharu.kotatsu.core.image.AvifImageDecoder
 import org.koitharu.kotatsu.core.image.CbzFetcher
 import org.koitharu.kotatsu.core.image.MangaSourceHeaderInterceptor
+import org.koitharu.kotatsu.core.model.NsfwOverridesLoader
 import org.koitharu.kotatsu.core.network.MangaHttpClient
 import org.koitharu.kotatsu.core.network.imageproxy.ImageProxyInterceptor
 import org.koitharu.kotatsu.core.os.AppShortcutManager
@@ -184,11 +185,13 @@ interface AppModule {
 			appShortcutManager: AppShortcutManager,
 			backupObserver: BackupObserver,
 			syncController: SyncController,
+			nsfwOverridesLoader: NsfwOverridesLoader,
 		): Set<@JvmSuppressWildcards InvalidationTracker.Observer> = arraySetOf(
 			widgetUpdater,
 			appShortcutManager,
 			backupObserver,
 			syncController,
+			nsfwOverridesLoader,
 		)
 
 		@Provides

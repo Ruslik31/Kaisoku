@@ -137,6 +137,10 @@ class SourcesManageFragment :
 		viewModel.setEnabled(item.source, isEnabled)
 	}
 
+	override fun onItemNsfwClick(item: SourceConfigItem.SourceItem) {
+		viewModel.setNsfw(item.source, !item.isNsfw)
+	}
+
 	override fun onCloseTip(tip: SourceConfigItem.Tip) {
 		viewModel.onTipClosed(tip)
 	}

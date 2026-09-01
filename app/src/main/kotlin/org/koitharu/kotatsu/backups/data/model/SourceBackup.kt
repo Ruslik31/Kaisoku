@@ -12,6 +12,7 @@ class SourceBackup(
 	@SerialName("added_in") val addedIn: Int,
 	@SerialName("pinned") val isPinned: Boolean = false,
 	@SerialName("enabled") val isEnabled: Boolean = true, // for compatibility purposes, should be only true
+	@SerialName("nsfw_override") val nsfwOverride: Int? = null,
 ) {
 
 	constructor(entity: MangaSourceEntity) : this(
@@ -21,6 +22,7 @@ class SourceBackup(
 		addedIn = entity.addedIn,
 		isPinned = entity.isPinned,
 		isEnabled = entity.isEnabled,
+		nsfwOverride = entity.nsfwOverride,
 	)
 
 	fun toEntity() = MangaSourceEntity(
@@ -31,5 +33,6 @@ class SourceBackup(
 		lastUsedAt = lastUsedAt,
 		isPinned = isPinned,
 		cfState = 0,
+		nsfwOverride = nsfwOverride,
 	)
 }

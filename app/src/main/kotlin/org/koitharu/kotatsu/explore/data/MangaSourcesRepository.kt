@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
@@ -28,9 +29,13 @@ import org.koitharu.kotatsu.core.db.dao.MangaSourcesDao
 import org.koitharu.kotatsu.core.db.entity.MangaSourceEntity
 import org.koitharu.kotatsu.core.model.MangaSourceInfo
 import org.koitharu.kotatsu.core.model.MangaSourceRegistry
+import org.koitharu.kotatsu.core.model.NsfwOverridesLoader
+import org.koitharu.kotatsu.core.model.NsfwSourceOverrides
 import org.koitharu.kotatsu.core.model.PluginMangaSource
 import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.core.model.intrinsicIsNsfw
 import org.koitharu.kotatsu.core.model.isNsfw
+import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.core.parser.external.ExternalMangaSource
 import org.koitharu.kotatsu.core.parser.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.core.parser.mihon.MihonMangaSource
@@ -57,6 +62,7 @@ class MangaSourcesRepository @Inject constructor(
 	private val db: MangaDatabase,
 	private val settings: AppSettings,
 	private val mihonExtensionManager: MihonExtensionManager,
+	private val nsfwOverridesLoader: NsfwOverridesLoader,
 ) {
 
 	data class ParserSourceSnapshot(
@@ -95,7 +101,7 @@ class MangaSourcesRepository @Inject constructor(
 			mihonSources = mihonSources.associateBy { it.name },
 			pluginSources = pluginSources.associateBy { it.name },
 		)
-		val external = getExternalSources()
+		val external = getExternalSources().filterNsfw(settings.isNsfwContentDisabled)
 		return ArrayList<MangaSourceInfo>(enabled.size + external.size).also { list ->
 			external.mapTo(list) { MangaSourceInfo(it, isEnabled = true, isPinned = true) }
 			list.addAll(enabled)
@@ -111,7 +117,7 @@ class MangaSourcesRepository @Inject constructor(
 		val mihonByName = mihonSources.associateBy { it.name }
 		val pluginByName = pluginSources.associateBy { it.name }
 		return buildSet {
-			addAll(getExternalSources())
+			addAll(getExternalSources().filterNsfw(skipNsfw))
 			addAll(dao.findAllPinned().mapNotNullToSet {
 				it.source.toInstalledSourceOrNull(mihonByName, pluginByName)?.takeUnless { x ->
 					(skipNsfw && x.isNsfw()) || (hideBroken && x.isBrokenSource())
@@ -169,6 +175,7 @@ class MangaSourcesRepository @Inject constructor(
 		sortOrder: SourcesSortOrder?,
 		snapshot: List<ParserSourceSnapshot>? = null,
 	): List<MangaSource> {
+		nsfwOverridesLoader.ensureLoaded()
 		val entries = snapshot ?: getParserSourcesSnapshot()
 		val coroutineContext = currentCoroutineContext()
 		val hideBrokenSources = settings.isBrokenSourcesHidden
@@ -272,6 +279,12 @@ class MangaSourcesRepository @Inject constructor(
 		return dao.observeIsEnabled(source.name).onStart { ensureSourceTracked(source) }
 	}
 
+	fun observeIsNsfw(source: MangaSource): Flow<Boolean> {
+		val name = source.unwrap().name
+		return dao.observeNsfwOverride(name).map { it?.let { value -> value != 0 } ?: source.intrinsicIsNsfw() }
+			.onStart { ensureSourceTracked(source) }
+	}
+
 	fun observeEnabledSourcesCount(): Flow<Int> {
 		return combine(
 			observeIsNsfwDisabled(),
@@ -343,7 +356,7 @@ class MangaSourcesRepository @Inject constructor(
 			assimilateAvailableSources(mihonSources)
 			val pluginByName = getPluginSources().associateBy { source -> source.name }
 			dao.observeAll(!allEnabled, order).map {
-				it.toSources(
+				skipNsfw to it.toSources(
 					skipNsfwSources = skipNsfw,
 					sortOrder = order,
 					hideBrokenSources = hideBroken,
@@ -354,9 +367,10 @@ class MangaSourcesRepository @Inject constructor(
 		}.flattenLatest()
 	}
 		.onStart { assimilateAvailableSources() }
-		.combine(observeExternalSources()) { enabled, external ->
-			val list = ArrayList<MangaSourceInfo>(enabled.size + external.size)
-			external.mapTo(list) { MangaSourceInfo(it, isEnabled = true, isPinned = true) }
+		.combine(observeExternalSources()) { (skipNsfw, enabled), external ->
+			val filteredExternal = external.filterNsfw(skipNsfw)
+			val list = ArrayList<MangaSourceInfo>(enabled.size + filteredExternal.size)
+			filteredExternal.mapTo(list) { MangaSourceInfo(it, isEnabled = true, isPinned = true) }
 			list.addAll(enabled)
 			list
 		}
@@ -466,6 +480,7 @@ class MangaSourcesRepository @Inject constructor(
 	}
 
 	private suspend fun assimilateAvailableSources(mihonSources: List<MihonMangaSource>): Boolean {
+		nsfwOverridesLoader.ensureLoaded()
 		val parsersUpdated = assimilateNewParserSources()
 		val mihonUpdated = assimilateInstalledMihonSources(mihonSources)
 		val pluginUpdated = assimilateInstalledPluginSources(getPluginSources())
@@ -566,6 +581,35 @@ class MangaSourcesRepository @Inject constructor(
 			ensureSourceTracked(source)
 			dao.setLastUsed(source.name, System.currentTimeMillis())
 		}
+	}
+
+	/**
+	 * Manually mark [sources] as NSFW/SFW, overriding their intrinsic rating.
+	 * Pass `null` to clear the override and inherit the intrinsic rating again.
+	 */
+	suspend fun setNsfwOverride(sources: Collection<MangaSource>, isNsfw: Boolean?): ReversibleHandle {
+		val previous = sources.associateWith { NsfwSourceOverrides.peek(it.unwrap().name) }
+		setNsfwOverrideImpl(sources, isNsfw)
+		return ReversibleHandle {
+			for ((source, value) in previous) {
+				dao.setNsfwOverride(source.unwrap().name, value?.let { if (it) 1 else 0 })
+			}
+			nsfwOverridesLoader.reload()
+		}
+	}
+
+	private suspend fun setNsfwOverrideImpl(sources: Collection<MangaSource>, isNsfw: Boolean?) {
+		val value = isNsfw?.let { if (it) 1 else 0 }
+		if (sources.size == 1) { // fast path
+			dao.setNsfwOverride(sources.first().unwrap().name, value)
+		} else {
+			db.withTransaction {
+				for (source in sources) {
+					dao.setNsfwOverride(source.unwrap().name, value)
+				}
+			}
+		}
+		nsfwOverridesLoader.reload()
 	}
 
 	private suspend fun setSourcesEnabledImpl(sources: Collection<MangaSource>, isEnabled: Boolean) {
@@ -672,11 +716,12 @@ class MangaSourcesRepository @Inject constructor(
 		get() = MangaSourceRegistry.updates.onStart { emit(Unit) }
 
 	fun getExternalSources(): List<ExternalMangaSource> = context.packageManager.queryIntentContentProviders(
-		Intent("app.kotatsu.parser.PROVIDE_MANGA"), 0,
+		Intent("app.kotatsu.parser.PROVIDE_MANGA"), PackageManager.GET_META_DATA,
 	).map { resolveInfo ->
 		ExternalMangaSource(
 			packageName = resolveInfo.providerInfo.packageName,
 			authority = resolveInfo.providerInfo.authority,
+			isNsfwSource = resolveInfo.providerInfo.metaData?.getBoolean(METADATA_NSFW, false) == true,
 		)
 	}
 
@@ -762,5 +807,13 @@ class MangaSourcesRepository @Inject constructor(
 		is MangaParserSource -> isBroken
 		is PluginMangaSource -> isBroken
 		else -> false
+	}
+
+	private fun <T : MangaSource> List<T>.filterNsfw(skipNsfwSources: Boolean): List<T> =
+		if (skipNsfwSources) filterNot { it.isNsfw() } else this
+
+	companion object {
+
+		const val METADATA_NSFW = "app.kotatsu.parser.nsfw"
 	}
 }

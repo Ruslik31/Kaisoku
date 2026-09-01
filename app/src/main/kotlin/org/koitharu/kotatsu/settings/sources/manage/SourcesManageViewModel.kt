@@ -80,6 +80,14 @@ class SourcesManageViewModel @Inject constructor(
 		}
 	}
 
+	fun setNsfw(source: MangaSource, isNsfw: Boolean) {
+		launchJob(Dispatchers.Default) {
+			val rollback = repository.setNsfwOverride(setOf(source), isNsfw)
+			val message = if (isNsfw) R.string.source_marked_nsfw else R.string.source_unmarked_nsfw
+			onActionDone.call(ReversibleAction(message, rollback))
+		}
+	}
+
 	fun bringToTop(source: MangaSource) {
 		val snapshot = content.value
 		launchJob(Dispatchers.Default) {

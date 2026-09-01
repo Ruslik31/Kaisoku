@@ -49,6 +49,10 @@ class SourceSettingsFragment : BasePreferenceFragment(0), Preference.OnPreferenc
 			isVisible = isValidSource && !settings.isAllSourcesEnabled
 			onPreferenceChangeListener = this@SourceSettingsFragment
 		}
+		findPreference<SwitchPreferenceCompat>(KEY_NSFW)?.run {
+			isVisible = isValidSource
+			onPreferenceChangeListener = this@SourceSettingsFragment
+		}
 		findPreference<Preference>(KEY_AUTH)?.run {
 			val authProvider = (viewModel.repository as? ParserMangaRepository)?.getAuthProvider()
 			isVisible = authProvider != null
@@ -79,6 +83,9 @@ class SourceSettingsFragment : BasePreferenceFragment(0), Preference.OnPreferenc
 		}
 		viewModel.isEnabled.observe(viewLifecycleOwner) { enabled ->
 			findPreference<SwitchPreferenceCompat>(KEY_ENABLE)?.isChecked = enabled
+		}
+		viewModel.isNsfw.observe(viewLifecycleOwner) { isNsfw ->
+			findPreference<SwitchPreferenceCompat>(KEY_NSFW)?.isChecked = isNsfw
 		}
 		viewModel.browserUrl.observe(viewLifecycleOwner) {
 			findPreference<Preference>(AppSettings.KEY_OPEN_BROWSER)?.run {
@@ -131,6 +138,7 @@ class SourceSettingsFragment : BasePreferenceFragment(0), Preference.OnPreferenc
 	override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
 		when (preference.key) {
 			KEY_ENABLE -> viewModel.setEnabled(newValue == true)
+			KEY_NSFW -> viewModel.setNsfw(newValue == true)
 			else -> return false
 		}
 		return true
@@ -166,6 +174,7 @@ class SourceSettingsFragment : BasePreferenceFragment(0), Preference.OnPreferenc
 
 		private const val KEY_AUTH = "auth"
 		private const val KEY_ENABLE = "enable"
+		private const val KEY_NSFW = "nsfw_source"
 
 		fun newInstance(source: MangaSource) = SourceSettingsFragment().withArgs(1) {
 			putString(AppRouter.KEY_SOURCE, source.name)

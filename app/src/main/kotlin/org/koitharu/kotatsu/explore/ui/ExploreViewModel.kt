@@ -140,6 +140,18 @@ class ExploreViewModel @Inject constructor(
 		}
 	}
 
+	fun setSourcesNsfw(sources: Collection<MangaSource>, isNsfw: Boolean) {
+		launchJob(Dispatchers.Default) {
+			val rollback = sourcesRepository.setNsfwOverride(sources, isNsfw)
+			val message = if (sources.size == 1) {
+				if (isNsfw) R.string.source_marked_nsfw else R.string.source_unmarked_nsfw
+			} else {
+				if (isNsfw) R.string.sources_marked_nsfw else R.string.sources_unmarked_nsfw
+			}
+			onActionDone.call(ReversibleAction(message, rollback))
+		}
+	}
+
 	fun respondSuggestionTip(isAccepted: Boolean) {
 		settings.isSuggestionsEnabled = isAccepted
 		settings.closeTip(TIP_SUGGESTIONS)

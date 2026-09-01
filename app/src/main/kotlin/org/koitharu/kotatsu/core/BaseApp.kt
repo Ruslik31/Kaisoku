@@ -25,6 +25,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.crash.GlobalCrashHandler
 import org.koitharu.kotatsu.core.crash.isCrashProcess
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.model.NsfwOverridesLoader
 import org.koitharu.kotatsu.core.os.AppValidator
 import org.koitharu.kotatsu.core.os.RomCompat
 import org.koitharu.kotatsu.core.parser.DynamicParserManager
@@ -61,6 +62,9 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	@Inject
 	lateinit var appValidator: AppValidator
+
+	@Inject
+	lateinit var nsfwOverridesLoader: NsfwOverridesLoader
 
 	@Inject
 	lateinit var workScheduleManager: WorkScheduleManager
@@ -101,6 +105,7 @@ open class BaseApp : Application(), Configuration.Provider {
 		}
 		processLifecycleScope.launch(Dispatchers.Default) {
 			setupDatabaseObservers()
+			nsfwOverridesLoader.ensureLoaded()
 			localStorageChanges.collect(localMangaIndexProvider.get())
 		}
 		processLifecycleScope.launch(Dispatchers.IO) {
