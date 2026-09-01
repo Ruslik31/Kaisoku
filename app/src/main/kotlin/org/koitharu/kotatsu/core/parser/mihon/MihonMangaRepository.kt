@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.core.parser.mihon
 import android.net.Uri
 import androidx.core.net.toUri
 import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
@@ -55,6 +56,8 @@ class MihonMangaRepository(
 		get() = loadedSource.wrapper
 
 	private val mihonSource = loadedSource.catalogueSource
+	private var mihonFilters = mihonSource.getFilterList()
+	private val defaultFilterState = mihonFilters.stateFingerprint()
 	private var lastOffset = -1
 	private var currentPage = 1
 
@@ -68,12 +71,23 @@ class MihonMangaRepository(
 
 	override val filterCapabilities: MangaListFilterCapabilities = MangaListFilterCapabilities(
 		isSearchSupported = true,
-		isSearchWithFiltersSupported = false,
+		isSearchWithFiltersSupported = mihonFilters.isNotEmpty(),
 	)
 
 	override var defaultSortOrder: SortOrder = SortOrder.POPULARITY
 
 	override suspend fun getFilterOptions(): MangaListFilterOptions = MangaListFilterOptions()
+
+	override suspend fun getExternalFilters(): Any? = mihonFilters.takeIf { it.isNotEmpty() }
+
+	override fun hasExternalFiltersApplied(): Boolean =
+		mihonFilters.stateFingerprint() != defaultFilterState
+
+	override fun resetExternalFilters(): Boolean {
+		if (!hasExternalFiltersApplied()) return false
+		mihonFilters = mihonSource.getFilterList()
+		return true
+	}
 
 	override suspend fun getList(offset: Int, order: SortOrder?, filter: MangaListFilter?): List<Manga> = withContext(Dispatchers.IO) {
 		runCatching {
@@ -86,7 +100,8 @@ class MihonMangaRepository(
 			val query = filter?.query?.trim().orEmpty()
 			val page = currentPage.coerceAtLeast(1)
 			val mangas = when {
-				query.isNotEmpty() -> mihonSource.getSearchManga(page, query, FilterList())
+				query.isNotEmpty() || hasExternalFiltersApplied() ->
+					mihonSource.getSearchManga(page, query, mihonFilters)
 				(order == SortOrder.UPDATED || order == SortOrder.UPDATED_ASC) && mihonSource.supportsLatest ->
 					mihonSource.getLatestUpdates(page)
 
@@ -457,4 +472,13 @@ class MihonMangaRepository(
 		private const val DIRECT_PAGE_PATH = "page"
 		private const val LONG_HASH_SEED = 1125899906842597L
 	}
+}
+
+private fun FilterList.stateFingerprint(): List<Any?> = map { it.stateFingerprint() }
+
+private fun Filter<*>.stateFingerprint(): Any? = when (this) {
+	is Filter.Header, is Filter.Separator -> null
+	is Filter.Group<*> -> listOf(name, state.map { (it as? Filter<*>)?.stateFingerprint() ?: it.toString() })
+	is Filter.Sort -> listOf(name, state?.index, state?.ascending)
+	else -> listOf(name, state)
 }

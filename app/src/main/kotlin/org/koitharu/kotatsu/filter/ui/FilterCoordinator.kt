@@ -64,6 +64,7 @@ class FilterCoordinator @Inject constructor(
 
     private val currentListFilter = MutableStateFlow(MangaListFilter.EMPTY)
     private val currentSortOrder = MutableStateFlow(repository.defaultSortOrder)
+    private val externalFilterRevision = MutableStateFlow(0)
 
     private val availableSortOrders = repository.sortOrders
     private val filterOptions = suspendLazy { repository.getFilterOptions() }
@@ -74,7 +75,7 @@ class FilterCoordinator @Inject constructor(
         get() = repository.source
 
     val isFilterApplied: Boolean
-        get() = currentListFilter.value.isNotEmpty()
+        get() = currentListFilter.value.isNotEmpty() || repository.hasExternalFiltersApplied()
 
     val query: StateFlow<String?> = currentListFilter.map { it.query }
         .stateIn(coroutineScope, SharingStarted.Eagerly, null)
@@ -280,14 +281,29 @@ class FilterCoordinator @Inject constructor(
 
     fun reset() {
         currentListFilter.value = MangaListFilter.EMPTY
+        if (repository.resetExternalFilters()) {
+            externalFilterRevision.value++
+        }
     }
 
     fun snapshot() = Snapshot(
         sortOrder = currentSortOrder.value,
         listFilter = currentListFilter.value,
+        externalFilterRevision = externalFilterRevision.value,
     )
 
-    fun observe(): Flow<Snapshot> = combine(currentSortOrder, currentListFilter, ::Snapshot)
+    fun observe(): Flow<Snapshot> = combine(
+        currentSortOrder,
+        currentListFilter,
+        externalFilterRevision,
+        ::Snapshot,
+    )
+
+    suspend fun getExternalFilters(): Any? = repository.getExternalFilters()
+
+    fun notifyExternalFiltersChanged() {
+        externalFilterRevision.value++
+    }
 
     fun setSortOrder(newSortOrder: SortOrder) {
         currentSortOrder.value = newSortOrder
@@ -519,6 +535,7 @@ class FilterCoordinator @Inject constructor(
     data class Snapshot(
         val sortOrder: SortOrder,
         val listFilter: MangaListFilter,
+        val externalFilterRevision: Int = 0,
     )
 
     interface Owner {

@@ -6,6 +6,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.core.model.iconResId
 import org.koitharu.kotatsu.core.model.titleResId
 import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.core.parser.external.ExternalMangaSource
@@ -13,6 +14,7 @@ import org.koitharu.kotatsu.core.parser.favicon.faviconUri
 import org.koitharu.kotatsu.parsers.model.ContentType as MangaContentType
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.parsers.model.MangaState
 import org.koitharu.kotatsu.parsers.model.MangaTag
 
 sealed interface ListFilterOption {
@@ -77,6 +79,28 @@ sealed interface ListFilterOption {
 
 		override val groupKey: String
 			get() = "_branch"
+	}
+
+	data class State(
+		val state: MangaState?,
+	) : ListFilterOption {
+
+		override val titleResId: Int
+			get() = state?.titleResId ?: R.string.publication_status
+
+		override val iconResId: Int
+			get() = state?.iconResId ?: R.drawable.ic_filter_menu
+
+		override val titleText: CharSequence?
+			get() = null
+
+		override val groupKey: String
+			get() = "_state"
+
+		companion object {
+
+			val CYCLE = MangaState.entries
+		}
 	}
 
 	data class Tag(

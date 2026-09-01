@@ -30,8 +30,19 @@ class AlternativesUseCase @Inject constructor(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 ) {
 
-	suspend operator fun invoke(manga: Manga, throughDisabledSources: Boolean): Flow<Manga> {
-		val sources = getSources(manga.source, throughDisabledSources)
+	suspend operator fun invoke(
+		manga: Manga,
+		throughDisabledSources: Boolean,
+		query: String = manga.title,
+		sameLanguageOnly: Boolean = false,
+		sameContentTypeOnly: Boolean = false,
+	): Flow<Manga> {
+		val sources = getSources(
+			manga.source,
+			throughDisabledSources,
+			sameLanguageOnly,
+			sameContentTypeOnly,
+		)
 		if (sources.isEmpty()) {
 			return emptyFlow()
 		}
@@ -46,11 +57,14 @@ class AlternativesUseCase @Inject constructor(
 					val searchHelper = searchHelperFactory.create(source)
 					val list = runCatchingCancellable {
 						semaphore.withPermit {
-							searchHelper(manga.title, SearchKind.TITLE)?.manga
+							searchHelper(query, SearchKind.TITLE)?.manga
 						}
 					}.getOrNull()
 					list?.forEach { m ->
 						val rawKey = m.storedEntryKey()
+						if (rawKey == manga.storedEntryKey()) {
+							return@forEach
+						}
 						if (!markSeen(rawKey)) {
 							return@forEach
 						}
@@ -80,7 +94,12 @@ class AlternativesUseCase @Inject constructor(
 		return MangaStoredEntryKey(sourceName, value)
 	}
 
-	private suspend fun getSources(ref: MangaSource, disabled: Boolean): List<MangaSource> = buildList {
+	private suspend fun getSources(
+		ref: MangaSource,
+		disabled: Boolean,
+		sameLanguageOnly: Boolean,
+		sameContentTypeOnly: Boolean,
+	): List<MangaSource> = buildList {
 		val refSource = ref.unwrap()
 		if (!disabled) {
 			add(refSource)
@@ -95,6 +114,14 @@ class AlternativesUseCase @Inject constructor(
 			add(unwrapped)
 		}
 	}.distinctBy { it.unwrap().name }
+		.filter { source ->
+			!sameLanguageOnly || source !is MangaParserSource || ref !is MangaParserSource ||
+				source.locale == ref.locale
+		}
+		.filter { source ->
+			!sameContentTypeOnly || source !is MangaParserSource || ref !is MangaParserSource ||
+				source.contentType == ref.contentType
+		}
 		.sortedByDescending { it.priority(ref) }
 
 	private suspend fun MangaRepository.getAlternativeDetails(candidate: Manga, ref: Manga): Manga {

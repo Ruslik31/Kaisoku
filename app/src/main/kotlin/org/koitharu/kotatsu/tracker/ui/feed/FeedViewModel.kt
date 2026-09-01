@@ -102,6 +102,7 @@ class FeedViewModel @Inject constructor(
 	)
 
 	init {
+		quickFilter.isStateFilterEnabled = false
 		launchJob(Dispatchers.Default) {
 			repository.gc()
 		}

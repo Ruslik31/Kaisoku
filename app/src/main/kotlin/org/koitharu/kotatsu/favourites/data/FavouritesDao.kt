@@ -252,11 +252,13 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 
 	private fun getOrderBy(sortOrder: ListSortOrder) = when (sortOrder) {
 		ListSortOrder.RATING -> "manga.rating DESC"
+		ListSortOrder.RATING_REVERSE -> "manga.rating ASC"
 		ListSortOrder.NEWEST -> "favourites.created_at DESC"
 		ListSortOrder.OLDEST -> "favourites.created_at ASC"
 		ListSortOrder.ALPHABETIC -> "manga.title ASC"
 		ListSortOrder.ALPHABETIC_REVERSE -> "manga.title DESC"
 		ListSortOrder.NEW_CHAPTERS -> "IFNULL((SELECT chapters_new FROM tracks WHERE tracks.manga_id = manga.manga_id), 0) DESC"
+		ListSortOrder.NEW_CHAPTERS_REVERSE -> "IFNULL((SELECT chapters_new FROM tracks WHERE tracks.manga_id = manga.manga_id), 0) ASC"
 		ListSortOrder.PROGRESS -> "IFNULL((SELECT percent FROM history WHERE history.manga_id = manga.manga_id), 0) DESC"
 		ListSortOrder.UNREAD -> "IFNULL((SELECT percent FROM history WHERE history.manga_id = manga.manga_id), 0) ASC"
 		ListSortOrder.UNREAD_CHAPTERS -> "IFNULL((SELECT CASE WHEN history.chapters > 0 AND history.percent BETWEEN 0 AND 1 THEN CAST(history.chapters * (1 - history.percent) AS INTEGER) ELSE 0 END FROM history WHERE history.manga_id = manga.manga_id AND history.deleted_at = 0), 0) DESC"
@@ -264,6 +266,9 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		ListSortOrder.LAST_READ -> "IFNULL((SELECT updated_at FROM history WHERE history.manga_id = manga.manga_id), 0) DESC"
 		ListSortOrder.LONG_AGO_READ -> "IFNULL((SELECT updated_at FROM history WHERE history.manga_id = manga.manga_id), 0) ASC"
 		ListSortOrder.UPDATED -> "IFNULL((SELECT last_chapter_date FROM tracks WHERE tracks.manga_id = manga.manga_id), 0) DESC"
+		ListSortOrder.UPDATED_REVERSE -> "IFNULL((SELECT last_chapter_date FROM tracks WHERE tracks.manga_id = manga.manga_id), 0) ASC"
+		ListSortOrder.TOTAL_CHAPTERS -> "(SELECT COUNT(*) FROM chapters WHERE chapters.manga_id = manga.manga_id) DESC"
+		ListSortOrder.TOTAL_CHAPTERS_REVERSE -> "(SELECT COUNT(*) FROM chapters WHERE chapters.manga_id = manga.manga_id) ASC"
 
 		else -> throw IllegalArgumentException("Sort order $sortOrder is not supported")
 	}
@@ -276,6 +281,7 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		is ListFilterOption.TagTitle -> "EXISTS(SELECT * FROM manga_tags LEFT JOIN tags ON tags.tag_id = manga_tags.tag_id WHERE favourites.manga_id = manga_tags.manga_id AND tags.title = ${sqlEscapeString(option.titleText)})"
 		ListFilterOption.Downloaded -> "EXISTS(SELECT * FROM local_index WHERE local_index.manga_id = favourites.manga_id)"
 		is ListFilterOption.Source -> "manga.source = ${sqlEscapeString(option.mangaSource.name)}"
+		is ListFilterOption.State -> option.state?.let { "manga.state = ${sqlEscapeString(it.name)}" }
 		is ListFilterOption.ContentType -> contentTypeCondition(option)
 		else -> null
 	}

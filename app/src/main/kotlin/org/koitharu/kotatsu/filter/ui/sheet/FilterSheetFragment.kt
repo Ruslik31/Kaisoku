@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.filter.ui.sheet
 
 import android.os.Bundle
 import android.text.InputFilter
+import android.graphics.Typeface
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -9,7 +10,12 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.WindowInsetsCompat
@@ -17,7 +23,9 @@ import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.chip.Chip
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.RangeSlider
 import com.google.android.material.slider.Slider
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +33,10 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.titleResId
 import org.koitharu.kotatsu.core.nav.router
@@ -127,6 +139,14 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(),
             }
         binding.buttonSave.setOnClickListener(this)
         binding.buttonDone.setOnClickListener(this)
+        binding.buttonExternalFilters.setOnClickListener(this)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val externalFilters = withContext(Dispatchers.IO) { filter.getExternalFilters() }
+            if (externalFilters is FilterList && externalFilters.isNotEmpty()) {
+                binding.buttonExternalFilters.tag = externalFilters
+                binding.buttonExternalFilters.isVisible = true
+            }
+        }
     }
 
     private fun SheetFilterBinding.adjustForEmbeddedLayout() {
@@ -153,8 +173,149 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(),
         when (v.id) {
             R.id.button_done -> dismiss()
             R.id.button_save -> onSaveFilterClick("")
+            R.id.button_external_filters -> (v.tag as? FilterList)?.let(::showExternalFilters)
         }
     }
+
+    private fun showExternalFilters(filters: FilterList) {
+        val context = requireContext()
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val padding = 20.dp()
+            setPadding(padding, 8.dp(), padding, 8.dp())
+        }
+        val applyActions = mutableListOf<() -> Unit>()
+        filters.forEach { addExternalFilterControl(content, it, applyActions) }
+        val scroll = ScrollView(context).apply { addView(content) }
+        MaterialAlertDialogBuilder(context)
+            .setTitle(R.string.source_filters)
+            .setView(scroll)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                applyActions.forEach { it() }
+                FilterCoordinator.require(this).notifyExternalFiltersChanged()
+            }
+            .show()
+    }
+
+    private fun addExternalFilterControl(
+        container: LinearLayout,
+        filter: Filter<*>,
+        applyActions: MutableList<() -> Unit>,
+    ) {
+        val context = container.context
+        when (filter) {
+            is Filter.Header -> container.addView(TextView(context).apply {
+                text = filter.name
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, 16.dp(), 0, 4.dp())
+            })
+
+            is Filter.Separator -> container.addView(View(context).apply {
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 12.dp())
+            })
+
+            is Filter.Text -> {
+                val input = EditText(context).apply {
+                    setText(filter.state)
+                    hint = filter.name
+                    isSingleLine = true
+                }
+                addLabeledExternalControl(container, filter.name, input)
+                applyActions += { filter.state = input.text?.toString().orEmpty() }
+            }
+
+            is Filter.CheckBox -> {
+                val checkBox = CheckBox(context).apply {
+                    text = filter.name
+                    isChecked = filter.state
+                }
+                container.addView(checkBox, externalControlLayoutParams())
+                applyActions += { filter.state = checkBox.isChecked }
+            }
+
+            is Filter.TriState -> {
+                val spinner = createExternalSpinner(
+                    listOf(
+                        getString(R.string.filter_ignore),
+                        getString(R.string.filter_include),
+                        getString(R.string.filter_exclude),
+                    ),
+                    filter.state.coerceIn(Filter.TriState.STATE_IGNORE, Filter.TriState.STATE_EXCLUDE),
+                )
+                addLabeledExternalControl(container, filter.name, spinner)
+                applyActions += { filter.state = spinner.selectedItemPosition }
+            }
+
+            is Filter.Select<*> -> {
+                val spinner = createExternalSpinner(
+                    filter.values.map { it.toString() },
+                    filter.state.coerceIn(0, filter.values.lastIndex.coerceAtLeast(0)),
+                )
+                addLabeledExternalControl(container, filter.name, spinner)
+                applyActions += { filter.state = spinner.selectedItemPosition }
+            }
+
+            is Filter.Sort -> {
+                val options = buildList {
+                    add(getString(R.string.filter_default))
+                    filter.values.forEach { value ->
+                        add("$value — ${getString(R.string.ascending)}")
+                        add("$value — ${getString(R.string.descending)}")
+                    }
+                }
+                val selected = filter.state?.let { 1 + it.index * 2 + if (it.ascending) 0 else 1 } ?: 0
+                val spinner = createExternalSpinner(options, selected.coerceIn(options.indices))
+                addLabeledExternalControl(container, filter.name, spinner)
+                applyActions += {
+                    val position = spinner.selectedItemPosition
+                    filter.state = if (position == 0) {
+                        null
+                    } else {
+                        val valuePosition = position - 1
+                        Filter.Sort.Selection(valuePosition / 2, valuePosition % 2 == 0)
+                    }
+                }
+            }
+
+            is Filter.Group<*> -> {
+                container.addView(TextView(context).apply {
+                    text = filter.name
+                    setTypeface(typeface, Typeface.BOLD)
+                    setPadding(0, 12.dp(), 0, 0)
+                })
+                filter.state.filterIsInstance<Filter<*>>()
+                    .forEach { addExternalFilterControl(container, it, applyActions) }
+            }
+        }
+    }
+
+    private fun addLabeledExternalControl(container: LinearLayout, label: String, control: View) {
+        container.addView(TextView(container.context).apply {
+            text = label
+            setPadding(0, 8.dp(), 0, 0)
+        })
+        container.addView(control, externalControlLayoutParams())
+    }
+
+    private fun createExternalSpinner(items: List<String>, selected: Int): Spinner {
+        return Spinner(requireContext()).apply {
+            adapter = ArrayAdapter(
+                context,
+                android.R.layout.simple_spinner_dropdown_item,
+                android.R.id.text1,
+                items,
+            )
+            if (items.isNotEmpty()) setSelection(selected, false)
+        }
+    }
+
+    private fun externalControlLayoutParams() = LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.WRAP_CONTENT,
+    )
+
+    private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
 
     override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
         val filter = FilterCoordinator.require(this)

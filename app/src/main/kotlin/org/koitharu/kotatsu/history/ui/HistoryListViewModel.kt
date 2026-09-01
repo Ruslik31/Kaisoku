@@ -298,10 +298,15 @@ private fun MangaHistory.header(order: ListSortOrder): ListHeader? = when (order
 	ListSortOrder.ALPHABETIC_REVERSE,
 	ListSortOrder.RELEVANCE,
 	ListSortOrder.NEW_CHAPTERS,
+	ListSortOrder.NEW_CHAPTERS_REVERSE,
 	ListSortOrder.UNREAD_CHAPTERS,
 	ListSortOrder.UNREAD_CHAPTERS_REVERSE,
 	ListSortOrder.UPDATED,
-	ListSortOrder.RATING -> null
+	ListSortOrder.UPDATED_REVERSE,
+	ListSortOrder.TOTAL_CHAPTERS,
+	ListSortOrder.TOTAL_CHAPTERS_REVERSE,
+	ListSortOrder.RATING,
+	ListSortOrder.RATING_REVERSE -> null
 }
 
 private fun historyEmptyState(hasFilters: Boolean) = if (hasFilters) {

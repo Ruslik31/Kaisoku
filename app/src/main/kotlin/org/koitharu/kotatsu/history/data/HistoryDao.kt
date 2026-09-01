@@ -69,7 +69,11 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 					ListSortOrder.ALPHABETIC -> "manga.title"
 					ListSortOrder.ALPHABETIC_REVERSE -> "manga.title DESC"
 					ListSortOrder.NEW_CHAPTERS -> "IFNULL((SELECT chapters_new FROM tracks WHERE tracks.manga_id = manga.manga_id), 0) DESC"
+					ListSortOrder.NEW_CHAPTERS_REVERSE -> "IFNULL((SELECT chapters_new FROM tracks WHERE tracks.manga_id = manga.manga_id), 0) ASC"
 					ListSortOrder.UPDATED -> "IFNULL((SELECT last_chapter_date FROM tracks WHERE tracks.manga_id = manga.manga_id), 0) DESC"
+					ListSortOrder.UPDATED_REVERSE -> "IFNULL((SELECT last_chapter_date FROM tracks WHERE tracks.manga_id = manga.manga_id), 0) ASC"
+					ListSortOrder.TOTAL_CHAPTERS -> "(SELECT COUNT(*) FROM chapters WHERE chapters.manga_id = manga.manga_id) DESC"
+					ListSortOrder.TOTAL_CHAPTERS_REVERSE -> "(SELECT COUNT(*) FROM chapters WHERE chapters.manga_id = manga.manga_id) ASC"
 					else -> throw IllegalArgumentException("Sort order $order is not supported")
 				},
 			)
@@ -206,6 +210,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		is ListFilterOption.Tag -> "EXISTS(SELECT * FROM manga_tags WHERE history.manga_id = manga_tags.manga_id AND tag_id = ${option.tagId})"
 		ListFilterOption.Downloaded -> "EXISTS(SELECT * FROM local_index WHERE local_index.manga_id = history.manga_id)"
 		is ListFilterOption.Source -> "manga.source = ${sqlEscapeString(option.mangaSource.name)}"
+		is ListFilterOption.State -> option.state?.let { "manga.state = ${sqlEscapeString(it.name)}" }
 		else -> null
 	}
 }

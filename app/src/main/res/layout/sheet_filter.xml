@@ -73,6 +73,17 @@
 
             </org.koitharu.kotatsu.filter.ui.FilterFieldLayout>
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/button_external_filters"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="@dimen/margin_small"
+                android:layout_marginTop="@dimen/margin_small"
+                android:text="@string/source_filters"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
             <org.koitharu.kotatsu.filter.ui.FilterFieldLayout
                 android:id="@+id/layout_locale"
                 android:layout_width="match_parent"

@@ -99,6 +99,12 @@ interface MangaRepository {
 	 */
 	suspend fun getExternalFilters(): Any? = null
 
+	/** Returns whether source-defined filters currently differ from their defaults. */
+	fun hasExternalFiltersApplied(): Boolean = false
+
+	/** Restores source-defined filters to their extension-provided defaults. */
+	fun resetExternalFilters(): Boolean = false
+
 	suspend fun find(manga: Manga): Manga? {
 		val list = getList(0, SortOrder.RELEVANCE, MangaListFilter(query = manga.title))
 		return list.find { x -> x.id == manga.id }

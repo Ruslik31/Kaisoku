@@ -11,9 +11,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.AlternativesUseCase
+import org.koitharu.kotatsu.alternatives.domain.AlternativesSearchOptions
+import org.koitharu.kotatsu.alternatives.domain.AlternativeSortOrder
 import org.koitharu.kotatsu.alternatives.domain.MigrateUseCase
 import org.koitharu.kotatsu.core.model.chaptersCount
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
@@ -36,6 +39,7 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.suspendlazy.getOrDefault
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
 import javax.inject.Inject
+import kotlin.math.abs
 
 @HiltViewModel
 class AlternativesViewModel @Inject constructor(
@@ -50,6 +54,7 @@ class AlternativesViewModel @Inject constructor(
 
 	private var includeDisabledSources = MutableStateFlow(false)
 	private val results = MutableStateFlow<List<MangaAlternativeModel>>(emptyList())
+	val options = MutableStateFlow(AlternativesSearchOptions(query = manga.title))
 
 	private var migrationJob: Job? = null
 	private var searchJob: Job? = null
@@ -64,9 +69,22 @@ class AlternativesViewModel @Inject constructor(
 		results,
 		isLoading,
 		includeDisabledSources,
-	) { list, loading, includeDisabled ->
+		options,
+	) { list, loading, includeDisabled, searchOptions ->
+		val visible = list
+			.filter { !searchOptions.hideNoChapters || it.chaptersCount > 0 }
+			.let { items ->
+				when (searchOptions.sortOrder) {
+					AlternativeSortOrder.BEST_MATCH -> items.sortedByDescending {
+						bestMatchScore(searchOptions.query, it.manga.title)
+					}
+					AlternativeSortOrder.MOST_CHAPTERS -> items.sortedByDescending(MangaAlternativeModel::chaptersCount)
+					AlternativeSortOrder.CLOSEST_CHAPTER_COUNT -> items.sortedBy { abs(it.chaptersDiff) }
+					AlternativeSortOrder.SOURCE_PRIORITY -> items
+				}
+			}
 		when {
-			list.isEmpty() -> listOf(
+			visible.isEmpty() -> listOf(
 				when {
 					loading -> LoadingState
 					else -> EmptyState(
@@ -78,9 +96,9 @@ class AlternativesViewModel @Inject constructor(
 				},
 			)
 
-			loading -> list + LoadingFooter()
-			includeDisabled -> list
-			else -> list + ButtonFooter(R.string.search_disabled_sources)
+			loading -> visible + LoadingFooter()
+			includeDisabled -> visible
+			else -> visible + ButtonFooter(R.string.search_disabled_sources)
 		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
@@ -94,6 +112,27 @@ class AlternativesViewModel @Inject constructor(
 		includeDisabledSources.value = false
 		doSearch(throughDisabledSources = false)
 	}
+
+	fun setQuery(query: String) = updateSearchOptions { copy(query = query.trim()) }
+
+	fun setSameLanguageOnly(value: Boolean) = updateSearchOptions { copy(sameLanguageOnly = value) }
+
+	fun setSameContentTypeOnly(value: Boolean) = updateSearchOptions { copy(sameContentTypeOnly = value) }
+
+	fun setHideNoChapters(value: Boolean) {
+		options.update { it.copy(hideNoChapters = value) }
+	}
+
+	fun setSortOrder(value: AlternativeSortOrder) {
+		options.update { it.copy(sortOrder = value) }
+	}
+
+	fun resetOptions() {
+		options.value = AlternativesSearchOptions(query = manga.title)
+		restartSearch()
+	}
+
+	fun hasCustomOptions(): Boolean = options.value != AlternativesSearchOptions(query = manga.title)
 
 	fun continueSearch() {
 		if (includeDisabledSources.value) {
@@ -122,14 +161,52 @@ class AlternativesViewModel @Inject constructor(
 			prevJob?.cancelAndJoin()
 			val ref = mangaDetails.getOrDefault(manga)
 			val refCount = ref.chaptersCount()
-			alternativesUseCase.invoke(ref, throughDisabledSources)
+			val searchOptions = options.value
+			alternativesUseCase.invoke(
+				manga = ref,
+				throughDisabledSources = throughDisabledSources,
+				query = searchOptions.query,
+				sameLanguageOnly = searchOptions.sameLanguageOnly,
+				sameContentTypeOnly = searchOptions.sameContentTypeOnly,
+			)
 				.collect {
 					val model = MangaAlternativeModel(
 						mangaModel = mangaListMapper.toListModel(it, ListMode.GRID) as MangaGridModel,
 						referenceChapters = refCount,
 					)
-					results.append(model)
+					results.update { current ->
+						if (current.any { old -> old.manga.id == model.manga.id && old.manga.source.name == model.manga.source.name }) {
+							current
+						} else {
+							current + model
+						}
+					}
 				}
+		}
+	}
+
+	private fun updateSearchOptions(block: AlternativesSearchOptions.() -> AlternativesSearchOptions) {
+		val updated = options.value.block()
+		if (updated == options.value || updated.query.isBlank()) return
+		options.value = updated
+		restartSearch()
+	}
+
+	private fun restartSearch() {
+		searchJob?.cancel()
+		results.value = emptyList()
+		includeDisabledSources.value = false
+		doSearch(throughDisabledSources = false)
+	}
+
+	private fun bestMatchScore(query: String, title: String): Int {
+		val normalizedQuery = query.lowercase().filter(Char::isLetterOrDigit)
+		val normalizedTitle = title.lowercase().filter(Char::isLetterOrDigit)
+		return when {
+			normalizedQuery == normalizedTitle -> 3
+			normalizedTitle.startsWith(normalizedQuery) -> 2
+			normalizedQuery in normalizedTitle -> 1
+			else -> 0
 		}
 	}
 }

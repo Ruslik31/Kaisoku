@@ -78,6 +78,12 @@ class ListConfigViewModel @Inject constructor(
 		ListConfigSection.Updated -> null
 	}?.sortedByOrdinal()
 
+	fun getSortTypes(): List<ListSortOrder.Type>? = when (section) {
+		is ListConfigSection.Favorites -> ListSortOrder.FAVORITE_TYPES
+		ListConfigSection.History -> ListSortOrder.HISTORY_TYPES
+		else -> null
+	}
+
 	fun getSelectedSortOrder(): ListSortOrder? = when (section) {
 		is ListConfigSection.Favorites -> getCategorySortOrder(section.categoryId)
 		ListConfigSection.General -> null
@@ -88,6 +94,21 @@ class ListConfigViewModel @Inject constructor(
 
 	fun setSortOrder(position: Int) {
 		val value = getSortOrders()?.getOrNull(position) ?: return
+		saveSortOrder(value)
+	}
+
+	fun setSortType(position: Int) {
+		val type = getSortTypes()?.getOrNull(position) ?: return
+		val current = getSelectedSortOrder() ?: return
+		saveSortOrder(ListSortOrder.from(type, current.isAscending))
+	}
+
+	fun setSortAscending(isAscending: Boolean) {
+		val current = getSelectedSortOrder() ?: return
+		saveSortOrder(ListSortOrder.from(current.type, isAscending))
+	}
+
+	private fun saveSortOrder(value: ListSortOrder) {
 		when (section) {
 			is ListConfigSection.Favorites -> launchJob {
 				if (section.categoryId == NO_ID) {

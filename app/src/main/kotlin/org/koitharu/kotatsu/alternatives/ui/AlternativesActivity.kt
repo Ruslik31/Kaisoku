@@ -1,13 +1,9 @@
 package org.koitharu.kotatsu.alternatives.ui
 
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuInflater
-import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
 import androidx.activity.viewModels
-import androidx.core.view.MenuProvider
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import coil3.ImageLoader
@@ -80,7 +76,7 @@ class AlternativesActivity : BaseActivity<ActivityAlternativesBinding>(),
 			finishAfterTransition()
 		}
 
-		addMenuProvider(AlternativesMenuProvider())
+		addMenuProvider(AlternativesMenuProvider(this, viewModel))
 	}
 
 	override fun onApplyWindowInsets(
@@ -115,6 +111,8 @@ class AlternativesActivity : BaseActivity<ActivityAlternativesBinding>(),
 
 	override fun onFooterButtonClick() = viewModel.continueSearch()
 
+	fun launchManualMigration() = pickMangaLauncher.launch(viewModel.manga.title)
+
 	private fun confirmMigration(target: Manga) {
 		buildAlertDialog(this, isCentered = true) {
 			setIcon(R.drawable.ic_replace)
@@ -135,18 +133,4 @@ class AlternativesActivity : BaseActivity<ActivityAlternativesBinding>(),
 		}.show()
 	}
 
-	private inner class AlternativesMenuProvider : MenuProvider {
-		override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-			menuInflater.inflate(R.menu.opt_alternatives, menu)
-		}
-
-		override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
-			R.id.action_pick_migration -> {
-				pickMangaLauncher.launch(viewModel.manga.title)
-				true
-			}
-
-			else -> false
-		}
-	}
 }

@@ -60,20 +60,38 @@ class ListConfigBottomSheet :
 		binding.switchGrouping.isChecked = viewModel.isGroupingEnabled
 		binding.switchGrouping.setOnCheckedChangeListener(this)
 
+		val sortTypes = viewModel.getSortTypes()
 		val sortOrders = viewModel.getSortOrders()
-		if (sortOrders != null) {
+		if (sortTypes != null || sortOrders != null) {
 			binding.textViewOrderTitle.isVisible = true
+			val current = viewModel.getSelectedSortOrder()
+			val labels = sortTypes?.map { binding.root.context.getString(it.titleResId) }
+				?: sortOrders.orEmpty().map { binding.root.context.getString(it.titleResId) }
 			binding.spinnerOrder.adapter = ArrayAdapter(
 				binding.spinnerOrder.context,
 				android.R.layout.simple_spinner_dropdown_item,
 				android.R.id.text1,
-				sortOrders.map { binding.spinnerOrder.context.getString(it.titleResId) },
+				labels,
 			)
-			val selected = sortOrders.indexOf(viewModel.getSelectedSortOrder())
+			val selected = sortTypes?.indexOf(current?.type) ?: sortOrders.orEmpty().indexOf(current)
 			if (selected >= 0) {
 				binding.spinnerOrder.setSelection(selected, false)
 			}
 			binding.spinnerOrder.onItemSelectedListener = this
+			binding.spinnerDirection.isVisible = sortTypes != null
+			if (sortTypes != null) {
+				binding.spinnerDirection.adapter = ArrayAdapter(
+					binding.root.context,
+					android.R.layout.simple_spinner_dropdown_item,
+					android.R.id.text1,
+					listOf(
+						binding.root.context.getString(R.string.sort_order_asc),
+						binding.root.context.getString(R.string.sort_order_desc),
+					),
+				)
+				binding.spinnerDirection.setSelection(if (current?.isAscending == true) 0 else 1, false)
+				binding.spinnerDirection.onItemSelectedListener = this
+			}
 			binding.cardOrder.isVisible = true
 		}
 	}
@@ -118,7 +136,16 @@ class ListConfigBottomSheet :
 	override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
 		when (parent.id) {
 			R.id.spinner_order -> {
-				viewModel.setSortOrder(position)
+				if (viewModel.getSortTypes() != null) {
+					viewModel.setSortType(position)
+				} else {
+					viewModel.setSortOrder(position)
+				}
+				viewBinding?.switchGrouping?.isEnabled = viewModel.isGroupingAvailable
+			}
+
+			R.id.spinner_direction -> {
+				viewModel.setSortAscending(position == 0)
 				viewBinding?.switchGrouping?.isEnabled = viewModel.isGroupingAvailable
 			}
 		}

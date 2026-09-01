@@ -131,12 +131,30 @@
 				android:visibility="gone"
 				tools:visibility="visible">
 
-				<Spinner
-					android:id="@+id/spinner_order"
+				<LinearLayout
 					android:layout_width="match_parent"
-					android:layout_height="56dp"
-					android:minHeight="?listPreferredItemHeightSmall"
-					android:paddingHorizontal="8dp" />
+					android:layout_height="wrap_content"
+					android:orientation="horizontal">
+
+					<Spinner
+						android:id="@+id/spinner_order"
+						android:layout_width="0dp"
+						android:layout_height="56dp"
+						android:layout_weight="2"
+						android:minHeight="?listPreferredItemHeightSmall"
+						android:paddingHorizontal="8dp" />
+
+					<Spinner
+						android:id="@+id/spinner_direction"
+						android:layout_width="0dp"
+						android:layout_height="56dp"
+						android:layout_weight="1"
+						android:minHeight="?listPreferredItemHeightSmall"
+						android:paddingHorizontal="8dp"
+						android:visibility="gone"
+						tools:visibility="visible" />
+
+				</LinearLayout>
 
 			</com.google.android.material.card.MaterialCardView>
 
