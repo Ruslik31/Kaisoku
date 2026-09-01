@@ -141,8 +141,9 @@ class ReaderViewModel @Inject constructor(
     // reader back into the previous chapter.
     private val contentStateLock = Any()
     private var stateRevision = 0L
+    private var contentGeneration = 0L
     private var nextReaderReplacementId = 0L
-    private var pendingReaderReplacement: Pair<Long, ReaderState>? = null
+    private var pendingReaderReplacement: PendingReaderReplacement? = null
     private val lifecycleStateGuard = ReaderLifecycleStateGuard()
 
     init {
@@ -268,7 +269,23 @@ class ReaderViewModel @Inject constructor(
     @MainThread
     fun onResume() {
         synchronized(contentStateLock) {
-            lifecycleStateGuard.onResumed()
+            val wasBackgrounded = lifecycleStateGuard.onResumed()
+            val resumeState = readingState.value
+            if (wasBackgrounded && resumeState != null && content.value.pages.any {
+                    it.chapterId == resumeState.chapterId && it.index == resumeState.page
+                }) {
+                // A retained RecyclerView/ViewPager may restore its own older layout position before
+                // emitting callbacks. Publish a new generation and re-anchor it to the frozen pause
+                // snapshot before UI callbacks become authoritative again.
+                stateRevision++
+                val replacement = PendingReaderReplacement(
+                    id = ++nextReaderReplacementId,
+                    state = resumeState,
+                    restoreExistingReader = true,
+                )
+                pendingReaderReplacement = replacement
+                publishContentLocked(content.value)
+            }
         }
     }
 
@@ -287,14 +304,14 @@ class ReaderViewModel @Inject constructor(
     }
 
     @MainThread
-    fun switchMode(newMode: ReaderMode, visibleState: ReaderState?) {
+    fun switchMode(newMode: ReaderMode, visibleSnapshot: ReaderStateSnapshot?) {
         if (readerMode.value == newMode) {
-            saveVisibleState(visibleState)
+            saveVisibleState(visibleSnapshot)
             return
         }
         // Capture the outgoing reader's visible page exactly once. Re-reading readingState after
         // the preferences write allowed a late scroll callback to replace the handoff position.
-        prepareReaderReplacement(visibleState)
+        prepareReaderReplacement(visibleSnapshot)
         readerMode.value = newMode
 
         val previousModeSwitch = modeSwitchJob
@@ -309,33 +326,71 @@ class ReaderViewModel @Inject constructor(
     }
 
     @MainThread
-    fun prepareReaderReplacement(visibleState: ReaderState?) {
-        val handoffState = visibleState ?: getCurrentState() ?: return
+    fun prepareReaderReplacement(visibleSnapshot: ReaderStateSnapshot?) {
+        val handoffState = synchronized(contentStateLock) {
+            visibleSnapshot.stateForGeneration(content.value.generation) ?: getCurrentState()
+        } ?: return
         saveCurrentState(handoffState)
         synchronized(contentStateLock) {
-            val replacementId = ++nextReaderReplacementId
-            pendingReaderReplacement = replacementId to handoffState
-            content.value = content.value.copy(state = handoffState, replacementId = replacementId)
+            pendingReaderReplacement = PendingReaderReplacement(
+                id = ++nextReaderReplacementId,
+                state = handoffState,
+                restoreExistingReader = false,
+            )
+            publishContentLocked(content.value)
         }
     }
 
     fun getPendingReaderReplacementState(replacementId: Long): ReaderState? = synchronized(contentStateLock) {
-        pendingReaderReplacement?.takeIf { it.first == replacementId }?.second
+        pendingReaderReplacement?.takeIf { it.id == replacementId }?.state
     }
 
-    fun onReaderStateRestored(replacementId: Long, state: ReaderState) {
+    fun onReaderStateRestored(replacementId: Long, state: ReaderState, generation: Long) {
         synchronized(contentStateLock) {
-            if (pendingReaderReplacement == replacementId to state) {
+            if (content.value.generation == generation &&
+                pendingReaderReplacement?.let { it.id == replacementId && it.state == state } == true
+            ) {
                 pendingReaderReplacement = null
             }
         }
     }
 
-    fun saveVisibleState(state: ReaderState?) {
+    /**
+     * Confirms the initial/restored adapter only after AsyncListDiffer has applied its page list.
+     * This preserves normal state notification, prefetching, and adjacent-chapter preload without
+     * accepting the synthetic callbacks emitted while the adapter still represented an old list.
+     */
+    @MainThread
+    fun onReaderContentApplied(generation: Long) {
+        val position = synchronized(contentStateLock) {
+            if (pendingReaderReplacement != null ||
+                !lifecycleStateGuard.canCommitUiState() ||
+                content.value.generation != generation
+            ) {
+                return
+            }
+            val state = readingState.value ?: return
+            content.value.pages.indexOfFirst {
+                it.chapterId == state.chapterId && it.index == state.page
+            }
+        }
+        if (position >= 0) {
+            onCurrentPageChanged(
+                lowerPos = position,
+                upperPos = position,
+                scrollProgress = lastScrollProgress,
+                scrollOffset = readingState.value?.scroll ?: 0,
+                contentGeneration = generation,
+            )
+        }
+    }
+
+    fun saveVisibleState(snapshot: ReaderStateSnapshot?) {
         val save = synchronized(contentStateLock) {
             if (pendingReaderReplacement != null) {
                 VisibleStateSave(shouldSave = false, state = null)
             } else {
+                val state = snapshot.stateForGeneration(content.value.generation)
                 lifecycleStateGuard.selectVisibleState(state, readingState.value)
             }
         }
@@ -345,11 +400,12 @@ class ReaderViewModel @Inject constructor(
     }
 
     @MainThread
-    fun saveBackgroundState(state: ReaderState?) {
+    fun saveBackgroundState(snapshot: ReaderStateSnapshot?) {
         val save = synchronized(contentStateLock) {
             if (pendingReaderReplacement != null) {
                 VisibleStateSave(shouldSave = false, state = null)
             } else {
+                val state = snapshot.stateForGeneration(content.value.generation)
                 lifecycleStateGuard.captureBackgroundState(state, readingState.value)
             }
         }
@@ -546,30 +602,41 @@ class ReaderViewModel @Inject constructor(
     }
 
     @MainThread
-    fun updateScrollProgress(progress: Float) {
-        lastScrollProgress = progress
+    fun updateScrollProgress(progress: Float, contentGeneration: Long) {
+        val accepted = synchronized(contentStateLock) {
+            if (pendingReaderReplacement != null ||
+                !lifecycleStateGuard.canCommitUiState() ||
+                content.value.generation != contentGeneration
+            ) {
+                false
+            } else {
+                lastScrollProgress = progress
+                true
+            }
+        }
+        if (!accepted) {
+            return
+        }
         uiState.value?.let { current ->
             uiState.value = current.copy(scrollProgress = progress)
         }
     }
 
     @MainThread
-    fun updateScrollOffset(chapterId: Long, page: Int, offset: Int) {
-        if (synchronized(contentStateLock) {
-                pendingReaderReplacement != null || !lifecycleStateGuard.canCommitUiState()
-            }) {
-            return
-        }
-        // Block scroll callbacks during initial load / chapter switch (prevents stale positions from overwriting restored state)
-        // Preloads use a separate job and do not block position updates.
-        if (loadingJob?.isActive == true) {
-            return
-        }
-        readingState.update { cs ->
-            if (cs?.chapterId == chapterId && cs.page == page) {
-                cs.copy(scroll = offset)
-            } else {
-                cs
+    fun updateScrollOffset(chapterId: Long, page: Int, offset: Int, contentGeneration: Long) {
+        synchronized(contentStateLock) {
+            if (pendingReaderReplacement != null ||
+                !lifecycleStateGuard.canCommitUiState() ||
+                content.value.generation != contentGeneration
+            ) {
+                return
+            }
+            readingState.update { cs ->
+                if (cs?.chapterId == chapterId && cs.page == page) {
+                    cs.copy(scroll = offset)
+                } else {
+                    cs
+                }
             }
         }
     }
@@ -580,23 +647,21 @@ class ReaderViewModel @Inject constructor(
         upperPos: Int,
         scrollProgress: Float = -1f,
         scrollOffset: Int = 0,
+        contentGeneration: Long,
     ) {
-        if (synchronized(contentStateLock) {
-                pendingReaderReplacement != null || !lifecycleStateGuard.canCommitUiState()
-            }) {
-            return
-        }
-        // Block scroll callbacks during initial load / chapter switch (prevents stale positions from overwriting restored state)
-        // Preloads use a separate job and do not block position updates.
-        if (loadingJob?.isActive == true) {
-            return
-        }
-        lastScrollProgress = scrollProgress
-        val capturedScrollOffset = scrollOffset
-        val prevJob = stateChangeJob
         val (pages, capturedRevision) = synchronized(contentStateLock) {
+            if (
+                pendingReaderReplacement != null ||
+                    !lifecycleStateGuard.canCommitUiState() ||
+                    content.value.generation != contentGeneration
+            ) {
+                return
+            }
+            lastScrollProgress = scrollProgress
             content.value.pages to stateRevision
         }
+        val capturedScrollOffset = scrollOffset
+        val prevJob = stateChangeJob
         stateChangeJob = launchJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
             loadingJob?.join()
@@ -607,6 +672,8 @@ class ReaderViewModel @Inject constructor(
                         currentPages = content.value.pages,
                         capturedRevision = capturedRevision,
                         currentRevision = stateRevision,
+                        capturedGeneration = contentGeneration,
+                        currentGeneration = content.value.generation,
                     )) {
                     false
                 } else {
@@ -776,7 +843,34 @@ class ReaderViewModel @Inject constructor(
 
     private fun replaceContent(newContent: ReaderContent) {
         synchronized(contentStateLock) {
-            content.value = newContent
+            publishContentLocked(newContent)
+        }
+    }
+
+    /** Must be called under [contentStateLock]. */
+    private fun publishContentLocked(newContent: ReaderContent) {
+        val replacement = pendingReaderReplacement
+        val containsReplacement = replacement != null && newContent.pages.any {
+                it.chapterId == replacement.state.chapterId && it.index == replacement.state.page
+            }
+        content.value = if (replacement != null && containsReplacement) {
+            newContent.copy(
+                state = replacement.state,
+                replacementId = replacement.id,
+                generation = ++contentGeneration,
+                forceStateRestore = replacement.restoreExistingReader,
+            )
+        } else {
+            // Keep a replacement through a transient empty chapter-switch emission, but do not
+            // permanently freeze the reader if the eventual non-empty content no longer contains
+            // its target (for example after changing branches).
+            if (replacement != null && newContent.pages.isNotEmpty()) {
+                pendingReaderReplacement = null
+            }
+            newContent.copy(
+                generation = ++contentGeneration,
+                forceStateRestore = false,
+            )
         }
     }
 
@@ -904,4 +998,10 @@ class ReaderViewModel @Inject constructor(
         other.addSuppressed(this)
         other
     }
+
+    private data class PendingReaderReplacement(
+        val id: Long,
+        val state: ReaderState,
+        val restoreExistingReader: Boolean,
+    )
 }

@@ -314,7 +314,7 @@ class ReaderActivity :
         super.onPause()
         // Capture only the manager's current reader. Other retained fragments also receive onPause,
         // but their positions may belong to an outgoing mode or a preloaded chapter.
-        viewModel.saveBackgroundState(readerManager.currentReader?.getCurrentState())
+        viewModel.saveBackgroundState(readerManager.currentReader?.getCurrentStateSnapshot())
         viewModel.onPause()
     }
 
@@ -324,7 +324,7 @@ class ReaderActivity :
     }
 
     override fun onStop() {
-        viewModel.saveVisibleState(readerManager.currentReader?.getCurrentState())
+        viewModel.saveVisibleState(readerManager.currentReader?.getCurrentStateSnapshot())
         super.onStop()
         viewModel.onStop()
     }
@@ -337,7 +337,7 @@ class ReaderActivity :
     override fun isNsfwContent(): Flow<Boolean> = viewModel.isMangaNsfw
 
     override fun onIdle() {
-        viewModel.saveVisibleState(readerManager.currentReader?.getCurrentState())
+        viewModel.saveVisibleState(readerManager.currentReader?.getCurrentStateSnapshot())
         viewModel.onIdle()
     }
 
@@ -452,7 +452,7 @@ class ReaderActivity :
     }
 
     override fun onReaderModeChanged(mode: ReaderMode) {
-        viewModel.switchMode(mode, readerManager.currentReader?.getModeSwitchState())
+        viewModel.switchMode(mode, readerManager.currentReader?.getModeSwitchStateSnapshot())
         viewBinding.timerControl.onReaderModeChanged(mode)
     }
 
@@ -468,7 +468,7 @@ class ReaderActivity :
         val manualLandscape = (manualEnabled ?: settings.isReaderDoubleOnLandscape) && isLandscape
         val autoEnabled = autoFoldable || manualLandscape
         readerManager.setDoubleReaderMode(autoEnabled) {
-            viewModel.prepareReaderReplacement(readerManager.currentReader?.getCurrentState())
+            viewModel.prepareReaderReplacement(readerManager.currentReader?.getCurrentStateSnapshot())
         }
     }
 
@@ -605,7 +605,7 @@ class ReaderActivity :
     }
 
     override fun openMenu() {
-        viewModel.saveVisibleState(readerManager.currentReader?.getCurrentState())
+        viewModel.saveVisibleState(readerManager.currentReader?.getCurrentStateSnapshot())
         val currentMode = readerManager.currentMode ?: return
         router.showReaderConfigSheet(currentMode)
     }

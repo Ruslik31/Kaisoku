@@ -6,6 +6,14 @@ data class ReaderContent(
 	val pages: List<ReaderPage>,
 	val state: ReaderState?,
 	val replacementId: Long = 0,
+	/**
+	 * Monotonically increasing publication id. UI callbacks carry the generation of the list that
+	 * their adapter has actually applied, so positions from an older AsyncListDiffer snapshot can
+	 * never be resolved against a newer page list.
+	 */
+	val generation: Long = 0,
+	/** Allow a retained reader to consume a replacement while resuming from the background. */
+	val forceStateRestore: Boolean = false,
 )
 
 /**
@@ -20,4 +28,8 @@ internal fun canCommitReaderState(
 	currentPages: List<*>,
 	capturedRevision: Long,
 	currentRevision: Long,
-): Boolean = capturedRevision == currentRevision && isCurrentPageListSnapshot(capturedPages, currentPages)
+	capturedGeneration: Long,
+	currentGeneration: Long,
+): Boolean = capturedRevision == currentRevision &&
+	capturedGeneration == currentGeneration &&
+	isCurrentPageListSnapshot(capturedPages, currentPages)

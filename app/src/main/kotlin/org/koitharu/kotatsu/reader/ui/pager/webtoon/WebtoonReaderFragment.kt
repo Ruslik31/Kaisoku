@@ -173,7 +173,7 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 		val progress = firstHolder?.getScrollProgress()
 			?: firstPage?.let { getSavedScrollPercent(it.chapterId, it.index) }
 			?: -1f
-		viewModel.updateScrollProgress(progress)
+		viewModel.updateScrollProgress(progress, adapterContentGeneration)
 		if (firstPage != null) {
 			viewModel.updateScrollOffset(
 				chapterId = firstPage.chapterId,
@@ -183,6 +183,7 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 				} else {
 					getSavedScrollOffset(firstPage.chapterId, firstPage.index)
 				},
+				contentGeneration = adapterContentGeneration,
 			)
 		}
 		val itemCount = adapter?.itemCount ?: 0
@@ -194,7 +195,13 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 			// Reaching the end inside a tall final image does not necessarily change visible adapter
 			// positions. Report the transition independently so live and persisted progress reach 100%.
 			val lastIndex = itemCount - 1
-			viewModel.onCurrentPageChanged(lastIndex, lastIndex, 1f, 10000)
+			viewModel.onCurrentPageChanged(
+				lastIndex,
+				lastIndex,
+				1f,
+				10000,
+				contentGeneration = adapterContentGeneration,
+			)
 		} else if (!atAbsoluteBottom && positionsChanged) {
 			lastFirstPos = firstVisiblePosition
 			lastLastPos = lastVisiblePosition
@@ -210,7 +217,13 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 			} else {
 				centerPage?.let { getSavedScrollOffset(it.chapterId, it.index) } ?: 0
 			}
-			viewModel.onCurrentPageChanged(firstVisiblePosition, lastVisiblePosition, progress, scrollPercent)
+			viewModel.onCurrentPageChanged(
+				firstVisiblePosition,
+				lastVisiblePosition,
+				progress,
+				scrollPercent,
+				contentGeneration = adapterContentGeneration,
+			)
 		}
 		wasAtAbsoluteBottom = atAbsoluteBottom
 	}
@@ -240,6 +253,7 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 					position,
 					scrollProgress = pendingState.scroll / 10000f,
 					scrollOffset = pendingState.scroll,
+					contentGeneration = adapterContentGeneration,
 				)
 			} else {
 				Snackbar.make(requireView(), R.string.not_found_404, Snackbar.LENGTH_SHORT)

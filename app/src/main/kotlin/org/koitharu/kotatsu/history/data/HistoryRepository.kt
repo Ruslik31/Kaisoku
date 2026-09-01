@@ -270,7 +270,8 @@ class HistoryRepository @Inject constructor(
 			percent = estimateRecoveredPercent(chapters.size),
 			chaptersCount = chapters.size,
 		)
-		db.getHistoryDao().update(newEntity)
+		// This is only a best-effort position for opening the reader. Persist it after the reader
+		// confirms a visible page; otherwise a failed load can replace valid history with a guess.
 		return newEntity
 	}
 

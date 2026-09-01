@@ -11,6 +11,7 @@ import org.koitharu.kotatsu.core.ui.widgets.ZoomControl
 import org.koitharu.kotatsu.core.util.ext.isAnimationsEnabled
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.reader.ui.ReaderState
+import org.koitharu.kotatsu.reader.ui.ReaderStateSnapshot
 import org.koitharu.kotatsu.reader.ui.ReaderViewModel
 
 internal fun shouldReanchorAfterPageListUpdate(oldPosition: Int, newPosition: Int): Boolean =
@@ -22,12 +23,15 @@ abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomCont
 
 	protected var readerAdapter: BaseReaderAdapter<*>? = null
 		private set
+	protected var adapterContentGeneration: Long = NO_CONTENT_GENERATION
+		private set
 
 	override fun onViewBindingCreated(binding: B, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		readerAdapter = onCreateAdapter()
 
 		viewModel.content.observe(viewLifecycleOwner) {
+			val adapterHadItems = readerAdapter?.hasItems == true
 			val currentState = viewModel.getCurrentState()
 			val replacementState = viewModel.getPendingReaderReplacementState(it.replacementId)
 			val currentOldPosition = currentState?.let { state ->
@@ -39,11 +43,17 @@ abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomCont
 				}
 			} ?: -1
 			val pendingState = when {
+				replacementState != null
+					&& (!adapterHadItems || it.forceStateRestore)
+					&& it.state == replacementState
+					&& it.pages.any { page ->
+						page.chapterId == replacementState.chapterId && page.index == replacementState.page
+					} -> replacementState
 				// Appending a preloaded next chapter does not move the current page, and RecyclerView's
 				// diff keeps its visual position. Re-anchoring that unchanged page interrupts an active
 				// webtoon scroll and can make holders reload. Only restore when a prepend/front trim
 				// actually changed the current page's adapter position.
-				readerAdapter?.hasItems == true -> if (
+				adapterHadItems -> if (
 					it.state == null &&
 					it.pages.isNotEmpty() &&
 					shouldReanchorAfterPageListUpdate(currentOldPosition, currentNewPosition)
@@ -52,9 +62,6 @@ abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomCont
 				} else {
 					null
 				}
-				replacementState != null
-					&& it.state == replacementState
-					&& it.pages.any { page -> page.chapterId == replacementState.chapterId } -> replacementState
 				it.state == null
 					&& it.pages.isNotEmpty() -> currentState
 				it.state != currentState
@@ -63,8 +70,16 @@ abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomCont
 				else -> it.state
 			}
 			onPagesChanged(it.pages, pendingState)
+			// AsyncListDiffer is now known to represent this publication. Callbacks raised while the
+			// diff was being applied carried the previous generation and were deliberately ignored.
+			adapterContentGeneration = it.generation
 			if (pendingState != null) {
-				viewModel.onReaderStateRestored(it.replacementId, pendingState)
+				viewModel.onReaderStateRestored(it.replacementId, pendingState, it.generation)
+			}
+			if (!adapterHadItems || pendingState != null) {
+				// Confirm initial/restored content after the adapter generation becomes authoritative.
+				// This also retains bounds preloading when Continue opens on a chapter's last page.
+				viewModel.onReaderContentApplied(it.generation)
 			}
 		}
 	}
@@ -73,12 +88,11 @@ abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomCont
 
 	override fun onPause() {
 		super.onPause()
-		val state = getCurrentState()
-		viewModel.saveVisibleState(state)
+		viewModel.saveVisibleState(getCurrentStateSnapshot())
 	}
 
 	override fun onDestroyView() {
-		viewModel.saveVisibleState(getCurrentState())
+		viewModel.saveVisibleState(getCurrentStateSnapshot())
 		readerAdapter = null
 		super.onDestroyView()
 	}
@@ -106,7 +120,22 @@ abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomCont
 	 */
 	open fun getModeSwitchState(): ReaderState? = getCurrentState()
 
+	fun getCurrentStateSnapshot() = ReaderStateSnapshot(
+		state = getCurrentState(),
+		contentGeneration = adapterContentGeneration,
+	)
+
+	fun getModeSwitchStateSnapshot() = ReaderStateSnapshot(
+		state = getModeSwitchState(),
+		contentGeneration = adapterContentGeneration,
+	)
+
 	protected abstract fun onCreateAdapter(): BaseReaderAdapter<*>
 
 	protected abstract suspend fun onPagesChanged(pages: List<ReaderPage>, pendingState: ReaderState?)
+
+	private companion object {
+
+		const val NO_CONTENT_GENERATION = -1L
+	}
 }

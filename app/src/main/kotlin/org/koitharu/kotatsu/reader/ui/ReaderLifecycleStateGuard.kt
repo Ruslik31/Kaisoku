@@ -15,9 +15,11 @@ internal class ReaderLifecycleStateGuard {
 		frozenState = null
 	}
 
-	fun onResumed() {
+	fun onResumed(): Boolean {
+		val wasBackgrounded = isBackgrounded
 		isBackgrounded = false
 		frozenState = null
+		return wasBackgrounded
 	}
 
 	fun selectVisibleState(candidate: ReaderState?, fallback: ReaderState?): VisibleStateSave {

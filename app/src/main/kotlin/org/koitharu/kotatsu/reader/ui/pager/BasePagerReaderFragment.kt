@@ -183,7 +183,7 @@ abstract class BasePagerReaderFragment : BaseReaderFragment<FragmentReaderPagerB
 	}
 
 	protected open fun notifyPageChanged(page: Int) {
-		viewModel.onCurrentPageChanged(page, page)
+		viewModel.onCurrentPageChanged(page, page, contentGeneration = adapterContentGeneration)
 	}
 
 	companion object {

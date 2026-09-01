@@ -163,7 +163,11 @@ open class DoubleReaderFragment : BaseReaderFragment<FragmentReaderDoubleBinding
 		val lower = if (originalLower >= 0) originalLower else originalUpper
 		val upper = if (originalUpper >= 0) originalUpper else originalLower
 		if (lower >= 0) {
-			viewModel.onCurrentPageChanged(lower, upper.coerceAtLeast(lower))
+			viewModel.onCurrentPageChanged(
+				lower,
+				upper.coerceAtLeast(lower),
+				contentGeneration = adapterContentGeneration,
+			)
 		}
 	}
 

@@ -26,3 +26,12 @@ data class ReaderState(
 		scroll = 0,
 	)
 }
+
+/** A visible reader position paired with the page-list generation that produced it. */
+data class ReaderStateSnapshot(
+	val state: ReaderState?,
+	val contentGeneration: Long,
+)
+
+internal fun ReaderStateSnapshot?.stateForGeneration(generation: Long): ReaderState? =
+	this?.takeIf { it.contentGeneration == generation }?.state

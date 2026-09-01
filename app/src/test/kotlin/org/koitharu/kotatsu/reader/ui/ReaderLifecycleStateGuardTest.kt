@@ -48,7 +48,7 @@ class ReaderLifecycleStateGuardTest {
 		guard.onBackgrounding()
 		assertFalse(guard.canCommitUiState())
 
-		guard.onResumed()
+		assertTrue(guard.onResumed())
 		assertTrue(guard.canCommitUiState())
 		assertTrue(
 			guard.selectVisibleState(
@@ -56,5 +56,12 @@ class ReaderLifecycleStateGuardTest {
 				fallback = null,
 			).shouldSave,
 		)
+	}
+
+	@Test
+	fun initialResumeDoesNotRequestRetainedReaderReanchor() {
+		val guard = ReaderLifecycleStateGuard()
+
+		assertFalse(guard.onResumed())
 	}
 }
