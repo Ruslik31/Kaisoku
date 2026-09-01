@@ -1,15 +1,19 @@
 package org.koitharu.kotatsu.core.image
 
 import android.content.Context
+import android.graphics.drawable.Animatable
 import android.graphics.drawable.Drawable
 import android.util.AttributeSet
 import androidx.annotation.AttrRes
 import androidx.annotation.DrawableRes
 import androidx.core.content.withStyledAttributes
+import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import coil3.Image
 import coil3.ImageLoader
+import coil3.asDrawable
 import coil3.asImage
 import coil3.request.Disposable
 import coil3.request.ErrorResult
@@ -24,9 +28,12 @@ import coil3.size.Scale
 import coil3.size.Size
 import coil3.size.SizeResolver
 import coil3.size.ViewSizeResolver
+import coil3.target.ViewTarget
+import coil3.transition.TransitionTarget
 import coil3.util.CoilUtils
 import com.google.android.material.imageview.ShapeableImageView
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
@@ -211,7 +218,7 @@ open class CoilImageView @JvmOverloads constructor(
 		scale(scaleType.toCoilScale())
 		listener(weakRequestListener)
 		allowRgb565(allowRgb565)
-		target(this@CoilImageView)
+		target(WeakImageViewTarget(this@CoilImageView))
 	}
 
 	private fun ImageRequest.Builder.setupPlaceholders() {
@@ -259,6 +266,58 @@ open class CoilImageView @JvmOverloads constructor(
 
 		override fun onSuccess(request: ImageRequest, result: SuccessResult) {
 			viewRef.get()?.onSuccess(request, result)
+		}
+	}
+
+	/**
+	 * Coil owns a request target until every child of a cancelled request finishes. Keeping the
+	 * target's view weak prevents a slow fetch cancellation from retaining a detached view and its
+	 * destroyed activity. This still implements [ViewTarget] and [TransitionTarget], so Coil keeps
+	 * its normal attach/restart, result lookup, and crossfade behaviour while the view is alive.
+	 */
+	private class WeakImageViewTarget(
+		view: CoilImageView,
+	) : ViewTarget<CoilImageView>, TransitionTarget, DefaultLifecycleObserver {
+
+		private val viewRef = WeakReference(view)
+		private var isStarted = view.isAttachedToWindow
+
+		override val view: CoilImageView
+			get() = viewRef.get() ?: throw CancellationException("Image view was released")
+
+		override val drawable: Drawable?
+			get() = viewRef.get()?.drawable
+
+		override fun onStart(placeholder: Image?) = updateImage(placeholder)
+
+		override fun onError(error: Image?) = updateImage(error)
+
+		override fun onSuccess(result: Image) = updateImage(result)
+
+		override fun onStart(owner: LifecycleOwner) {
+			isStarted = true
+			updateAnimation()
+		}
+
+		override fun onStop(owner: LifecycleOwner) {
+			isStarted = false
+			updateAnimation()
+		}
+
+		private fun updateImage(image: Image?) {
+			val target = viewRef.get() ?: return
+			(target.drawable as? Animatable)?.stop()
+			target.setImageDrawable(image?.asDrawable(target.resources))
+			updateAnimation()
+		}
+
+		private fun updateAnimation() {
+			val animation = viewRef.get()?.drawable as? Animatable ?: return
+			if (isStarted) {
+				animation.start()
+			} else {
+				animation.stop()
+			}
 		}
 	}
 }
