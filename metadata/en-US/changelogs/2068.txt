@@ -1,0 +1,7 @@
+- Added MangaBaka tracking, richer source filters, sorting and replacement controls
+- Added per-source NSFW overrides and native Mihon extension filters
+- Improved partial-download salvage, backup recovery and source caching
+- Improved Discord integration and tracker reliability
+- Fixed recurring reader position, chapter completion and background-resume regressions
+- Fixed destroyed details screens being retained by cancelled cover requests
+- Added and refreshed manga sources
