@@ -7,7 +7,7 @@ on:
 
 jobs:
   discordNotification:
-    if: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
+    if: ${{ secrets.DISCORD_WEBHOOK_URL }}
     runs-on: ubuntu-latest
     steps:
       - name: Send commit embed to Discord

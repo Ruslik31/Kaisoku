@@ -6,7 +6,7 @@ on:
 
 jobs:
   releaseNotification:
-    if: ${{ github.event.release.prerelease == false && secrets.DISCORD_RELEASE_WEBHOOK != '' }}
+    if: ${{ github.event.release.prerelease == false && secrets.DISCORD_RELEASE_WEBHOOK }}
     name: Notify Discord - New Release
     runs-on: ubuntu-latest
     steps:
@@ -56,7 +56,7 @@ jobs:
             }' | curl -fsS -H "Content-Type: application/json" -X POST -d @- "$WEBHOOK"
 
   prereleaseNotification:
-    if: ${{ github.event.release.prerelease == true && secrets.DISCORD_RELEASE_WEBHOOK != '' }}
+    if: ${{ github.event.release.prerelease == true && secrets.DISCORD_RELEASE_WEBHOOK }}
     name: Notify Discord - Pre-Release
     runs-on: ubuntu-latest
     steps:

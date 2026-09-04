@@ -22,16 +22,19 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Decode keystore
-        if: ${{ secrets.KEYSTORE != '' }}
+        if: ${{ secrets.KEYSTORE }}
         run: echo "${{ secrets.KEYSTORE }}" | base64 -d > "$RUNNER_TEMP/keystore.jks"
 
       - name: Assemble signed release APKs
         env:
-          KEYSTORE_FILE: ${{ secrets.KEYSTORE != '' && format('{0}/keystore.jks', runner.temp) || '' }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease
+        run: |
+          if [ -f "$RUNNER_TEMP/keystore.jks" ]; then
+            export KEYSTORE_FILE="$RUNNER_TEMP/keystore.jks"
+          fi
+          ./gradlew :app:assembleRelease
 
       - uses: actions/upload-artifact@v4
         with:
