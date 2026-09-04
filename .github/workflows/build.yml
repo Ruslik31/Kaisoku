@@ -51,7 +51,7 @@ jobs:
           KEYSTORE: ${{ secrets.KEYSTORE }}
         run: |
           if [ -n "$KEYSTORE" ]; then
-            echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/keystore.jks"
+            echo "$KEYSTORE" | tr -d '\r\n ' | base64 -d > "$RUNNER_TEMP/keystore.jks"
           fi
 
       - name: Assemble debug APKs
