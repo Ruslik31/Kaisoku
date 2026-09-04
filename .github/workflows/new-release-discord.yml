@@ -6,7 +6,7 @@ on:
 
 jobs:
   releaseNotification:
-    if: github.event.release.prerelease == false && secrets.DISCORD_RELEASE_WEBHOOK != ''
+    if: github.event.release.prerelease == false
     name: Notify Discord - New Release
     runs-on: ubuntu-latest
     steps:
@@ -21,6 +21,10 @@ jobs:
           ACTOR: ${{ github.actor }}
           TIMESTAMP: ${{ github.event.release.published_at }}
         run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "No DISCORD_RELEASE_WEBHOOK configured, skipping notification."
+            exit 0
+          fi
           DESC="${BODY}"
           if [ ${#DESC} -gt 3800 ]; then
             DESC="${DESC:0:3800}"$'\n\n'"…(truncated; open the release for full notes)"
@@ -56,7 +60,7 @@ jobs:
             }' | curl -fsS -H "Content-Type: application/json" -X POST -d @- "$WEBHOOK"
 
   prereleaseNotification:
-    if: github.event.release.prerelease == true && secrets.DISCORD_RELEASE_WEBHOOK != ''
+    if: github.event.release.prerelease == true
     name: Notify Discord - Pre-Release
     runs-on: ubuntu-latest
     steps:
@@ -71,6 +75,10 @@ jobs:
           ACTOR: ${{ github.actor }}
           TIMESTAMP: ${{ github.event.release.published_at }}
         run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "No DISCORD_RELEASE_WEBHOOK configured, skipping notification."
+            exit 0
+          fi
           DESC="${BODY}"
           if [ ${#DESC} -gt 3800 ]; then
             DESC="${DESC:0:3800}"$'\n\n'"…(truncated; open the release for full notes)"

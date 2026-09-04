@@ -7,7 +7,6 @@ on:
 
 jobs:
   discordNotification:
-    if: secrets.DISCORD_WEBHOOK_URL != ''
     runs-on: ubuntu-latest
     steps:
       - name: Send commit embed to Discord
@@ -21,6 +20,10 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           TIMESTAMP: ${{ github.event.head_commit.timestamp }}
         run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "No DISCORD_WEBHOOK_URL configured, skipping notification."
+            exit 0
+          fi
           CONTENT=""
           ROLE_MENTIONS="[]"
           if [ -n "$ROLE_ID" ]; then
