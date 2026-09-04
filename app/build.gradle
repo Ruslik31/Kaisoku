@@ -61,7 +61,7 @@ def tokenGenDir = file("${buildDir}/generated/kaisokuToken")
 tasks.register('generateTokenSeal') {
 	description = 'Seal the Telegram backup token into build/generated/kaisokuToken/TokenData.kt'
 	def generatedFile = new File(tokenGenDir, 'TokenData.kt')
-	inputs.file(rootProject.file('local.properties'))
+	inputs.file(rootProject.file('local.properties')).optional()
 	outputs.file generatedFile
 	doLast {
 		def props = new Properties()
