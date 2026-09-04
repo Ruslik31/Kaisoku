@@ -1,9 +1,13 @@
 package org.koitharu.kotatsu.tracker.ui.feed
 
 import android.os.Bundle
+import android.view.Menu
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.appcompat.widget.PopupMenu
+import org.koitharu.kotatsu.core.model.titleResId
+import org.koitharu.kotatsu.parsers.model.MangaState
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -104,7 +108,44 @@ class FeedFragment :
 		viewModel.update()
 	}
 
-	override fun onFilterOptionClick(option: ListFilterOption) = viewModel.toggleFilterOption(option)
+	override fun onFilterOptionClick(view: View, option: ListFilterOption) {
+		if (option is ListFilterOption.State) {
+			showStateFilterMenu(view, option)
+		} else {
+			viewModel.toggleFilterOption(option)
+		}
+	}
+
+	private fun showStateFilterMenu(view: View, currentOption: ListFilterOption.State) {
+		val menu = PopupMenu(view.context, view)
+		val currentState = currentOption.state
+
+		val allItem = menu.menu.add(1, Menu.NONE, 0, R.string.publication_status)
+		allItem.isCheckable = true
+		allItem.isChecked = currentState == null
+
+		val states = MangaState.entries
+		for ((index, state) in states.withIndex()) {
+			val item = menu.menu.add(1, Menu.NONE, index + 1, state.titleResId)
+			item.isCheckable = true
+			item.isChecked = currentState == state
+		}
+		menu.menu.setGroupCheckable(1, true, true)
+
+		menu.setOnMenuItemClickListener { menuItem ->
+			val selectedState = if (menuItem.order == 0) {
+				null
+			} else {
+				states.getOrNull(menuItem.order - 1)
+			}
+			viewModel.setFilterOption(
+				ListFilterOption.State(selectedState),
+				isApplied = selectedState != null,
+			)
+			true
+		}
+		menu.show()
+	}
 
 	override fun onRetryClick(error: Throwable) = Unit
 

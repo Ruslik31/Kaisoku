@@ -43,6 +43,9 @@ import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.viewLifecycleScope
 import org.koitharu.kotatsu.databinding.FragmentListBinding
+import androidx.appcompat.widget.PopupMenu
+import org.koitharu.kotatsu.core.model.titleResId
+import org.koitharu.kotatsu.parsers.model.MangaState
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.QuickFilterListener
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
@@ -229,9 +232,44 @@ abstract class MangaListFragment :
 		)
 	}
 
-	override fun onFilterOptionClick(option: ListFilterOption) {
+	override fun onFilterOptionClick(view: View, option: ListFilterOption) {
 		selectionController?.clear()
-		(viewModel as? QuickFilterListener)?.toggleFilterOption(option)
+		if (option is ListFilterOption.State) {
+			showStateFilterMenu(view, option)
+		} else {
+			(viewModel as? QuickFilterListener)?.toggleFilterOption(option)
+		}
+	}
+
+	private fun showStateFilterMenu(view: View, currentOption: ListFilterOption.State) {
+		val menu = PopupMenu(view.context, view)
+		val currentState = currentOption.state
+
+		val allItem = menu.menu.add(1, Menu.NONE, 0, R.string.publication_status)
+		allItem.isCheckable = true
+		allItem.isChecked = currentState == null
+
+		val states = MangaState.entries
+		for ((index, state) in states.withIndex()) {
+			val item = menu.menu.add(1, Menu.NONE, index + 1, state.titleResId)
+			item.isCheckable = true
+			item.isChecked = currentState == state
+		}
+		menu.menu.setGroupCheckable(1, true, true)
+
+		menu.setOnMenuItemClickListener { menuItem ->
+			val selectedState = if (menuItem.order == 0) {
+				null
+			} else {
+				states.getOrNull(menuItem.order - 1)
+			}
+			(viewModel as? QuickFilterListener)?.setFilterOption(
+				ListFilterOption.State(selectedState),
+				isApplied = selectedState != null,
+			)
+			true
+		}
+		menu.show()
 	}
 
 	override fun onFilterClick(view: View?) = Unit
