@@ -6,13 +6,11 @@ on:
       - '**'
     paths-ignore:
       - "**.md"
-      - "**.yml"
       - LICENSE
       - .github/screenshots/**
   pull_request:
     paths-ignore:
       - "**.md"
-      - "**.yml"
       - LICENSE
       - .github/screenshots/**
   workflow_dispatch:
