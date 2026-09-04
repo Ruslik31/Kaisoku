@@ -2,21 +2,18 @@ name: Discord Release Webhook
 
 on:
   release:
-    # 'published' fires exactly once per release (prereleases included — the jobs branch on the
-    # prerelease flag). Do NOT add 'edited': attaching a release asset fires a follow-up 'edited'
-    # event, so publishing with an APK would post to Discord twice. Re-post a failed run via the
-    # Actions UI -> Re-run jobs.
     types: [published]
 
 jobs:
   releaseNotification:
-    if: ${{ github.event.release.prerelease == false }}
+    if: ${{ github.event.release.prerelease == false && secrets.DISCORD_RELEASE_WEBHOOK != '' }}
     name: Notify Discord - New Release
     runs-on: ubuntu-latest
     steps:
       - name: Send release embed to Discord
         env:
           WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          ROLE_ID: ${{ secrets.DISCORD_RELEASE_ROLE_ID || secrets.DISCORD_ROLE_ID }}
           REPO: ${{ github.event.repository.name }}
           TAG: ${{ github.event.release.tag_name }}
           URL: ${{ github.event.release.html_url }}
@@ -24,23 +21,29 @@ jobs:
           ACTOR: ${{ github.actor }}
           TIMESTAMP: ${{ github.event.release.published_at }}
         run: |
-          # Discord caps embed description at 4096 chars; release notes can grow past that.
           DESC="${BODY}"
           if [ ${#DESC} -gt 3800 ]; then
             DESC="${DESC:0:3800}"$'\n\n'"…(truncated; open the release for full notes)"
           fi
+          CONTENT=""
+          ROLE_MENTIONS="[]"
+          if [ -n "$ROLE_ID" ]; then
+            CONTENT="<@&${ROLE_ID}>"
+            ROLE_MENTIONS="[\"${ROLE_ID}\"]"
+          fi
           jq -n \
-            --arg content "<@&1506992583744684175>" \
+            --arg content "$CONTENT" \
+            --argjson roles "$ROLE_MENTIONS" \
             --arg title "🚀 New Release: ${REPO} v${TAG}" \
             --arg url "${URL}" \
             --arg description "${DESC}" \
             --arg author_name "${ACTOR}" \
             --arg author_icon "https://github.com/${ACTOR}.png" \
-            --arg footer "Release published on main" \
+            --arg footer "Release published" \
             --arg timestamp "${TIMESTAMP}" \
             '{
               content: $content,
-              allowed_mentions: { roles: ["1506992583744684175"] },
+              allowed_mentions: { roles: $roles },
               embeds: [{
                 title: $title,
                 url: $url,
@@ -53,13 +56,14 @@ jobs:
             }' | curl -fsS -H "Content-Type: application/json" -X POST -d @- "$WEBHOOK"
 
   prereleaseNotification:
-    if: ${{ github.event.release.prerelease == true }}
+    if: ${{ github.event.release.prerelease == true && secrets.DISCORD_RELEASE_WEBHOOK != '' }}
     name: Notify Discord - Pre-Release
     runs-on: ubuntu-latest
     steps:
       - name: Send prerelease embed to Discord
         env:
           WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          ROLE_ID: ${{ secrets.DISCORD_RELEASE_ROLE_ID || secrets.DISCORD_ROLE_ID }}
           REPO: ${{ github.event.repository.name }}
           TAG: ${{ github.event.release.tag_name }}
           URL: ${{ github.event.release.html_url }}
@@ -71,7 +75,15 @@ jobs:
           if [ ${#DESC} -gt 3800 ]; then
             DESC="${DESC:0:3800}"$'\n\n'"…(truncated; open the release for full notes)"
           fi
+          CONTENT=""
+          ROLE_MENTIONS="[]"
+          if [ -n "$ROLE_ID" ]; then
+            CONTENT="<@&${ROLE_ID}>"
+            ROLE_MENTIONS="[\"${ROLE_ID}\"]"
+          fi
           jq -n \
+            --arg content "$CONTENT" \
+            --argjson roles "$ROLE_MENTIONS" \
             --arg title "🧪 Pre-Release: ${REPO} ${TAG}" \
             --arg url "${URL}" \
             --arg description "${DESC}" \
@@ -80,7 +92,8 @@ jobs:
             --arg footer "Pre-release build" \
             --arg timestamp "${TIMESTAMP}" \
             '{
-              allowed_mentions: { parse: [] },
+              content: $content,
+              allowed_mentions: { roles: $roles },
               embeds: [{
                 title: $title,
                 url: $url,

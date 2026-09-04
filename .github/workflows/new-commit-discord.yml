@@ -7,11 +7,13 @@ on:
 
 jobs:
   discordNotification:
+    if: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Send commit embed to Discord
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          ROLE_ID: ${{ secrets.DISCORD_ROLE_ID }}
           REPO: ${{ github.event.repository.name }}
           COMMIT_URL: ${{ github.event.head_commit.url }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
@@ -19,8 +21,15 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           TIMESTAMP: ${{ github.event.head_commit.timestamp }}
         run: |
+          CONTENT=""
+          ROLE_MENTIONS="[]"
+          if [ -n "$ROLE_ID" ]; then
+            CONTENT="<@&${ROLE_ID}>"
+            ROLE_MENTIONS="[\"${ROLE_ID}\"]"
+          fi
           jq -n \
-            --arg content "<@&1507819392233242624>" \
+            --arg content "$CONTENT" \
+            --argjson roles "$ROLE_MENTIONS" \
             --arg title "New Commit: ${REPO}" \
             --arg url "${COMMIT_URL}" \
             --arg description "${COMMIT_MSG}" \
@@ -30,7 +39,7 @@ jobs:
             --arg timestamp "${TIMESTAMP}" \
             '{
               content: $content,
-              allowed_mentions: { roles: ["1507819392233242624"] },
+              allowed_mentions: { roles: $roles },
               embeds: [{
                 title: $title,
                 url: $url,

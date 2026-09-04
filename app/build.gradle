@@ -172,18 +172,40 @@ android {
 		// never appears as a res string in the APK. An empty default keeps the feature disabled
 		// until a token is configured in the git-ignored local.properties.
 	}
+
+	signingConfigs {
+		release {
+			def ciKeystore = System.getenv("KEYSTORE_FILE")
+			if (ciKeystore != null && !ciKeystore.trim().isEmpty()) {
+				storeFile = file(ciKeystore)
+				storePassword = System.getenv("KEYSTORE_PASSWORD")
+				keyAlias = System.getenv("KEY_ALIAS")
+				keyPassword = System.getenv("KEY_PASSWORD")
+			}
+		}
+	}
+
 	buildTypes {
 		debug {
 			applicationIdSuffix = '.debug'
+			if (System.getenv("KEYSTORE_FILE")) {
+				signingConfig = signingConfigs.release
+			}
 		}
 		release {
 			minifyEnabled true
 			shrinkResources true
 			proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+			if (System.getenv("KEYSTORE_FILE")) {
+				signingConfig = signingConfigs.release
+			}
 		}
 		nightly {
 			initWith release
 			applicationIdSuffix = '.nightly'
+			if (System.getenv("KEYSTORE_FILE")) {
+				signingConfig = signingConfigs.release
+			}
 		}
 	}
 	buildFeatures {
