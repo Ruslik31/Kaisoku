@@ -14,15 +14,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
+import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
+import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import javax.inject.Inject
 
 @HiltViewModel
 class SourcesSettingsViewModel @Inject constructor(
-	sourcesRepository: MangaSourcesRepository,
+	private val sourcesRepository: MangaSourcesRepository,
+	private val database: MangaDatabase,
 	@ApplicationContext private val context: Context,
 ) : BaseViewModel() {
+
+	val onBrokenSourcesLoaded = MutableEventFlow<List<BrokenSourceItem>>()
+	val onRepairIdsLoaded = MutableEventFlow<LongArray>()
 
 	private val linksHandlerActivity = ComponentName(context, "org.koitharu.kotatsu.details.ui.DetailsByLinkActivity")
 
@@ -45,8 +52,41 @@ class SourcesSettingsViewModel @Inject constructor(
 		isLinksEnabled.value = isLinksEnabled()
 	}
 
+	fun loadBrokenSources() {
+		launchLoadingJob(Dispatchers.Default) {
+			val available = sourcesRepository.getParserSourcesSnapshot().associateBy { it.source.name }
+			val items = database.getMangaDao().findLibrarySourceUsage().mapNotNull { usage ->
+				val current = available[usage.source]
+				if (current != null && !current.isBroken) return@mapNotNull null
+				BrokenSourceItem(
+					source = usage.source,
+					title = current?.title ?: usage.source,
+					mangaCount = usage.mangaCount,
+					isUnavailable = current == null,
+				)
+			}
+			onBrokenSourcesLoaded.call(items)
+		}
+	}
+
+	fun loadRepairIds(sources: Set<String>) {
+		if (sources.isEmpty()) return
+		launchLoadingJob(Dispatchers.IO) {
+			onRepairIdsLoaded.call(
+				database.getMangaDao().findLibraryMangaIdsBySources(sources).toLongArray(),
+			)
+		}
+	}
+
 	private fun isLinksEnabled(): Boolean {
 		val state = context.packageManager.getComponentEnabledSetting(linksHandlerActivity)
 		return state == COMPONENT_ENABLED_STATE_ENABLED || state == COMPONENT_ENABLED_STATE_DEFAULT
 	}
+
+	data class BrokenSourceItem(
+		val source: String,
+		val title: String,
+		val mangaCount: Int,
+		val isUnavailable: Boolean,
+	)
 }

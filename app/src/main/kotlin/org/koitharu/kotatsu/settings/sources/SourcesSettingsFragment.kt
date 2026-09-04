@@ -7,6 +7,7 @@ import androidx.fragment.app.viewModels
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.TwoStatePreference
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
@@ -15,6 +16,7 @@ import org.koitharu.kotatsu.core.prefs.TriStateOption
 import org.koitharu.kotatsu.core.ui.BasePreferenceFragment
 import org.koitharu.kotatsu.core.util.ext.getQuantityStringSafe
 import org.koitharu.kotatsu.core.util.ext.observe
+import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.setDefaultValueCompat
 import org.koitharu.kotatsu.explore.data.SourcesSortOrder
 import org.koitharu.kotatsu.parsers.util.names
@@ -63,6 +65,10 @@ class SourcesSettingsFragment : BasePreferenceFragment(R.string.remote_sources),
 				pref.isChecked = it
 			}
 		}
+		viewModel.onBrokenSourcesLoaded.observeEvent(viewLifecycleOwner, ::showBrokenSources)
+		viewModel.onRepairIdsLoaded.observeEvent(viewLifecycleOwner) { ids ->
+			router.openSourceReplacement(ids.asList())
+		}
 		updateEnableAllDependencies()
 		settings.subscribe(this)
 	}
@@ -83,6 +89,11 @@ class SourcesSettingsFragment : BasePreferenceFragment(R.string.remote_sources),
 			true
 		}
 
+		KEY_REPAIR_BROKEN_SOURCES -> {
+			viewModel.loadBrokenSources()
+			true
+		}
+
 		else -> super.onPreferenceTreeClick(preference)
 	}
 
@@ -94,5 +105,38 @@ class SourcesSettingsFragment : BasePreferenceFragment(R.string.remote_sources),
 
 	private fun updateEnableAllDependencies() {
 		findPreference<Preference>(AppSettings.KEY_SOURCES_CATALOG)?.isEnabled = !settings.isAllSourcesEnabled
+	}
+
+	private fun showBrokenSources(items: List<SourcesSettingsViewModel.BrokenSourceItem>) {
+		if (items.isEmpty()) {
+			MaterialAlertDialogBuilder(requireContext())
+				.setMessage(R.string.repair_broken_sources_none)
+				.setPositiveButton(android.R.string.ok, null)
+				.show()
+			return
+		}
+		val checked = BooleanArray(items.size) { true }
+		val labels = items.map { item ->
+			getString(
+				R.string.repair_broken_sources_item,
+				item.title,
+				item.mangaCount,
+				if (item.isUnavailable) getString(R.string.repair_broken_sources_unavailable) else "",
+			)
+		}.toTypedArray()
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.repair_broken_sources_select)
+			.setMultiChoiceItems(labels, checked) { _, index, value -> checked[index] = value }
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.next) { _, _ ->
+				viewModel.loadRepairIds(
+					items.indices.filter { checked[it] }.mapTo(hashSetOf()) { items[it].source },
+				)
+			}
+			.show()
+	}
+
+	private companion object {
+		const val KEY_REPAIR_BROKEN_SOURCES = "repair_broken_sources"
 	}
 }
