@@ -10,7 +10,7 @@ class SyncAuthenticatorService : Service() {
 
 	override fun onCreate() {
 		super.onCreate()
-		authenticator = SyncAccountAuthenticator(this)
+		authenticator = SyncAccountAuthenticator(applicationContext)
 	}
 
 	override fun onBind(intent: Intent?): IBinder? {

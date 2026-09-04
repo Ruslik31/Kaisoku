@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name" translatable="false">Kaisoku</string>
+    <string name="library">Library</string>
+    <string name="feed_tracking_state">Feed tracking state</string>
     <string name="extract_text">Extract text</string>
     <string name="translate_page">Translate page</string>
     <string name="copy">Copy</string>
@@ -1175,5 +1177,37 @@
     <string name="webview_js_title">JavaScript</string>
     <string name="webview_no_images_found">No manga images found on this page</string>
     <string name="webview_open_in_reader">Open in Reader</string>
-    <string name="webview_source_already_in_library">Already in library</string>
+	<string name="webview_source_already_in_library">Already in library</string>
+	<string name="google_drive_sync">Google Drive sync</string>
+	<string name="drive_sync_authorizing">Authorizing Google Drive</string>
+	<string name="drive_sync_downloading">Downloading sync data</string>
+	<string name="drive_sync_merging">Merging sync data</string>
+	<string name="drive_sync_preparing">Preparing sync data</string>
+	<string name="drive_sync_uploading">Uploading sync data</string>
+	<string name="sync_provider">Sync provider</string>
+	<string name="sync_disabled">Disabled</string>
+	<string name="kaisoku_server">Kaisoku server</string>
+	<string name="google_drive">Google Drive</string>
+	<string name="drive_connect">Connect Google Drive</string>
+	<string name="drive_connected_as">Connected as %1$s</string>
+	<string name="drive_connected_pending">Authorized; first sync queued</string>
+	<string name="drive_authorization_required">Open Sync settings to finish Google Drive authorization</string>
+	<string name="drive_setup_required_title">Google Drive setup required</string>
+	<string name="drive_setup_required">Google Drive rejected this build. Enable the Drive API, add the drive.appdata scope to the OAuth consent screen, and create an Android OAuth client with these exact values:\n\nPackage: %1$s\nSHA-1: %2$s\n\nDebug, release, nightly, and Play-signed builds each need their own package and signing-certificate pair.</string>
+	<string name="drive_api_unavailable_title">Google authorization unavailable</string>
+	<string name="drive_api_unavailable">This device could not connect to Google Play services’ Identity Authorization API. Update or enable Google Play services, make sure a Google account is added, and try again. Devices without a compatible Google Play services implementation cannot use Google Drive sync.</string>
+	<string name="drive_disconnect_summary">Stops Drive sync without deleting remote data or revoking the Google account.</string>
+	<string name="disconnect">Disconnect</string>
+	<string name="sync_now">Sync now</string>
+	<string name="sync_interval">Sync interval</string>
+	<string name="sync_on_start">Sync when the app starts</string>
+	<string name="wifi_only">Wi-Fi only</string>
+	<string name="every_15_minutes">Every 15 minutes</string>
+	<string name="every_hour">Every hour</string>
+	<string name="every_6_hours">Every 6 hours</string>
+	<string name="every_12_hours">Every 12 hours</string>
+	<string name="daily">Daily</string>
+	<string name="drive_sync_queued">Google Drive sync queued</string>
+	<string name="manga_preferences">Per-manga reader settings and overrides</string>
+	<string name="sync_content">Content to synchronize</string>
 </resources>

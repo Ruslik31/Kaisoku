@@ -18,6 +18,8 @@ enum class BackupSection(
 	SCROBBLING("scrobbling"),
 	STATS("statistics"),
 	SAVED_FILTERS("saved_filters"),
+	MANGA_PREFERENCES("manga_preferences"),
+	TRACKS("tracks"),
 	;
 
 	companion object {

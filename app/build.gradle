@@ -292,6 +292,7 @@ dependencies {
 	implementation libs.material
 	implementation libs.androidx.lifecycle.common.java8
 	implementation libs.androidx.webkit
+	implementation libs.play.services.auth
 
 	implementation libs.androidx.work.runtime
 	implementation libs.guava

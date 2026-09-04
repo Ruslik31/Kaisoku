@@ -239,6 +239,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val isReaderOptimizationEnabled: Boolean
 		get() = prefs.getBoolean(KEY_READER_OPTIMIZE, false)
 
+	var isReaderUpscaleEnabled: Boolean
+		get() = prefs.getBoolean(KEY_READER_UPSCALE, false)
+		set(value) = prefs.edit { putBoolean(KEY_READER_UPSCALE, value) }
+
 	val isEInkFlashEnabled: Boolean
 		get() = prefs.getBoolean(KEY_EINK_FLASH, false)
 
@@ -991,6 +995,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_SHORTCUTS = "dynamic_shortcuts"
 		const val KEY_READER_TAP_ACTIONS = "reader_tap_actions"
 		const val KEY_READER_OPTIMIZE = "reader_optimize"
+		const val KEY_READER_UPSCALE = "reader_upscale"
 		const val KEY_EINK_FLASH = "eink_flash"
 		const val KEY_EINK_FLASH_DURATION = "eink_flash_duration"
 		const val KEY_EINK_FLASH_EVERY = "eink_flash_every"

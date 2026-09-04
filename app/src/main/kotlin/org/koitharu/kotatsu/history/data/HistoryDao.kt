@@ -28,6 +28,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun findAll(offset: Int, limit: Int): List<HistoryWithManga>
 
 	@Transaction
+	@Query("SELECT * FROM history ORDER BY MAX(updated_at, deleted_at) DESC LIMIT :limit OFFSET :offset")
+	abstract suspend fun findAllForBackup(offset: Int, limit: Int): List<HistoryWithManga>
+
+	@Transaction
 	@Query("SELECT manga.* FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id WHERE history.deleted_at = 0 AND (manga.title LIKE :query OR manga.alt_title LIKE :query) LIMIT :limit")
 	abstract suspend fun searchByTitle(query: String, limit: Int): List<MangaWithTags>
 
@@ -121,7 +125,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		val window = 10
 		var offset = 0
 		while (currentCoroutineContext().isActive) {
-			val list = findAll(offset, window)
+			val list = findAllForBackup(offset, window)
 			if (list.isEmpty()) {
 				break
 			}
@@ -185,6 +189,12 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 			}
 		}
 	}
+
+	@androidx.room.Upsert
+	abstract suspend fun restore(entity: HistoryEntity)
+
+	@Query("SELECT * FROM history WHERE manga_id = :mangaId")
+	abstract suspend fun findForRestore(mangaId: Long): HistoryEntity?
 
 	@Query("UPDATE history SET deleted_at = :deletedAt WHERE manga_id = :mangaId")
 	protected abstract suspend fun setDeletedAt(mangaId: Long, deletedAt: Long)

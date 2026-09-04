@@ -58,6 +58,9 @@ abstract class TracksDao : MangaQueryBuilder.ConditionCallback {
 	@Query("SELECT manga_id FROM tracks")
 	abstract suspend fun findAllIds(): LongArray
 
+	@Query("SELECT * FROM tracks")
+	abstract suspend fun dump(): List<TrackEntity>
+
 	@Query("SELECT * FROM tracks WHERE manga_id = :mangaId")
 	abstract suspend fun find(mangaId: Long): TrackEntity?
 

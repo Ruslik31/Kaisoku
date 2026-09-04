@@ -11,6 +11,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.util.ext.onError
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.sync.domain.SyncController
+import org.koitharu.kotatsu.sync.drive.SyncBackend
 import org.koitharu.kotatsu.sync.ui.SyncAdapterEntryPoint
 
 class FavouritesSyncAdapter(context: Context) : AbstractThreadedSyncAdapter(context, true) {
@@ -26,6 +27,7 @@ class FavouritesSyncAdapter(context: Context) : AbstractThreadedSyncAdapter(cont
 			return
 		}
 		val entryPoint = EntryPointAccessors.fromApplication(context, SyncAdapterEntryPoint::class.java)
+		if (entryPoint.syncBackendSettings.backend != SyncBackend.KAISOKU_SERVER) return
 		val syncHelper = entryPoint.syncHelperFactory.create(account, provider)
 		runCatchingCancellable {
 			syncHelper.syncFavourites(syncResult.stats)

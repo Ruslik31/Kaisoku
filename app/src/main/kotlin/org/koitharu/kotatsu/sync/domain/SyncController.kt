@@ -28,6 +28,8 @@ import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
 import org.koitharu.kotatsu.core.db.TABLE_FAVOURITE_CATEGORIES
 import org.koitharu.kotatsu.core.db.TABLE_HISTORY
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
+import org.koitharu.kotatsu.sync.drive.SyncBackend
+import org.koitharu.kotatsu.sync.drive.SyncBackendSettings
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Provider
@@ -37,6 +39,7 @@ import javax.inject.Singleton
 class SyncController @Inject constructor(
 	@ApplicationContext context: Context,
 	private val dbProvider: Provider<MangaDatabase>,
+	private val backendSettings: SyncBackendSettings,
 ) : InvalidationTracker.Observer(arrayOf(TABLE_HISTORY, TABLE_FAVOURITES, TABLE_FAVOURITE_CATEGORIES)) {
 
 	private val authorityHistory = context.getString(R.string.sync_authority_history)
@@ -47,6 +50,7 @@ class SyncController @Inject constructor(
 	private val defaultGcPeriod = TimeUnit.DAYS.toMillis(2) // gc period if sync disabled
 
 	override fun onInvalidated(tables: Set<String>) {
+		if (backendSettings.backend != SyncBackend.KAISOKU_SERVER) return
 		val favourites = (TABLE_FAVOURITES in tables || TABLE_FAVOURITE_CATEGORIES in tables)
 			&& !isSyncActiveOrPending(authorityFavourites)
 		val history = TABLE_HISTORY in tables && !isSyncActiveOrPending(authorityHistory)
@@ -83,6 +87,8 @@ class SyncController @Inject constructor(
 	fun setEnabled(account: Account, syncFavorites: Boolean, syncHistory: Boolean) {
 		ContentResolver.setSyncAutomatically(account, authorityFavourites, syncFavorites)
 		ContentResolver.setSyncAutomatically(account, authorityHistory, syncHistory)
+		if (!syncFavorites) ContentResolver.cancelSync(account, authorityFavourites)
+		if (!syncHistory) ContentResolver.cancelSync(account, authorityHistory)
 	}
 
 	fun isEnabled(account: Account): Boolean {
@@ -123,6 +129,7 @@ class SyncController @Inject constructor(
 	}
 
 	suspend fun requestFullSync() = withContext(Dispatchers.Default) {
+		if (backendSettings.backend != SyncBackend.KAISOKU_SERVER) return@withContext
 		requestSyncImpl(favourites = true, history = true)
 	}
 
@@ -131,6 +138,7 @@ class SyncController @Inject constructor(
 	}
 
 	private suspend fun requestSyncImpl(favourites: Boolean, history: Boolean) = mutex.withLock {
+		if (backendSettings.backend != SyncBackend.KAISOKU_SERVER) return@withLock
 		if (!favourites && !history) {
 			return
 		}

@@ -14,8 +14,17 @@ abstract class FavouriteCategoriesDao {
 	@Query("SELECT * FROM favourite_categories WHERE category_id = :id AND deleted_at = 0")
 	abstract suspend fun find(id: Int): FavouriteCategoryEntity
 
+	@Query("SELECT * FROM favourite_categories WHERE category_id = :id")
+	abstract suspend fun findForRestore(id: Int): FavouriteCategoryEntity?
+
+	@Query("SELECT * FROM favourite_categories WHERE title = :title ORDER BY MAX(created_at, deleted_at) DESC LIMIT 1")
+	abstract suspend fun findByTitleForRestore(title: String): FavouriteCategoryEntity?
+
 	@Query("SELECT * FROM favourite_categories WHERE deleted_at = 0 ORDER BY sort_key")
 	abstract suspend fun findAll(): List<FavouriteCategoryEntity>
+
+	@Query("SELECT * FROM favourite_categories ORDER BY MAX(created_at, deleted_at) DESC")
+	abstract suspend fun dump(): List<FavouriteCategoryEntity>
 
 	@Query("SELECT * FROM favourite_categories WHERE deleted_at = 0 ORDER BY sort_key")
 	abstract fun observeAll(): Flow<List<FavouriteCategoryEntity>>
