@@ -2,11 +2,15 @@ package org.koitharu.kotatsu.reader.ui
 
 import android.app.assist.AssistContent
 import android.content.DialogInterface
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
+import android.os.PowerManager
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -18,6 +22,7 @@ import androidx.annotation.MainThread
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.Insets
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
@@ -70,6 +75,7 @@ import org.koitharu.kotatsu.details.ui.pager.pages.PagesSavedObserver
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.reader.data.TapGridSettings
 import org.koitharu.kotatsu.reader.domain.TapGridArea
+import org.koitharu.kotatsu.reader.domain.UpscaleEffect
 import org.koitharu.kotatsu.reader.ui.config.ReaderConfigSheet
 import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
@@ -144,8 +150,21 @@ class ReaderActivity :
         }
     }
 
+	private val powerSaveReceiver = object : BroadcastReceiver() {
+		override fun onReceive(context: Context?, intent: Intent?) {
+			val powerSave = getSystemService(PowerManager::class.java)?.isPowerSaveMode == true
+			UpscaleEffect.refreshPowerSaveState(powerSave)
+		}
+	}
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ContextCompat.registerReceiver(
+            this,
+            powerSaveReceiver,
+            IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         setContentView(ActivityReaderBinding.inflate(layoutInflater))
         readerManager = ReaderManager(supportFragmentManager, viewBinding.container, settings)
         einkFlashView = createEInkFlashView()
@@ -281,7 +300,7 @@ class ReaderActivity :
         viewModel.isZoomControlsEnabled.observe(this) {
             viewBinding.zoomControl.isVisible = it
         }
-        addMenuProvider(ReaderMenuProvider(viewModel))
+		addMenuProvider(ReaderMenuProvider())
 
         observeWindowLayout()
 
@@ -305,6 +324,7 @@ class ReaderActivity :
     override fun onResume() {
         viewModel.onResume()
         super.onResume()
+        UpscaleEffect.refreshPowerSaveState(getSystemService(PowerManager::class.java)?.isPowerSaveMode == true)
     }
 
     override fun onPause() {
@@ -320,6 +340,7 @@ class ReaderActivity :
 
     override fun onDestroy() {
         settings.unsubscribe(readerBarsPrefListener)
+        unregisterReceiver(powerSaveReceiver)
         super.onDestroy()
     }
 

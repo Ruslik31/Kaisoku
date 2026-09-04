@@ -4,6 +4,8 @@ import android.content.ComponentCallbacks2
 import android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE
 import android.content.Context
 import android.content.res.Configuration
+import android.os.Build
+import android.os.PowerManager
 import android.view.View
 import androidx.annotation.CallSuper
 import androidx.core.view.isGone
@@ -34,6 +36,7 @@ import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.databinding.LayoutPageInfoBinding
 import org.koitharu.kotatsu.parsers.util.ifZero
 import org.koitharu.kotatsu.reader.domain.PageLoader
+import org.koitharu.kotatsu.reader.domain.UpscaleEffect
 import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
 import org.koitharu.kotatsu.reader.ui.pager.vm.PageState
 import org.koitharu.kotatsu.reader.ui.pager.vm.PageViewModel
@@ -119,6 +122,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 			onReady()
 		}
 		ssiv.applyDownSampling(isResumed())
+		applyUpscale()
 	}
 
 	fun reloadImage(preserveState: Boolean = false) {
@@ -134,6 +138,9 @@ abstract class BasePageHolder<B : ViewBinding>(
 	}
 
 	fun bind(data: ReaderPage) {
+		if (boundData?.id != data.id) {
+			clearUpscale()
+		}
 		boundData = data
 		// Free the previous page before requesting the next — SubsamplingScaleImageView keeps its
 		// decoded tiles and bitmap until recycle(), so rapid paging would otherwise hold two
@@ -212,19 +219,25 @@ abstract class BasePageHolder<B : ViewBinding>(
 	}
 
 	override fun onDestroy() {
+		clearUpscale()
 		context.unregisterComponentCallbacks(this)
 		super.onDestroy()
 	}
 
-	open fun onAttachedToWindow() = Unit
+	open fun onAttachedToWindow() {
+		applyUpscale()
+	}
 
-	open fun onDetachedFromWindow() = Unit
+	open fun onDetachedFromWindow() {
+		clearUpscale()
+	}
 
 	@CallSuper
 	open fun onRecycled() {
 		translationJob?.cancel()
 		translationJob = null
 		translationOverlayActive = false
+		clearUpscale()
 		viewModel.onRecycle()
 		ssiv.recycle()
 		animatedView?.disposeImage()
@@ -301,8 +314,37 @@ abstract class BasePageHolder<B : ViewBinding>(
 				}
 			}
 
-			is PageState.Shown -> Unit
+			is PageState.Shown -> ssiv.post { applyUpscale() }
 		}
+	}
+
+	private fun applyUpscale() {
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !ssiv.isVisible) {
+			return
+		}
+		val page = boundData ?: return
+		val fitScale = if (ssiv.isReady && ssiv.sWidth > 0) {
+			ssiv.width / ssiv.sWidth.toFloat()
+		} else {
+			0f
+		}
+		val powerSaveMode = context.getSystemService(PowerManager::class.java)?.isPowerSaveMode == true
+		val effect = if (UpscaleEffect.shouldApply(true, settings.isUpscaleEnabled, powerSaveMode, fitScale)) {
+			UpscaleEffect.create(fitScale)
+		} else {
+			null
+		}
+		UpscaleEffect.registerView(page.id, ssiv, settings.isUpscaleEnabled)
+		ssiv.setRenderEffect(effect)
+		UpscaleEffect.setActive(page.id, effect != null)
+	}
+
+	private fun clearUpscale() {
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+			return
+		}
+		ssiv.setRenderEffect(null)
+		boundData?.let { UpscaleEffect.unregisterView(it.id, ssiv) }
 	}
 
 	private fun showAnimated(page: ReaderPage, loadedState: PageState.Loaded) {

@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.reader.ui.config
 
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -32,8 +33,10 @@ import org.koitharu.kotatsu.core.util.ext.viewLifecycleScope
 import org.koitharu.kotatsu.core.util.progress.IntPercentLabelFormatter
 import org.koitharu.kotatsu.databinding.SheetReaderConfigBinding
 import org.koitharu.kotatsu.reader.domain.PageLoader
+import org.koitharu.kotatsu.reader.domain.UpscaleEffect
 import org.koitharu.kotatsu.reader.ui.ReaderViewModel
 import org.koitharu.kotatsu.reader.ui.ScreenOrientationHelper
+import org.koitharu.kotatsu.reader.ui.upscale.UpscalePreviewDialog
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -105,6 +108,8 @@ class ReaderConfigSheet :
         binding.buttonSettings.setOnClickListener(this)
         binding.buttonImageServer.setOnClickListener(this)
         binding.buttonColorFilter.setOnClickListener(this)
+        binding.buttonUpscale.setOnClickListener(this)
+        binding.buttonUpscalePreview.setOnClickListener(this)
         binding.buttonScrollTimer.setOnClickListener(this)
         binding.buttonBookmark.setOnClickListener(this)
         binding.buttonTranslate.setOnClickListener(this)
@@ -121,6 +126,12 @@ class ReaderConfigSheet :
         binding.switchDoubleFoldable.setOnCheckedChangeListener(this)
         binding.switchDoubleCoverPage.setOnCheckedChangeListener(this)
         binding.sliderDoubleSensitivity.addOnChangeListener(this)
+        binding.buttonUpscale.isVisible = UpscaleEffect.isSupported
+        bindUpscaleTitle()
+        UpscaleEffect.activePages.onEach { activePages ->
+            viewBinding?.buttonUpscalePreview?.isVisible =
+                UpscaleEffect.isSupported && activePages.isNotEmpty()
+        }.launchIn(viewLifecycleScope)
 
         viewModel.isBookmarkAdded.observe(viewLifecycleOwner) {
             binding.buttonBookmark.setText(if (it) R.string.bookmark_remove else R.string.bookmark_add)
@@ -175,6 +186,19 @@ class ReaderConfigSheet :
                 val page = viewModel.getCurrentPage() ?: return
                 val manga = viewModel.getMangaOrNull() ?: return
                 router.openColorFilterConfig(manga, page)
+            }
+
+            R.id.button_upscale -> {
+                settings.isReaderUpscaleEnabled = !settings.isReaderUpscaleEnabled
+                bindUpscaleTitle()
+            }
+
+            R.id.button_upscale_preview -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val fragmentManager = parentFragmentManager
+                    dismissAllowingStateLoss()
+                    UpscalePreviewDialog.show(fragmentManager)
+                }
             }
 
             R.id.button_image_server -> viewLifecycleScope.launch {
@@ -286,6 +310,14 @@ class ReaderConfigSheet :
             R.string.inline_preference_pattern,
             getString(R.string.image_server),
             imageServerDelegate.getValue() ?: getString(R.string.automatic),
+        )
+    }
+
+    private fun bindUpscaleTitle() {
+        viewBinding?.buttonUpscale?.text = getString(
+            R.string.inline_preference_pattern,
+            getString(R.string.reader_upscale),
+            getString(if (settings.isReaderUpscaleEnabled) R.string.enabled else R.string.disabled),
         )
     }
 

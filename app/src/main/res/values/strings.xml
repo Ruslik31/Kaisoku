@@ -643,6 +643,16 @@
     <string name="state_paused">Paused</string>
     <string name="reader_optimize">Reduce memory consumption (beta)</string>
     <string name="reader_optimize_summary">Reduce offscreen pages quality to use less memory</string>
+    <string name="reader_upscale">GPU image upscaling (beta)</string>
+    <string name="reader_upscale_summary">Sharpen low-resolution pages with an Anime4K-style GPU shader. Android 13+</string>
+    <string name="reader_upscale_unsupported">Requires Android 13 or newer</string>
+    <string name="upscale_preview">Upscaling preview</string>
+    <string name="upscale_preview_original">Original</string>
+    <string name="upscale_preview_ai">Upscaled</string>
+    <string name="upscale_not_applied">This page is already high resolution, so upscaling is not applied</string>
+    <string name="upscale_preview_description">Low-resolution pages are sharpened on-device while you read. Upscaling pauses automatically in battery saver.</string>
+    <string name="upscale_open_settings">Upscaling settings</string>
+    <string name="upscale_preview_too_large">A safe preview is unavailable for this image. Use the reader toggle to compare it live.</string>
     <string name="e_ink">E-Ink</string>
     <string name="flash_on_page_change">Flash on page change</string>
     <string name="flash_on_page_change_summary">Refresh the screen with a short full-screen flash to reduce ghosting on E-Ink displays</string>
