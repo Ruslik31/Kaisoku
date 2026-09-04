@@ -1,0 +1,3 @@
+- Added publication status dropdown selector for quick filters
+- Added build and release CI/CD workflows with automated APK artifact publishing
+- Improved CI build stability and memory allocation
