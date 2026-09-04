@@ -47,10 +47,25 @@ jobs:
           fi
           ./gradlew :app:assembleRelease
 
+      - name: Prepare named release APK
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" != v* ]]; then
+            TAG="v${TAG}"
+          fi
+          mkdir -p artifacts
+          for apk in app/build/outputs/apk/release/*.apk; do
+            if [ -f "$apk" ]; then
+              NEW_NAME="kaisoku-${TAG}-installable.apk"
+              cp "$apk" "artifacts/${NEW_NAME}"
+              echo "Prepared APK: artifacts/${NEW_NAME}"
+            fi
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: android-release
-          path: app/build/outputs/apk/release/*.apk
+          path: artifacts/*.apk
           if-no-files-found: error
 
   publish:
