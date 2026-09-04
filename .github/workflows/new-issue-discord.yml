@@ -6,7 +6,7 @@ on:
 
 jobs:
   discordNotification:
-    if: ${{ secrets.DISCORD_ISSUE_WEBHOOK }}
+    if: secrets.DISCORD_ISSUE_WEBHOOK != ''
     runs-on: ubuntu-latest
     steps:
       - name: Send issue embed to Discord

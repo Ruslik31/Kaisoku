@@ -37,7 +37,7 @@ jobs:
         run: ./gradlew testDebugUnitTest
 
       - name: Decode keystore
-        if: ${{ github.event_name != 'pull_request' && secrets.KEYSTORE }}
+        if: github.event_name != 'pull_request' && secrets.KEYSTORE != ''
         run: echo "${{ secrets.KEYSTORE }}" | base64 -d > "$RUNNER_TEMP/keystore.jks"
 
       - name: Assemble debug APKs
