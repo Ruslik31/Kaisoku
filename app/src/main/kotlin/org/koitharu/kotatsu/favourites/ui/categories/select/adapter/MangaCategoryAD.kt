@@ -1,6 +1,10 @@
 package org.koitharu.kotatsu.favourites.ui.categories.select.adapter
 
+import android.text.format.DateFormat
+import android.widget.Toast
 import androidx.core.text.buildSpannedString
+import androidx.core.view.isVisible
+import com.google.android.material.checkbox.MaterialCheckBox
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.appendIcon
@@ -9,6 +13,7 @@ import org.koitharu.kotatsu.databinding.ItemCategoryCheckableBinding
 import org.koitharu.kotatsu.favourites.ui.categories.select.model.MangaCategoryItem
 import org.koitharu.kotatsu.list.ui.ListModelDiffCallback
 import org.koitharu.kotatsu.list.ui.model.ListModel
+import java.util.Date
 
 fun mangaCategoryAD(
 	clickListener: OnListItemClickListener<MangaCategoryItem>,
@@ -20,8 +25,26 @@ fun mangaCategoryAD(
 		clickListener.onItemClick(item, itemView)
 	}
 
+	itemView.setOnLongClickListener {
+		if (item.checkedState == MaterialCheckBox.STATE_CHECKED && item.addedAt != null && item.addedAt > 0L) {
+			val dateStr = DateFormat.getDateFormat(context).format(Date(item.addedAt))
+			val timeStr = DateFormat.getTimeFormat(context).format(Date(item.addedAt))
+			val msg = context.getString(R.string.added_to_category_at, item.category.title, "$dateStr, $timeStr")
+			Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+			true
+		} else {
+			false
+		}
+	}
+
 	bind { payloads ->
 		binding.checkBox.checkedState = item.checkedState
+		if (item.checkedState == MaterialCheckBox.STATE_CHECKED && item.addedAt != null && item.addedAt > 0L) {
+			binding.textViewDate.text = DateFormat.getDateFormat(context).format(Date(item.addedAt))
+			binding.textViewDate.isVisible = true
+		} else {
+			binding.textViewDate.isVisible = false
+		}
 		if (ListModelDiffCallback.PAYLOAD_CHECKED_CHANGED !in payloads) {
 			binding.checkBox.text = buildSpannedString {
 				append(item.category.title)

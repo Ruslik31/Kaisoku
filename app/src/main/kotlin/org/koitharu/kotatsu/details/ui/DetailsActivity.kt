@@ -17,6 +17,8 @@ import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.core.text.buildSpannedString
 import androidx.core.text.inSpans
+import android.text.format.DateFormat
+import java.util.Date
 import androidx.core.text.method.LinkMovementMethodCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
@@ -203,6 +205,7 @@ class DetailsActivity :
 		viewModel.localSize.observe(this, ::onLocalSizeChanged)
 		viewModel.relatedManga.observe(this, ::onRelatedMangaChanged)
 		viewModel.favouriteCategories.observe(this, ::onFavoritesChanged)
+		viewModel.favoriteDate.observe(this, ::onFavoriteDateChanged)
 		val menuInvalidator = MenuInvalidator(this)
 		viewModel.isStatsAvailable.observe(this, menuInvalidator)
 		viewModel.remoteManga.observe(this, menuInvalidator)
@@ -385,6 +388,16 @@ class DetailsActivity :
 			getString(R.string.add_to_favourites)
 		} else {
 			categories.joinToStringWithLimit(this, FAV_LABEL_LIMIT) { it.title }
+		}
+	}
+
+	private fun onFavoriteDateChanged(date: Long?) {
+		if (date != null && date > 0L) {
+			val dateStr = DateFormat.getDateFormat(this).format(Date(date))
+			infoBinding.textViewFavouriteDate.text = dateStr
+			infoBinding.metaFavouriteRow.isVisible = true
+		} else {
+			infoBinding.metaFavouriteRow.isVisible = false
 		}
 	}
 
