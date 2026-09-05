@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import org.koitharu.kotatsu.list.ui.showStateFilterPopupMenu
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -104,7 +105,18 @@ class FeedFragment :
 		viewModel.update()
 	}
 
-	override fun onFilterOptionClick(option: ListFilterOption) = viewModel.toggleFilterOption(option)
+	override fun onFilterOptionClick(view: View, option: ListFilterOption) {
+		if (option is ListFilterOption.State) {
+			showStateFilterPopupMenu(view, option) { selectedState ->
+				viewModel.setFilterOption(
+					ListFilterOption.State(selectedState),
+					isApplied = selectedState != null,
+				)
+			}
+		} else {
+			viewModel.toggleFilterOption(option)
+		}
+	}
 
 	override fun onRetryClick(error: Throwable) = Unit
 

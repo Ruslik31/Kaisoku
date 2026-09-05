@@ -229,9 +229,18 @@ abstract class MangaListFragment :
 		)
 	}
 
-	override fun onFilterOptionClick(option: ListFilterOption) {
+	override fun onFilterOptionClick(view: View, option: ListFilterOption) {
 		selectionController?.clear()
-		(viewModel as? QuickFilterListener)?.toggleFilterOption(option)
+		if (option is ListFilterOption.State) {
+			showStateFilterPopupMenu(view, option) { selectedState ->
+				(viewModel as? QuickFilterListener)?.setFilterOption(
+					ListFilterOption.State(selectedState),
+					isApplied = selectedState != null,
+				)
+			}
+		} else {
+			(viewModel as? QuickFilterListener)?.toggleFilterOption(option)
+		}
 	}
 
 	override fun onFilterClick(view: View?) = Unit
