@@ -9,6 +9,7 @@ data class MangaCategoryItem(
 	val category: FavouriteCategory,
 	@CheckedState val checkedState: Int,
 	val isTrackerEnabled: Boolean,
+	val addedAt: Long? = null,
 ) : ListModel {
 
 	override fun areItemsTheSame(other: ListModel): Boolean {

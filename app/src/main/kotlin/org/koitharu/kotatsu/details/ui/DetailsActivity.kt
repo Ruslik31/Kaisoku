@@ -17,6 +17,8 @@ import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.core.text.buildSpannedString
 import androidx.core.text.inSpans
+import android.text.format.DateFormat
+import java.util.Date
 import androidx.core.text.method.LinkMovementMethodCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
@@ -203,6 +205,7 @@ class DetailsActivity :
 		viewModel.localSize.observe(this, ::onLocalSizeChanged)
 		viewModel.relatedManga.observe(this, ::onRelatedMangaChanged)
 		viewModel.favouriteCategories.observe(this, ::onFavoritesChanged)
+		viewModel.favoriteDate.observe(this, ::onFavoriteDateChanged)
 		val menuInvalidator = MenuInvalidator(this)
 		viewModel.isStatsAvailable.observe(this, menuInvalidator)
 		viewModel.remoteManga.observe(this, menuInvalidator)
@@ -388,6 +391,17 @@ class DetailsActivity :
 		}
 	}
 
+	private fun onFavoriteDateChanged(date: Long?) {
+		if (date != null && date > 0L) {
+			val dateStr = DateFormat.getDateFormat(this).format(Date(date))
+			infoBinding.textViewFavouriteDate.text = dateStr
+			infoBinding.metaFavouriteCell.isVisible = true
+		} else {
+			infoBinding.metaFavouriteCell.isVisible = false
+		}
+		updateMetaTableLayout()
+	}
+
 	private fun onLocalSizeChanged(size: Long) {
 		if (size == 0L) {
 			infoBinding.metaLocalCell.isVisible = false
@@ -395,8 +409,35 @@ class DetailsActivity :
 			infoBinding.textViewLocal.text = FileSize.BYTES.format(this, size)
 			infoBinding.metaLocalCell.isVisible = true
 		}
-		infoBinding.metaRatingLocalRow.isVisible =
-			infoBinding.metaRatingCell.isVisible || infoBinding.metaLocalCell.isVisible
+		updateMetaTableLayout()
+	}
+
+	private fun updateMetaTableLayout() {
+		val isLocalVisible = infoBinding.metaLocalCell.isVisible
+		val isFavouriteVisible = infoBinding.metaFavouriteCell.isVisible
+
+		if (isFavouriteVisible && !isLocalVisible) {
+			if (infoBinding.metaFavouriteCell.parent != infoBinding.metaRatingLocalRow) {
+				(infoBinding.metaFavouriteCell.parent as? ViewGroup)?.removeView(infoBinding.metaFavouriteCell)
+				infoBinding.metaRatingLocalRow.addView(infoBinding.metaFavouriteCell)
+			}
+			infoBinding.metaFavouriteRow.isVisible = false
+			infoBinding.metaRatingLocalRow.isVisible = true
+		} else if (isFavouriteVisible && isLocalVisible) {
+			if (infoBinding.metaFavouriteCell.parent != infoBinding.metaFavouriteRow) {
+				(infoBinding.metaFavouriteCell.parent as? ViewGroup)?.removeView(infoBinding.metaFavouriteCell)
+				infoBinding.metaFavouriteRow.addView(infoBinding.metaFavouriteCell)
+			}
+			infoBinding.metaFavouriteRow.isVisible = true
+			infoBinding.metaRatingLocalRow.isVisible = true
+		} else {
+			if (infoBinding.metaFavouriteCell.parent != infoBinding.metaFavouriteRow) {
+				(infoBinding.metaFavouriteCell.parent as? ViewGroup)?.removeView(infoBinding.metaFavouriteCell)
+				infoBinding.metaFavouriteRow.addView(infoBinding.metaFavouriteCell)
+			}
+			infoBinding.metaFavouriteRow.isVisible = false
+			infoBinding.metaRatingLocalRow.isVisible = infoBinding.metaRatingCell.isVisible || isLocalVisible
+		}
 	}
 
 	private fun onRelatedMangaChanged(related: List<MangaListModel>) {
