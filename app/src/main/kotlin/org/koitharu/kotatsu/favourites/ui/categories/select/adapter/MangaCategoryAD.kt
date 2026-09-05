@@ -26,9 +26,10 @@ fun mangaCategoryAD(
 	}
 
 	itemView.setOnLongClickListener {
-		if (item.checkedState == MaterialCheckBox.STATE_CHECKED && item.addedAt != null && item.addedAt > 0L) {
-			val dateStr = DateFormat.getDateFormat(context).format(Date(item.addedAt))
-			val timeStr = DateFormat.getTimeFormat(context).format(Date(item.addedAt))
+		val addedAt = item.addedAt
+		if (item.checkedState == MaterialCheckBox.STATE_CHECKED && addedAt != null && addedAt > 0L) {
+			val dateStr = DateFormat.getDateFormat(context).format(Date(addedAt))
+			val timeStr = DateFormat.getTimeFormat(context).format(Date(addedAt))
 			val msg = context.getString(R.string.added_to_category_at, item.category.title, "$dateStr, $timeStr")
 			Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
 			true
@@ -39,8 +40,9 @@ fun mangaCategoryAD(
 
 	bind { payloads ->
 		binding.checkBox.checkedState = item.checkedState
-		if (item.checkedState == MaterialCheckBox.STATE_CHECKED && item.addedAt != null && item.addedAt > 0L) {
-			binding.textViewDate.text = DateFormat.getDateFormat(context).format(Date(item.addedAt))
+		val addedAt = item.addedAt
+		if (item.checkedState == MaterialCheckBox.STATE_CHECKED && addedAt != null && addedAt > 0L) {
+			binding.textViewDate.text = DateFormat.getDateFormat(context).format(Date(addedAt))
 			binding.textViewDate.isVisible = true
 		} else {
 			binding.textViewDate.isVisible = false

@@ -1,0 +1,4 @@
+- Added favorite creation date in manga details screen and category selection dialog
+- Added long-click tooltip with full date and time for favorite category items
+- Refined Publication Status dropdown popup menu positioning, offset, and rounded corners
+- Improved build and release workflows with automated release notes and APK publishing
