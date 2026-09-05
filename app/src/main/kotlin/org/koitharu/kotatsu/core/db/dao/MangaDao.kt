@@ -13,12 +13,21 @@ import org.koitharu.kotatsu.core.db.entity.MangaTagsEntity
 import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.TagEntity
 
+data class LibrarySourceUsage(
+	val source: String,
+	val mangaCount: Int,
+)
+
 @Dao
 abstract class MangaDao {
 
 	@Transaction
 	@Query("SELECT * FROM manga WHERE manga_id = :id")
 	abstract suspend fun find(id: Long): MangaWithTags?
+
+	@Transaction
+	@Query("SELECT * FROM manga WHERE manga_id IN (:ids)")
+	abstract suspend fun findAll(ids: LongArray): List<MangaWithTags>
 
 	@Query("SELECT EXISTS(SELECT * FROM manga WHERE manga_id = :id)")
 	abstract suspend operator fun contains(id: Long): Boolean
@@ -41,6 +50,37 @@ abstract class MangaDao {
 	@Transaction
 	@Query("SELECT * FROM manga WHERE source = :source")
 	abstract suspend fun findAllBySource(source: String): List<MangaWithTags>
+
+	@Transaction
+	@Query("SELECT * FROM manga WHERE source = :source AND manga_id IN (SELECT manga_id FROM favourites)")
+	abstract suspend fun findLibraryBySource(source: String): List<MangaWithTags>
+
+	@Query(
+		"""
+		SELECT source, COUNT(*) AS mangaCount
+		FROM manga
+		WHERE source NOT IN ('LOCAL', 'UNKNOWN')
+			AND manga_id IN (
+				SELECT manga_id FROM favourites WHERE deleted_at = 0
+				UNION SELECT manga_id FROM history WHERE deleted_at = 0
+			)
+		GROUP BY source
+		ORDER BY source COLLATE NOCASE
+		""",
+	)
+	abstract suspend fun findLibrarySourceUsage(): List<LibrarySourceUsage>
+
+	@Query(
+		"""
+		SELECT manga_id FROM manga
+		WHERE source IN (:sources)
+			AND manga_id IN (
+				SELECT manga_id FROM favourites WHERE deleted_at = 0
+				UNION SELECT manga_id FROM history WHERE deleted_at = 0
+			)
+		""",
+	)
+	abstract suspend fun findLibraryMangaIdsBySources(sources: Collection<String>): List<Long>
 
 	@Query("SELECT author FROM manga WHERE author LIKE :query GROUP BY author ORDER BY COUNT(author) DESC LIMIT :limit")
 	abstract suspend fun findAuthors(query: String, limit: Int): List<String>

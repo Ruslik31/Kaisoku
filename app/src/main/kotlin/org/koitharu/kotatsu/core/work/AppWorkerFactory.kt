@@ -31,6 +31,9 @@ import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.local.ui.LocalStorageCleanupWorker
 import org.koitharu.kotatsu.suggestions.domain.SuggestionRepository
 import org.koitharu.kotatsu.suggestions.ui.SuggestionsWorker
+import org.koitharu.kotatsu.sync.drive.GoogleDriveSyncRepository
+import org.koitharu.kotatsu.sync.drive.GoogleDriveWorker
+import org.koitharu.kotatsu.sync.drive.SyncBackendSettings
 import org.koitharu.kotatsu.tracker.domain.CheckNewChaptersUseCase
 import org.koitharu.kotatsu.tracker.domain.GetTracksUseCase
 import org.koitharu.kotatsu.tracker.work.TrackWorker
@@ -65,6 +68,8 @@ class AppWorkerFactory @Inject constructor(
 	private val historyRepository: Provider<HistoryRepository>,
 	private val favouritesRepository: Provider<FavouritesRepository>,
 	private val sourcesRepository: Provider<MangaSourcesRepository>,
+	private val googleDriveSyncRepository: Provider<GoogleDriveSyncRepository>,
+	private val syncBackendSettings: Provider<SyncBackendSettings>,
 ) : WorkerFactory() {
 
 	override fun createWorker(
@@ -122,6 +127,13 @@ class AppWorkerFactory @Inject constructor(
 			workManager = workManager.get(),
 			mangaRepositoryFactory = mangaRepositoryFactory.get(),
 			sourcesRepository = sourcesRepository.get(),
+		)
+
+		GoogleDriveWorker::class.java.name -> GoogleDriveWorker(
+			context = appContext,
+			params = workerParameters,
+			repository = googleDriveSyncRepository.get(),
+			settings = syncBackendSettings.get(),
 		)
 
 		else -> null

@@ -14,6 +14,7 @@ class CategoryBackup(
 	@SerialName("order") val order: String = ListSortOrder.NEWEST.name,
 	@SerialName("track") val track: Boolean = true,
 	@SerialName("show_in_lib") val isVisibleInLibrary: Boolean = true,
+	@SerialName("deleted_at") val deletedAt: Long = 0L,
 ) {
 
 	constructor(entity: FavouriteCategoryEntity) : this(
@@ -24,9 +25,10 @@ class CategoryBackup(
 		order = entity.order,
 		track = entity.track,
 		isVisibleInLibrary = entity.isVisibleInLibrary,
+		deletedAt = entity.deletedAt,
 	)
 
-	fun toEntity() = FavouriteCategoryEntity(
+	fun toEntity(categoryId: Int = this.categoryId) = FavouriteCategoryEntity(
 		categoryId = categoryId,
 		createdAt = createdAt,
 		sortKey = sortKey,
@@ -34,6 +36,6 @@ class CategoryBackup(
 		order = order,
 		track = track,
 		isVisibleInLibrary = isVisibleInLibrary,
-		deletedAt = 0L,
+		deletedAt = deletedAt,
 	)
 }

@@ -19,7 +19,6 @@ import coil3.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.alternatives.ui.AutoFixService
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.model.isLocal
@@ -336,17 +335,8 @@ abstract class MangaListFragment :
 			}
 
 			R.id.action_fix -> {
-				val itemsSnapshot = selectedItemsIds
-				buildAlertDialog(context ?: return false, isCentered = true) {
-					setTitle(item.title)
-					setIcon(item.icon)
-					setMessage(R.string.manga_fix_prompt)
-					setNegativeButton(android.R.string.cancel, null)
-					setPositiveButton(R.string.fix) { _, _ ->
-						AutoFixService.start(context, itemsSnapshot)
-						mode?.finish()
-					}
-				}.show()
+				router.openSourceReplacement(selectedItemsIds)
+				mode?.finish()
 				true
 			}
 

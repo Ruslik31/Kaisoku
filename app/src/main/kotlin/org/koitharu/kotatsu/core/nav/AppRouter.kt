@@ -25,6 +25,7 @@ import dagger.hilt.android.EntryPointAccessors
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.ui.AlternativesActivity
+import org.koitharu.kotatsu.alternatives.ui.SourceReplacementActivity
 import org.koitharu.kotatsu.backups.ui.backup.BackupDialogFragment
 import org.koitharu.kotatsu.backups.ui.restore.RestoreDialogFragment
 import org.koitharu.kotatsu.bookmarks.ui.AllBookmarksActivity
@@ -183,6 +184,14 @@ class AppRouter private constructor(
                 .putExtra(KEY_MANGA, ParcelableManga(manga)),
         )
     }
+
+	fun openSourceReplacement(mangaIds: Collection<Long>) {
+		if (mangaIds.isEmpty()) return
+		startActivity(
+			Intent(contextOrNull() ?: return, SourceReplacementActivity::class.java)
+				.putExtra(KEY_MANGA_IDS, mangaIds.toLongArray()),
+		)
+	}
 
     fun openRelated(manga: Manga) {
         startActivity(
@@ -858,6 +867,7 @@ class AppRouter private constructor(
         const val KEY_LIST_SECTION = "list_section"
         const val KEY_MANGA = "manga"
         const val KEY_MANGA_LIST = "manga_list"
+		const val KEY_MANGA_IDS = "manga_ids"
         const val KEY_PAGES = "pages"
         const val KEY_PICK_MODE = "pick_mode"
         const val KEY_PREVIEW = "preview"

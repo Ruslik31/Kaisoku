@@ -106,6 +106,12 @@
 		android:summary="@string/reader_optimize_summary"
 		android:title="@string/reader_optimize" />
 
+	<SwitchPreferenceCompat
+		android:defaultValue="false"
+		android:key="reader_upscale"
+		android:summary="@string/reader_upscale_summary"
+		android:title="@string/reader_upscale" />
+
 	<MultiSelectListPreference
 		android:entries="@array/reader_crop"
 		android:entryValues="@array/values_reader_crop"

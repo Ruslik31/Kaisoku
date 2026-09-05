@@ -60,6 +60,10 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	@Query("SELECT * FROM favourites WHERE deleted_at = 0 ORDER BY created_at DESC LIMIT :limit OFFSET :offset")
 	abstract suspend fun findAllRaw(offset: Int, limit: Int): List<FavouriteManga>
 
+	@Transaction
+	@Query("SELECT * FROM favourites ORDER BY MAX(created_at, deleted_at) DESC LIMIT :limit OFFSET :offset")
+	abstract suspend fun findAllForBackup(offset: Int, limit: Int): List<FavouriteManga>
+
 	@Query("SELECT DISTINCT manga_id FROM favourites WHERE deleted_at = 0 AND category_id IN (SELECT category_id FROM favourite_categories WHERE track = 1 AND deleted_at = 0)")
 	abstract suspend fun findIdsWithTrack(): LongArray
 
@@ -127,6 +131,9 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	@Query("SELECT * FROM favourites WHERE manga_id = :mangaId AND deleted_at = 0")
 	abstract suspend fun findAllRaw(mangaId: Long): List<FavouriteEntity>
 
+	@Query("SELECT * FROM favourites WHERE manga_id = :mangaId AND category_id = :categoryId")
+	abstract suspend fun findForRestore(mangaId: Long, categoryId: Long): FavouriteEntity?
+
 	@Query("SELECT DISTINCT category_id FROM favourites WHERE manga_id = :id AND deleted_at = 0")
 	abstract fun observeIds(id: Long): Flow<List<Long>>
 
@@ -183,7 +190,7 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		val window = 10
 		var offset = 0
 		while (currentCoroutineContext().isActive) {
-			val list = findAllRaw(offset, window)
+			val list = findAllForBackup(offset, window)
 			if (list.isEmpty()) {
 				break
 			}

@@ -17,6 +17,7 @@ import org.koitharu.kotatsu.core.db.entity.MangaPrefsEntity
 import org.koitharu.kotatsu.core.db.entity.toEntities
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.entity.toManga
+import org.koitharu.kotatsu.core.db.entity.toMangaList
 import org.koitharu.kotatsu.core.db.entity.toMangaChapters
 import org.koitharu.kotatsu.core.db.entity.toMangaTags
 import org.koitharu.kotatsu.core.model.LocalMangaSource
@@ -131,9 +132,18 @@ class MangaDataRepository @Inject constructor(
 		return db.getMangaDao().find(mangaId)?.toManga(chapters)
 	}
 
+	suspend fun findMangaByIds(mangaIds: LongArray): List<Manga> =
+		db.getMangaDao().findAll(mangaIds).toMangaList()
+
 	suspend fun findMangaByPublicUrl(publicUrl: String): Manga? {
 		return db.getMangaDao().findByPublicUrl(publicUrl)?.toManga()
 	}
+
+	suspend fun findAllMangaBySource(source: MangaSource): List<Manga> =
+		db.getMangaDao().findAllBySource(source.name).toMangaList()
+
+	suspend fun findLibraryMangaBySource(source: MangaSource): List<Manga> =
+		db.getMangaDao().findLibraryBySource(source.name).toMangaList()
 
 	suspend fun resolveIntent(intent: MangaIntent, withChapters: Boolean): Manga? = when {
 		intent.manga != null -> intent.manga.withStoredIdIfNeeded().withCachedChaptersIfNeeded(withChapters)

@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.settings
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.os.Bundle
+import android.os.Build
 import android.view.View
 import androidx.preference.ListPreference
 import androidx.preference.MultiSelectListPreference
@@ -78,6 +79,12 @@ class ReaderSettingsFragment :
 			summaryProvider = MultiSummaryProvider(R.string.disabled)
 		}
 		findPreference<SliderPreference>(AppSettings.KEY_WEBTOON_ZOOM_OUT)?.summaryProvider = PercentSummaryProvider()
+		findPreference<Preference>(AppSettings.KEY_READER_UPSCALE)?.run {
+			isEnabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+			if (!isEnabled) {
+				summary = getString(R.string.reader_upscale_unsupported)
+			}
+		}
 		findPreference<SliderPreference>(AppSettings.KEY_EINK_FLASH_DURATION)?.summaryProvider =
 			FlashDurationSummaryProvider
 		findPreference<SliderPreference>(AppSettings.KEY_EINK_FLASH_EVERY)?.summaryProvider =

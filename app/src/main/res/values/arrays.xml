@@ -1,5 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+	<string-array name="sync_backends">
+		<item>@string/sync_disabled</item>
+		<item>@string/kaisoku_server</item>
+		<item>@string/google_drive</item>
+	</string-array>
+	<string-array name="sync_backend_values" translatable="false">
+		<item>NONE</item>
+		<item>KAISOKU_SERVER</item>
+		<item>GOOGLE_DRIVE</item>
+	</string-array>
+	<string-array name="drive_sync_intervals">
+		<item>@string/every_15_minutes</item>
+		<item>@string/every_hour</item>
+		<item>@string/every_6_hours</item>
+		<item>@string/every_12_hours</item>
+		<item>@string/daily</item>
+	</string-array>
+	<string-array name="drive_sync_interval_values" translatable="false">
+		<item>15</item>
+		<item>60</item>
+		<item>360</item>
+		<item>720</item>
+		<item>1440</item>
+	</string-array>
+	<string-array name="drive_content_sections">
+		<item>@string/library</item>
+		<item>@string/history</item>
+		<item>@string/bookmarks</item>
+		<item>@string/tracking</item>
+		<item>@string/settings</item>
+		<item>@string/statistics</item>
+	</string-array>
+	<string-array name="drive_content_section_values" translatable="false">
+		<item>LIBRARY</item>
+		<item>HISTORY</item>
+		<item>BOOKMARKS</item>
+		<item>TRACKING</item>
+		<item>SETTINGS</item>
+		<item>STATISTICS</item>
+	</string-array>
 	<string-array name="translate_providers">
 		<item>@string/translate_provider_openai</item>
 		<item>@string/translate_provider_gemini</item>

@@ -45,6 +45,7 @@ class AppBackupAgent : BackupAgent() {
 		val file = createBackupFile(
 			this,
 			BackupRepository(
+				context = applicationContext,
 				database = MangaDatabase(context = applicationContext),
 				settings = AppSettings(applicationContext),
 				tapGridSettings = TapGridSettings(applicationContext),
@@ -80,6 +81,7 @@ class AppBackupAgent : BackupAgent() {
 				data.fileDescriptor,
 				size,
 				BackupRepository(
+					context = applicationContext,
 					database = MangaDatabase(applicationContext),
 					settings = AppSettings(applicationContext),
 					tapGridSettings = TapGridSettings(applicationContext),

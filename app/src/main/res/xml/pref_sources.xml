@@ -56,6 +56,12 @@
         android:summary="@string/hide_broken_sources_summary"
         android:title="@string/hide_broken_sources" />
 
+	<Preference
+		android:key="repair_broken_sources"
+		android:persistent="false"
+		android:summary="@string/repair_broken_sources_summary"
+		android:title="@string/repair_broken_sources" />
+
     <ListPreference
         android:entries="@array/incognito_nsfw_options"
         android:key="incognito_nsfw"
