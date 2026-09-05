@@ -1,0 +1,1 @@
+- Dynamically expanded "In favorites since" date to full width when downloaded chapters exist

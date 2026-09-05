@@ -18,6 +18,7 @@ import androidx.activity.viewModels
 import androidx.core.text.buildSpannedString
 import androidx.core.text.inSpans
 import android.text.format.DateFormat
+import android.widget.LinearLayout
 import java.util.Date
 import androidx.core.text.method.LinkMovementMethodCompat
 import androidx.core.view.WindowInsetsCompat
@@ -416,10 +417,17 @@ class DetailsActivity :
 		val isLocalVisible = infoBinding.metaLocalCell.isVisible
 		val isFavouriteVisible = infoBinding.metaFavouriteCell.isVisible
 
+		val params = infoBinding.metaFavouriteCell.layoutParams as? LinearLayout.LayoutParams
+
 		if (isFavouriteVisible && !isLocalVisible) {
 			if (infoBinding.metaFavouriteCell.parent != infoBinding.metaRatingLocalRow) {
 				(infoBinding.metaFavouriteCell.parent as? ViewGroup)?.removeView(infoBinding.metaFavouriteCell)
 				infoBinding.metaRatingLocalRow.addView(infoBinding.metaFavouriteCell)
+			}
+			if (params != null) {
+				params.width = 0
+				params.weight = 1f
+				infoBinding.metaFavouriteCell.layoutParams = params
 			}
 			infoBinding.metaFavouriteRow.isVisible = false
 			infoBinding.metaRatingLocalRow.isVisible = true
@@ -427,6 +435,11 @@ class DetailsActivity :
 			if (infoBinding.metaFavouriteCell.parent != infoBinding.metaFavouriteRow) {
 				(infoBinding.metaFavouriteCell.parent as? ViewGroup)?.removeView(infoBinding.metaFavouriteCell)
 				infoBinding.metaFavouriteRow.addView(infoBinding.metaFavouriteCell)
+			}
+			if (params != null) {
+				params.width = ViewGroup.LayoutParams.MATCH_PARENT
+				params.weight = 0f
+				infoBinding.metaFavouriteCell.layoutParams = params
 			}
 			infoBinding.metaFavouriteRow.isVisible = true
 			infoBinding.metaRatingLocalRow.isVisible = true

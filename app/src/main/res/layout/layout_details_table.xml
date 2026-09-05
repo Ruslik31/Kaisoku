@@ -304,7 +304,7 @@
 			</LinearLayout>
 		</LinearLayout>
 
-		<!-- Row 4: Favourite Date (2-column layout, right aligned) -->
+		<!-- Row 4: Favourite Date -->
 		<LinearLayout
 			android:id="@+id/meta_favourite_row"
 			android:layout_width="match_parent"
@@ -315,17 +315,10 @@
 			android:visibility="gone"
 			tools:visibility="visible">
 
-			<Space
-				android:id="@+id/meta_favourite_space"
-				android:layout_width="0dp"
-				android:layout_height="wrap_content"
-				android:layout_weight="1" />
-
 			<LinearLayout
 				android:id="@+id/meta_favourite_cell"
-				android:layout_width="0dp"
+				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
-				android:layout_weight="1"
 				android:gravity="center_vertical"
 				android:orientation="horizontal">
 
