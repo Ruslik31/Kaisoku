@@ -77,15 +77,22 @@ class FavoriteDialogViewModel @Inject constructor(
 			val ids = favouritesRepository.getCategoriesIds(m.id)
 			ids.forEach { id -> cats[id]?.add(m.id) }
 		}
+		val categoryDates = if (manga.size == 1) {
+			favouritesRepository.getCategoryDates(manga[0].id)
+		} else {
+			emptyMap()
+		}
 		return categories.map { cat ->
+			val checkedState = when (cats[cat.id]?.size ?: 0) {
+				0 -> MaterialCheckBox.STATE_UNCHECKED
+				manga.size -> MaterialCheckBox.STATE_CHECKED
+				else -> MaterialCheckBox.STATE_INDETERMINATE
+			}
 			MangaCategoryItem(
 				category = cat,
-				checkedState = when (cats[cat.id]?.size ?: 0) {
-					0 -> MaterialCheckBox.STATE_UNCHECKED
-					manga.size -> MaterialCheckBox.STATE_CHECKED
-					else -> MaterialCheckBox.STATE_INDETERMINATE
-				},
+				checkedState = checkedState,
 				isTrackerEnabled = tracker,
+				addedAt = if (checkedState == MaterialCheckBox.STATE_CHECKED) categoryDates[cat.id] else null,
 			)
 		}
 	}
