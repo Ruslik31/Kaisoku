@@ -22,6 +22,7 @@ import org.koitharu.kotatsu.core.util.ext.resolveName
 import org.koitharu.kotatsu.core.util.ext.writeAllCancellable
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.LocalStorageManager
+import org.koitharu.kotatsu.local.data.hasRarComicExtension
 import org.koitharu.kotatsu.local.data.hasPdfExtension
 import org.koitharu.kotatsu.local.data.hasZipExtension
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
@@ -53,18 +54,30 @@ class SingleMangaImporter @Inject constructor(
 	private suspend fun importFile(uri: Uri): LocalManga = withContext(Dispatchers.IO) {
 		val contentResolver = storageManager.contentResolver
 		val name = contentResolver.resolveName(uri) ?: throw IOException("Cannot fetch name from uri: $uri")
-		if (!hasZipExtension(name)) {
-			throw UnsupportedFileException("Unsupported file $name on $uri")
+		val dest = when {
+			hasZipExtension(name) -> File(getOutputDir(), name).also { copyFile(uri, it) }
+			hasRarComicExtension(name) -> importCbr(uri, name)
+			else -> throw UnsupportedFileException("Unsupported file $name on $uri")
 		}
-		val dest = File(getOutputDir(), name)
+		parseManga(dest)
+	}
+
+	private suspend fun importCbr(uri: Uri, sourceName: String): File {
+		return CbrImportTransaction.import(
+			sourceName = sourceName,
+			outputDir = getOutputDir(),
+			copyInput = { inputTemp -> copyFile(uri, inputTemp) },
+		)
+	}
+
+	private suspend fun copyFile(uri: Uri, dest: File) {
 		runInterruptible {
-			contentResolver.openSource(uri)
+			storageManager.contentResolver.openSource(uri)
 		}.use { source ->
 			dest.sink().buffer().use { output ->
 				output.writeAllCancellable(source)
 			}
 		}
-		parseManga(dest)
 	}
 
 	private suspend fun importDirectory(uri: Uri): LocalManga = withContext(Dispatchers.IO) {

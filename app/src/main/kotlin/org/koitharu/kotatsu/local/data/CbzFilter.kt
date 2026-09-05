@@ -6,9 +6,18 @@ private fun isZipExtension(ext: String?): Boolean {
 	return ext.equals("cbz", ignoreCase = true) || ext.equals("zip", ignoreCase = true)
 }
 
+private fun isRarComicExtension(ext: String?): Boolean {
+	return ext.equals("cbr", ignoreCase = true)
+}
+
 fun hasZipExtension(string: String): Boolean {
 	val ext = string.substringAfterLast('.', "")
 	return isZipExtension(ext)
+}
+
+fun hasRarComicExtension(string: String): Boolean {
+	val ext = string.substringAfterLast('.', "")
+	return isRarComicExtension(ext)
 }
 
 val File.isZipArchive: Boolean

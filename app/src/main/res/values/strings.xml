@@ -114,7 +114,7 @@
     <string name="_import">Import</string>
     <string name="delete">Delete</string>
     <string name="operation_not_supported">This operation is not supported</string>
-    <string name="text_file_not_supported">Either pick a ZIP or CBZ file.</string>
+    <string name="text_file_not_supported">Pick a CBZ, ZIP, or CBR file.</string>
     <string name="no_description">No description</string>
     <string name="clear_pages_cache">Clear page cache</string>
     <string name="text_file_sizes">B|kB|MB|GB|TB</string>
@@ -454,7 +454,7 @@
     <string name="sources_reorder_tip">Tap and hold on an item to reorder them</string>
     <string name="user_agent">UserAgent header</string>
     <string name="settings_apply_restart_required">Please restart the application to apply these changes</string>
-    <string name="comics_archive_import_description">You can select one or more .cbz or .zip files, each file will be recognized as a separate manga.</string>
+    <string name="comics_archive_import_description">You can select one or more .cbz, .zip, or .cbr files; each file will be recognized as a separate manga.</string>
     <string name="folder_with_images_import_description">You can select a directory with archives or images. Each archive (or subdirectory) will be recognized as a chapter.</string>
     <string name="speed">Speed</string>
     <string name="show_on_shelf">Show on the Shelf</string>
@@ -1081,6 +1081,13 @@
     <string name="main_screen_fab">Show floating Continue button</string>
     <string name="main_screen_fab_summary">Allows to continue reading in a one click. This button will not appear in incognito mode or when the history is empty</string>
     <string name="error_corrupted_zip">Corrupted ZIP archive (%s)</string>
+    <string name="error_cbr_corrupted">Could not read the CBR archive (%s)</string>
+    <string name="error_cbr_empty">The CBR archive does not contain any supported images.</string>
+    <string name="error_cbr_encrypted">Password-protected CBR archives are not supported.</string>
+    <string name="error_cbr_multipart">Multipart CBR archives are not supported. Import one complete archive.</string>
+    <string name="error_cbr_too_large">This CBR archive needs too much memory to import safely.</string>
+    <string name="error_cbr_unsafe">The CBR archive contains unsafe or duplicate file paths.</string>
+    <string name="error_cbr_unsupported">This CBR archive uses an unsupported RAR feature.</string>
     <string name="discord" translatable="false">Discord</string>
     <string name="discord_rpc">Discord Rich Presence</string>
     <string name="discord_token">Discord Token</string>

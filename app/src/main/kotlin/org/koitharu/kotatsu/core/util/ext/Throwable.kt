@@ -19,6 +19,7 @@ import org.jsoup.HttpStatusException
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.BadBackupFormatException
+import org.koitharu.kotatsu.core.exceptions.CbrImportException
 import org.koitharu.kotatsu.core.exceptions.CaughtException
 import org.koitharu.kotatsu.core.exceptions.CloudFlareBlockedException
 import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
@@ -99,6 +100,19 @@ private fun Throwable.getDisplayMessageOrNull(resources: Resources): String? = w
     }
 
     is ZipException -> resources.getString(R.string.error_corrupted_zip, this.message.orEmpty())
+    is CbrImportException -> when (reason) {
+        CbrImportException.Reason.CORRUPTED -> resources.getString(
+            R.string.error_cbr_corrupted,
+            cause?.message.orEmpty(),
+        )
+        CbrImportException.Reason.EMPTY -> resources.getString(R.string.error_cbr_empty)
+        CbrImportException.Reason.ENCRYPTED -> resources.getString(R.string.error_cbr_encrypted)
+        CbrImportException.Reason.MULTIPART -> resources.getString(R.string.error_cbr_multipart)
+        CbrImportException.Reason.NO_SPACE -> resources.getString(R.string.error_no_space_left)
+        CbrImportException.Reason.TOO_LARGE_DICTIONARY -> resources.getString(R.string.error_cbr_too_large)
+        CbrImportException.Reason.UNSAFE -> resources.getString(R.string.error_cbr_unsafe)
+        CbrImportException.Reason.UNSUPPORTED -> resources.getString(R.string.error_cbr_unsupported)
+    }
     is SQLiteFullException -> resources.getString(R.string.error_no_space_left)
     is UnsupportedFileException -> resources.getString(R.string.text_file_not_supported)
     is BadBackupFormatException -> resources.getString(R.string.unsupported_backup_message)
