@@ -1,0 +1,4 @@
+- Synchronized with upstream unstable branch
+- Added publication status dropdown quick filter with 16dp rounded corners
+- Added favorite creation date tracking in manga details and category selection dialog
+- Added long-press tooltip showing full date and time for categories
