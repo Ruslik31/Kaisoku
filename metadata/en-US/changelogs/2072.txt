@@ -1,0 +1,3 @@
+- Dynamically aligned "In favorites since" date to the right side of the metadata grid on Details screen
+- Refined Publication Status dropdown popup menu positioning, offset, and rounded corners
+- Added favorite creation date in manga details screen and category selection dialog
