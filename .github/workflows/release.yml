@@ -1,0 +1,150 @@
+name: Release
+
+on:
+  push:
+    tags: ["*"]
+    branches: [unstable]
+    paths-ignore:
+      - "**.md"
+      - LICENSE
+      - .github/screenshots/**
+  repository_dispatch:
+    types: [source_pushed]
+  workflow_dispatch:
+
+jobs:
+  android:
+    name: Android Release Build
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.client_payload.repo || github.repository }}
+          ref: ${{ github.event.client_payload.ref || github.ref }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Tune Gradle for CI
+        # Overrides the project's gradle.properties from the user home, so upstream files stay
+        # untouched. R8 on the release build spent ~10 of ~16 minutes with a 4 GB heap; the
+        # runner has 16 GB. Kotlin compiles inside the Gradle daemon so two JVMs do not compete
+        # for memory, and the build cache lets unchanged tasks come from the restored Gradle cache.
+        run: |
+          mkdir -p ~/.gradle
+          cat >> ~/.gradle/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx10g -XX:+UseParallelGC -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          kotlin.compiler.execution.strategy=in-process
+          org.gradle.caching=true
+          org.gradle.parallel=true
+          EOF
+
+      - name: Create local.properties
+        env:
+          TG_TOKEN: ${{ secrets.TG_BACKUP_BOT_TOKEN }}
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          if [ -n "$TG_TOKEN" ]; then
+            echo "tg_backup_bot_token=$TG_TOKEN" >> local.properties
+          fi
+
+      - name: Decode keystore
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then
+            echo "::error::KEYSTORE secret is not set, refusing to publish an unsigned APK."
+            exit 1
+          fi
+          echo "$KEYSTORE" | tr -d '\r\n ' | base64 -d > "$RUNNER_TEMP/keystore.jks"
+
+      - name: Assemble release APK
+        run: ./gradlew :app:assembleRelease
+
+      - name: Sign and name release APK
+        # app/build.gradle has no signing config, so Gradle leaves the release APK unsigned.
+        # Sign it here with the fork's own key from the secrets, so every release carries the
+        # same certificate and installs over the previous one.
+        id: tag
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ] || [ "$GITHUB_EVENT_NAME" = "repository_dispatch" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="v$(sed -n "s/^[[:space:]]*versionName = '\(.*\)'.*/\1/p" app/build.gradle)"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          NAME="$TAG"
+          if [[ "$NAME" != v* ]]; then
+            NAME="v${NAME}"
+          fi
+
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          KEY_PASS="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+          export KEY_PASS
+          ALIAS_ARGS=()
+          if [ -n "$KEY_ALIAS" ]; then
+            ALIAS_ARGS=(--ks-key-alias "$KEY_ALIAS")
+          fi
+          mkdir -p artifacts
+          for apk in app/build/outputs/apk/release/*.apk; do
+            [ -f "$apk" ] || continue
+            ALIGNED="$RUNNER_TEMP/aligned.apk"
+            "$BUILD_TOOLS/zipalign" -f -p 4 "$apk" "$ALIGNED"
+            OUT="artifacts/kaisoku-${NAME}-installable.apk"
+            "$BUILD_TOOLS/apksigner" sign \
+              --ks "$RUNNER_TEMP/keystore.jks" \
+              --ks-pass env:KEYSTORE_PASSWORD \
+              "${ALIAS_ARGS[@]}" \
+              --key-pass env:KEY_PASS \
+              --out "$OUT" "$ALIGNED"
+            "$BUILD_TOOLS/apksigner" verify --print-certs "$OUT" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "Prepared APK: $OUT"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: artifacts/*.apk
+          if-no-files-found: error
+
+  publish:
+    name: Publish Release Assets
+    needs: [android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Point the release tag at this commit
+        # Every push of the same upstream version updates one release, like before experimental
+        # builds existed, so move its tag to the commit that was just built.
+        if: github.event_name != 'repository_dispatch' && github.ref_type == 'branch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.android.outputs.tag }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}" -f sha="${GITHUB_SHA}" -F force=true > /dev/null
+            echo "Moved ${TAG} to ${GITHUB_SHA}"
+          fi
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.android.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            artifacts/*.apk
