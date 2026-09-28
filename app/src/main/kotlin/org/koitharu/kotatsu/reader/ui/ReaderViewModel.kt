@@ -71,6 +71,7 @@ import org.koitharu.kotatsu.reader.domain.ChapterSwitchCursor
 import org.koitharu.kotatsu.reader.domain.ChaptersLoader
 import org.koitharu.kotatsu.reader.domain.DetectReaderModeUseCase
 import org.koitharu.kotatsu.reader.domain.PageLoader
+import org.koitharu.kotatsu.reader.domain.itemsInReadingOrder
 import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
 import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
 import org.koitharu.kotatsu.scrobbling.discord.ui.DiscordRpc
@@ -585,7 +586,8 @@ class ReaderViewModel @Inject constructor(
         // updated asynchronously and can be stale or momentarily point at an adjacent preloaded
         // chapter mid load, which made rapid presses misfire (no advance / jump to chapter start /
         // wrong direction). The cursor chains presses deterministically.
-        val allChapterIds = mangaDetails.value?.allChapters?.map { it.id } ?: return
+        val allChapters = mangaDetails.value?.allChapters ?: return
+        val allChapterIds = itemsInReadingOrder(allChapters, settings.isChaptersReverse).map { it.id }
         val targetId = navCursor.resolveRelative(
             allChapterIds = allChapterIds,
             liveChapterId = readingState.value?.chapterId,
@@ -878,7 +880,12 @@ class ReaderViewModel @Inject constructor(
         val prevJob = preloadJob
         preloadJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.join()
-            chaptersLoader.loadPrevNextChapter(mangaDetails.requireValue(), currentId, isNext)
+            chaptersLoader.loadPrevNextChapter(
+                mangaDetails.requireValue(),
+                currentId,
+                isNext,
+                reversed = settings.isChaptersReverse,
+            )
             replaceContent(ReaderContent(chaptersLoader.snapshot(), null))
         }
     }

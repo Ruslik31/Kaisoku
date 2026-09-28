@@ -33,8 +33,13 @@ class ChaptersLoader @Inject constructor(
 		}
 	}
 
-	suspend fun loadPrevNextChapter(manga: MangaDetails, currentId: Long, isNext: Boolean): Boolean {
-		val chapters = manga.allChapters
+	suspend fun loadPrevNextChapter(
+		manga: MangaDetails,
+		currentId: Long,
+		isNext: Boolean,
+		reversed: Boolean = false,
+	): Boolean {
+		val chapters = itemsInReadingOrder(manga.allChapters, reversed)
 		val predicate: (MangaChapter) -> Boolean = { it.id == currentId }
 		val index = if (isNext) chapters.indexOfFirst(predicate) else chapters.indexOfLast(predicate)
 		if (index == -1) return false
