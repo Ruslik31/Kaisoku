@@ -40,6 +40,7 @@ class SourcesListProducer @Inject constructor(
 	private val scope = lifecycle.lifecycleScope
 	private var query: String = ""
 	val list = MutableStateFlow(emptyList<SourceConfigItem>())
+	private val refreshGate = DeferredRefreshGate()
 
 	private var job = scope.launch(Dispatchers.Default) {
 		list.value = buildList()
@@ -58,6 +59,24 @@ class SourcesListProducer @Inject constructor(
 	}
 
 	override fun onInvalidated(tables: Set<String>) {
+		requestRefresh()
+	}
+
+	/** Defer list replacement while the user is dragging source rows. */
+	fun beginSourceOrderInteraction() {
+		refreshGate.pause()
+	}
+
+	/** Apply one coalesced refresh after an interaction ends. Safe to call more than once. */
+	fun endSourceOrderInteraction() {
+		if (refreshGate.resume()) refreshList()
+	}
+
+	private fun requestRefresh() {
+		if (refreshGate.requestRefresh()) refreshList()
+	}
+
+	private fun refreshList() {
 		val prevJob = job
 		job = scope.launch(Dispatchers.Default) {
 			prevJob.cancelAndJoin()

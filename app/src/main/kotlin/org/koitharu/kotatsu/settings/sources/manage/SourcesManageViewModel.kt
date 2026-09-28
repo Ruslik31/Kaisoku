@@ -29,6 +29,7 @@ class SourcesManageViewModel @Inject constructor(
 	val content = listProducer.list
 	val onActionDone = MutableEventFlow<ReversibleAction>()
 	private var commitJob: Job? = null
+	private var sourceOrderInteractionActive = false
 
 	init {
 		launchJob(Dispatchers.Default) {
@@ -37,8 +38,38 @@ class SourcesManageViewModel @Inject constructor(
 	}
 
 	override fun onCleared() {
+		finishSourceOrderInteraction()
 		super.onCleared()
 		database.invalidationTracker.removeObserverAsync(listProducer)
+	}
+
+	fun beginSourceOrderInteraction() {
+		if (sourceOrderInteractionActive) return
+		sourceOrderInteractionActive = true
+		listProducer.beginSourceOrderInteraction()
+	}
+
+	fun finishSourceOrderInteraction(snapshot: List<SourceConfigItem>? = null) {
+		if (!sourceOrderInteractionActive) return
+		sourceOrderInteractionActive = false
+		if (snapshot == null) {
+			listProducer.endSourceOrderInteraction()
+			return
+		}
+		val previousCommit = commitJob
+		commitJob = launchJob(Dispatchers.Default) {
+			try {
+				previousCommit?.cancelAndJoin()
+				val newSourcesList = snapshot.mapNotNull { item ->
+					(item as? SourceConfigItem.SourceItem)
+						?.takeIf { it.isDraggable }
+						?.source
+				}
+				repository.setPositions(newSourcesList)
+			} finally {
+				listProducer.endSourceOrderInteraction()
+			}
+		}
 	}
 
 	fun saveSourcesOrder(snapshot: List<SourceConfigItem>) {

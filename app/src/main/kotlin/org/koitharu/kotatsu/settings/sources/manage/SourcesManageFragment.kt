@@ -106,6 +106,7 @@ class SourcesManageFragment :
 	}
 
 	override fun onDestroyView() {
+		viewModel.finishSourceOrderInteraction()
 		sourcesAdapter = null
 		reorderHelper = null
 		super.onDestroyView()
@@ -272,7 +273,15 @@ class SourcesManageFragment :
 
 		override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
 			super.clearView(recyclerView, viewHolder)
-			viewModel.saveSourcesOrder(sourcesAdapter?.items ?: return)
+			viewModel.finishSourceOrderInteraction(sourcesAdapter?.items)
+		}
+
+		override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
+			super.onSelectedChanged(viewHolder, actionState)
+			when (actionState) {
+				ItemTouchHelper.ACTION_STATE_DRAG -> viewModel.beginSourceOrderInteraction()
+				ItemTouchHelper.ACTION_STATE_IDLE -> viewModel.finishSourceOrderInteraction()
+			}
 		}
 	}
 }
