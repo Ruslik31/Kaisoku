@@ -108,7 +108,11 @@ class MihonExtensionRepoService @Inject constructor(
 						it.toAvailableExtension(repo)
 					}
 
-					!store.extensionListUrl.isNullOrBlank() -> loadEntries(repo, store.extensionListUrl, depth + 1)
+					!store.extensionListUrl.isNullOrBlank() -> loadEntries(
+						repo,
+						resolveRepoIndexUrl(repo, store.extensionListUrl),
+						depth + 1,
+					)
 					else -> emptyList()
 				}
 			}

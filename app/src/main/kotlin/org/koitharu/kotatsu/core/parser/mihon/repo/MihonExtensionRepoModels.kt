@@ -146,7 +146,7 @@ internal data class NetworkExtensionStore(
 		@ProtoNumber(1) val apkUrl: String = "",
 		@ProtoNumber(2) val iconUrl: String = "",
 		/** keiyoushi-only: an additional JVM jar that no Android host currently consumes. */
-		@ProtoNumber(3) val jarUrl: String? = null,
+		@ProtoNumber(501) val jarUrl: String? = null,
 	)
 
 	@Serializable

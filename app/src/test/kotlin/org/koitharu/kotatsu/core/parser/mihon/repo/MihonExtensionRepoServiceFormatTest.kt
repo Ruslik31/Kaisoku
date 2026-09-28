@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core.parser.mihon.repo
 
+import kotlinx.serialization.decodeFromByteArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -106,6 +107,16 @@ class MihonExtensionRepoServiceFormatTest {
         assertEquals("6289731484943315811", ext.sources[0].id)
         assertEquals("all", ext.sources[0].language)
         assertTrue(ext.resources.jarUrl != null)
+    }
+
+    @Test
+    fun parsesKeiyoushiProtobufJarUrlAtField501() {
+        // Resources.jarUrl is field 501 in the store protobuf schema (tag 4010, varint bytes AA 1F).
+        val resources = kotlinx.serialization.protobuf.ProtoBuf.decodeFromByteArray<NetworkExtensionStore.Resources>(
+            byteArrayOf(0xaa.toByte(), 0x1f, 3, 'j'.code.toByte(), 'a'.code.toByte(), 'r'.code.toByte()),
+        )
+
+        assertEquals("jar", resources.jarUrl)
     }
 
     @Test
