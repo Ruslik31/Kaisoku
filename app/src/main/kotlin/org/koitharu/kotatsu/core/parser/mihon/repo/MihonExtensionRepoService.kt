@@ -33,13 +33,57 @@ class MihonExtensionRepoService @Inject constructor(
 		val baseUrl = normalizedIndexUrl.removeSuffix("/index.min.json")
 			.removeSuffix("/index.json")
 			.removeSuffix("/index.pb")
-		val repo = fetchRepoDetails(baseUrl) ?: return ResolveResult.InvalidRepo
+		val repo = if (normalizedIndexUrl.endsWith("/index.min.json")) {
+			fetchRepoDetails(baseUrl)?.copy(indexUrl = normalizedIndexUrl)
+		} else {
+			val bytes = fetchBytes(normalizedIndexUrl) ?: return ResolveResult.InvalidRepo
+			when (bytes.firstOrNull()) {
+				OPEN_BRACE -> {
+					val store = json.decodeFromString<NetworkExtensionStoreJson>(bytes.decodeToString())
+					storeRepo(baseUrl, normalizedIndexUrl, store.name, store.badgeLabel, store.signingKey, store.contact)
+				}
+				OPEN_BRACKET -> fetchRepoDetails(baseUrl)?.copy(indexUrl = normalizedIndexUrl)
+				else -> {
+					val store = protoBuf.decodeFromByteArray<NetworkExtensionStore>(bytes)
+					storeRepo(baseUrl, normalizedIndexUrl, store.name, store.badgeLabel, store.signingKey, store.contact)
+				}
+			}
+		} ?: return ResolveResult.InvalidRepo
 		return ResolveResult.Success(repo)
 	}
 
+	private fun storeRepo(
+		baseUrl: String,
+		indexUrl: String,
+		name: String,
+		badge: String,
+		key: String,
+		contact: NetworkExtensionStore.Contact?,
+	): MihonExtensionRepo? {
+		if (name.isBlank() || key.isBlank()) return null
+		return MihonExtensionRepo(
+			baseUrl = baseUrl,
+			name = name,
+			shortName = badge.takeIf(String::isNotBlank),
+			website = contact?.website.orEmpty(),
+			signingKeyFingerprint = key,
+			isStoreFormat = true,
+			indexUrl = indexUrl,
+		)
+	}
+
 	suspend fun fetchExtensions(repo: MihonExtensionRepo): List<MihonAvailableExtension> {
-		return loadEntries(repo, indexUrlFor(repo), depth = 0)
-			.sortedBy { it.name.lowercase() }
+		val entries = if (repo.indexUrl != null && !repo.indexUrl.endsWith("/index.min.json")) {
+			loadEntries(repo, repo.indexUrl, depth = 0)
+		} else {
+			// Repositories saved by older versions did not retain the supplied modern index URL.
+			loadFirstAvailableIndex(
+				repo,
+				(listOf(repo.indexUrl ?: indexUrlFor(repo)) + legacyModernIndexCandidates(repo.baseUrl)).distinct(),
+				0,
+			)
+		}
+		return entries.sortedBy { it.name.lowercase() }
 	}
 
 	fun getApkUrl(extension: MihonAvailableExtension): String {
@@ -54,11 +98,16 @@ class MihonExtensionRepoService @Inject constructor(
 		repo: MihonExtensionRepo,
 		url: String,
 		depth: Int,
+		optional: Boolean = false,
 	): List<MihonAvailableExtension> {
 		if (depth > MAX_INDEX_HOPS) {
-			return emptyList()
+			throw IOException("Extension repository index redirects too many times: $url")
 		}
-		val bytes = fetchBytes(url) ?: return emptyList()
+		val bytes = fetchBytes(url) ?: if (optional) {
+			return emptyList()
+		} else {
+			throw IOException("Extension repository index is missing or empty: $url")
+		}
 		return when (bytes.firstOrNull()) {
 			OPEN_BRACKET -> {
 				// Legacy flat index.min.json array.
@@ -138,7 +187,7 @@ class MihonExtensionRepoService @Inject constructor(
 		depth: Int,
 	): List<MihonAvailableExtension> {
 		for (candidate in candidates) {
-			val result = loadEntries(repo, candidate, depth)
+			val result = loadEntries(repo, candidate, depth, optional = true)
 			if (result.isNotEmpty()) return result
 		}
 		return emptyList()

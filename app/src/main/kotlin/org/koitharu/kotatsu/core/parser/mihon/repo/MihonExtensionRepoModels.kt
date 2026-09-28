@@ -19,6 +19,8 @@ data class MihonExtensionRepo(
 	 * persisted 1.4-era repos keep decoding without a migration.
 	 */
 	val isStoreFormat: Boolean = false,
+	/** Preserve the selected index independently of the repository/source identity. */
+	val indexUrl: String? = null,
 )
 
 data class MihonAvailableExtension(
