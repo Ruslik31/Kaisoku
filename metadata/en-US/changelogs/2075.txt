@@ -1,0 +1,5 @@
+- Fixed Mihon extension repository discovery for current protobuf indexes and relative index URLs.
+- Preserved selection order when adding multiple manga to favourites.
+- Made reader chapter navigation follow the reversed chapter list when that setting is enabled.
+- Kept the source list stable while reordering sources.
+- Updated the ManhwaDesu source to prefer its active domain.
