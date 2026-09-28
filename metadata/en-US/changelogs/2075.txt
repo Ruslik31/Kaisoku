@@ -3,3 +3,5 @@
 - Made reader chapter navigation follow the reversed chapter list when that setting is enabled.
 - Kept the source list stable while reordering sources.
 - Updated the ManhwaDesu source to prefer its active domain.
+- Fixed Cursed Yūzōnō repository discovery and added visible, time-bounded feedback while adding repositories.
+- Fixed reversed chapter navigation buttons and saved source order when a drag ends.

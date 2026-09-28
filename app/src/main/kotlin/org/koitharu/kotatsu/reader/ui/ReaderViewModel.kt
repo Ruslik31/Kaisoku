@@ -949,6 +949,7 @@ class ReaderViewModel @Inject constructor(
             percent = computePercent(state.chapterId, state.page),
             incognito = isIncognitoMode.value == true,
             scrollProgress = lastScrollProgress,
+            chaptersReversed = settings.isChaptersReverse,
         )
         uiState.value = newState
         if (isIncognitoMode.value == false) {
