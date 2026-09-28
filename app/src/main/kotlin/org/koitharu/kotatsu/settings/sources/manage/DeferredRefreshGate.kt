@@ -13,6 +13,17 @@ internal class DeferredRefreshGate {
 		}
 	}
 
+	/** Also guard builds that were already in flight when the interaction started. */
+	fun publishIfAllowed(publish: () -> Unit) {
+		synchronized(lock) {
+			if (pauseCount > 0) {
+				refreshPending = true
+			} else {
+				publish()
+			}
+		}
+	}
+
 	/** Returns true when a deferred refresh should run now. */
 	fun resume(): Boolean = synchronized(lock) {
 		if (pauseCount > 0) pauseCount--

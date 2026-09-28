@@ -6,12 +6,12 @@ import dagger.hilt.android.ViewModelLifecycle
 import dagger.hilt.android.scopes.ViewModelScoped
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.LocalizedAppContext
@@ -43,7 +43,9 @@ class SourcesListProducer @Inject constructor(
 	private val refreshGate = DeferredRefreshGate()
 
 	private var job = scope.launch(Dispatchers.Default) {
-		list.value = buildList()
+		val snapshot = buildList()
+		ensureActive()
+		refreshGate.publishIfAllowed { list.value = snapshot }
 	}
 
 	init {
@@ -65,6 +67,8 @@ class SourcesListProducer @Inject constructor(
 	/** Defer list replacement while the user is dragging source rows. */
 	fun beginSourceOrderInteraction() {
 		refreshGate.pause()
+		job.cancel()
+		refreshGate.requestRefresh()
 	}
 
 	/** Apply one coalesced refresh after an interaction ends. Safe to call more than once. */
@@ -80,7 +84,9 @@ class SourcesListProducer @Inject constructor(
 		val prevJob = job
 		job = scope.launch(Dispatchers.Default) {
 			prevJob.cancelAndJoin()
-			list.update { buildList() }
+			val snapshot = buildList()
+			ensureActive()
+			refreshGate.publishIfAllowed { list.value = snapshot }
 		}
 	}
 

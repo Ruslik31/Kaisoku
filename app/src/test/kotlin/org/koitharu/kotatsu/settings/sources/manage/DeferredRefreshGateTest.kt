@@ -7,6 +7,18 @@ import org.junit.Test
 class DeferredRefreshGateTest {
 
 	@Test
+	fun inFlightBuildCannotPublishDuringDrag() {
+		val gate = DeferredRefreshGate()
+		var published = false
+		gate.pause()
+		gate.publishIfAllowed { published = true }
+		assertFalse(published)
+		assertTrue(gate.resume())
+		gate.publishIfAllowed { published = true }
+		assertTrue(published)
+	}
+
+	@Test
 	fun invalidationsAreCoalescedUntilTheDragEnds() {
 		val gate = DeferredRefreshGate()
 		gate.pause()

@@ -106,7 +106,8 @@ class SourcesManageFragment :
 	}
 
 	override fun onDestroyView() {
-		viewModel.finishSourceOrderInteraction()
+		viewModel.finishSourceOrderInteraction(sourcesAdapter?.items)
+		reorderHelper?.attachToRecyclerView(null)
 		sourcesAdapter = null
 		reorderHelper = null
 		super.onDestroyView()
@@ -280,7 +281,8 @@ class SourcesManageFragment :
 			super.onSelectedChanged(viewHolder, actionState)
 			when (actionState) {
 				ItemTouchHelper.ACTION_STATE_DRAG -> viewModel.beginSourceOrderInteraction()
-				ItemTouchHelper.ACTION_STATE_IDLE -> viewModel.finishSourceOrderInteraction()
+				// IDLE precedes clearView's recovery animation; save before releasing the refresh gate.
+				ItemTouchHelper.ACTION_STATE_IDLE -> viewModel.finishSourceOrderInteraction(sourcesAdapter?.items)
 			}
 		}
 	}

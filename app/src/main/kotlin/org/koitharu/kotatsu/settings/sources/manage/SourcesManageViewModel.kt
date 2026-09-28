@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.settings.sources.manage
 
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import org.koitharu.kotatsu.R
@@ -57,10 +58,11 @@ class SourcesManageViewModel @Inject constructor(
 			return
 		}
 		val previousCommit = commitJob
-		commitJob = launchJob(Dispatchers.Default) {
+		val order = snapshot.toList()
+		commitJob = launchJob(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
 			try {
-				previousCommit?.cancelAndJoin()
-				val newSourcesList = snapshot.mapNotNull { item ->
+				previousCommit?.join()
+				val newSourcesList = order.mapNotNull { item ->
 					(item as? SourceConfigItem.SourceItem)
 						?.takeIf { it.isDraggable }
 						?.source
