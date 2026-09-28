@@ -943,4 +943,6 @@
 	<string name="search_sources_for_title">Искать в источниках манги</string>
 	<string name="cover">Обложка</string>
 	<string name="anilist_refresh_error">Не удалось обновить AniList; показываем сохранённую библиотеку: %1$s</string>
+	<string name="adding_extension_repo">Добавление репозитория…</string>
+	<string name="extension_repo_add_timeout">Репозиторий не ответил вовремя. Попробуйте ещё раз.</string>
 </resources>

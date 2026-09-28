@@ -21,6 +21,31 @@
 			android:layout_height="?attr/actionBarSize"
 			app:layout_scrollFlags="scroll|enterAlways|snap" />
 
+		<LinearLayout
+			android:id="@+id/repository_loading"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:orientation="horizontal"
+			android:gravity="center_vertical"
+			android:padding="16dp"
+			android:visibility="gone">
+
+			<com.google.android.material.progressindicator.CircularProgressIndicator
+				android:layout_width="24dp"
+				android:layout_height="24dp"
+				android:indeterminate="true"
+				app:indicatorSize="24dp"
+				app:trackThickness="2dp" />
+
+			<TextView
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:layout_marginStart="16dp"
+				android:accessibilityLiveRegion="polite"
+				android:text="@string/adding_extension_repo" />
+		</LinearLayout>
+
 		<HorizontalScrollView
 			android:id="@+id/scrollView_chips"
 			android:layout_width="match_parent"

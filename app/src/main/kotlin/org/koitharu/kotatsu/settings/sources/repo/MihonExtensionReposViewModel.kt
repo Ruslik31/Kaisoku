@@ -4,6 +4,10 @@ import android.content.Context
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withTimeoutOrNull
+import java.net.SocketTimeoutException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +30,7 @@ class MihonExtensionReposViewModel @Inject constructor(
 ) : BaseViewModel() {
 
 	val onMessage = MutableEventFlow<String>()
+	private var addJob: Job? = null
 
 	val content: StateFlow<List<ListModel>> = repoRepository.observeRepos()
 		.map { repos ->
@@ -49,8 +54,12 @@ class MihonExtensionReposViewModel @Inject constructor(
 		)
 
 	fun addRepo(rawUrl: String) {
-		launchLoadingJob(Dispatchers.IO) {
-			when (repoRepository.addRepo(normalizeIncomingUrl(rawUrl))) {
+		if (addJob?.isActive == true) return
+		addJob = launchLoadingJob(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
+			val result = withTimeoutOrNull(60_000L) {
+				repoRepository.addRepo(normalizeIncomingUrl(rawUrl))
+			} ?: throw SocketTimeoutException(context.getString(R.string.extension_repo_add_timeout))
+			when (result) {
 				is MihonExtensionRepoRepository.AddRepoResult.Success -> {
 					onMessage.call(context.getString(R.string.extension_repo_added))
 				}

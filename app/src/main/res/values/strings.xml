@@ -1407,4 +1407,6 @@
     <string name="apply_network_settings_summary">Save the selected options and reconnect idle network connections.</string>
     <string name="reset_dns_image_proxy">Reset DNS and image proxy</string>
     <string name="reset_dns_image_proxy_summary">Disable DNS over HTTPS and image optimization proxy.</string>
+	<string name="adding_extension_repo">Adding repository…</string>
+	<string name="extension_repo_add_timeout">The repository did not respond in time. Please try again.</string>
 </resources>

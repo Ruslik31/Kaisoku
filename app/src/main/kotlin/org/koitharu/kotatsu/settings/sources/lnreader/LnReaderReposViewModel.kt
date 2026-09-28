@@ -4,6 +4,10 @@ import android.content.Context
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withTimeoutOrNull
+import java.net.SocketTimeoutException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +28,7 @@ class LnReaderReposViewModel @Inject constructor(
 ) : BaseViewModel() {
 
 	val onMessage = MutableEventFlow<String>()
+	private var addJob: Job? = null
 
 	val content: StateFlow<List<ListModel>> = reposRepository.observeRepos()
 		.map { repos ->
@@ -47,8 +52,12 @@ class LnReaderReposViewModel @Inject constructor(
 		)
 
 	fun addRepo(rawUrl: String) {
-		launchLoadingJob(Dispatchers.IO) {
-			when (reposRepository.addRepo(rawUrl.trim())) {
+		if (addJob?.isActive == true) return
+		addJob = launchLoadingJob(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
+			val result = withTimeoutOrNull(60_000L) {
+				reposRepository.addRepo(rawUrl.trim())
+			} ?: throw SocketTimeoutException(context.getString(R.string.extension_repo_add_timeout))
+			when (result) {
 				LnReaderPluginReposRepository.AddRepoResult.SUCCESS -> {
 					onMessage.call(context.getString(R.string.extension_repo_added))
 				}

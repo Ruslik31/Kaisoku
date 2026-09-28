@@ -55,11 +55,19 @@ class LnReaderReposActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		viewBinding.scrollViewChips.isVisible = false
 		FadingAppbarMediator(viewBinding.appbar, viewBinding.toolbar).bind()
 		viewModel.content.observe(this, adapter)
+		viewModel.isLoading.observe(this) { loading ->
+			viewBinding.repositoryLoading.isVisible = loading
+			invalidateOptionsMenu()
+		}
 		viewModel.onMessage.observeEvent(this, ::showMessage)
 		viewModel.onError.observeEvent(this, SnackbarErrorObserver(viewBinding.recyclerView, null))
 		addMenuProvider(object : MenuProvider {
 			override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
 				menuInflater.inflate(R.menu.opt_lnreader_repos, menu)
+			}
+
+			override fun onPrepareMenu(menu: Menu) {
+				menu.findItem(R.id.action_add)?.isEnabled = !viewModel.isLoading.value
 			}
 
 			override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
