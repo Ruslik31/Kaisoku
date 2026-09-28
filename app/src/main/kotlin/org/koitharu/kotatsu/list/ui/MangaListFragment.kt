@@ -9,7 +9,6 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.CallSuper
 import androidx.appcompat.view.ActionMode
-import androidx.collection.ArraySet
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.GridLayoutManager
@@ -415,7 +414,7 @@ abstract class MangaListFragment :
 	private fun collectSelectedItems(): Set<Manga> {
 		val checkedIds = selectionController?.peekCheckedIds() ?: return emptySet()
 		val items = listAdapter?.items ?: return emptySet()
-		val result = ArraySet<Manga>(checkedIds.size)
+		val result = LinkedHashSet<Manga>(checkedIds.size)
 		for (item in items) {
 			if (item is MangaListModel && item.id in checkedIds) {
 				result.add(item.manga)
