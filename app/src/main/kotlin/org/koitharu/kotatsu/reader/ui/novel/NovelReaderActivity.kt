@@ -10,6 +10,7 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
+import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.core.graphics.Insets
 import androidx.core.view.WindowCompat
@@ -30,11 +31,14 @@ import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.BaseFullscreenActivity
+import org.koitharu.kotatsu.core.util.ext.copyToClipboard
+import org.koitharu.kotatsu.core.util.ext.getCopyableErrorDetails
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.databinding.ActivityNovelReaderBinding
 import org.koitharu.kotatsu.reader.data.TapGridSettings
 import org.koitharu.kotatsu.reader.domain.TapGridArea
+import org.koitharu.kotatsu.reader.translate.TranslateException
 import org.koitharu.kotatsu.reader.ui.ReaderControlDelegate
 import org.koitharu.kotatsu.reader.ui.tapgrid.TapAction
 import org.koitharu.kotatsu.reader.ui.tapgrid.TapGridDispatcher
@@ -218,15 +222,15 @@ class NovelReaderActivity :
 						lastLoadedChapterIndex = index
 						renderChapter(index, text)
 					} else {
-						showEmptyChapter()
+						showEmptyChapter(index)
 					}
 				} else {
-					showEmptyChapter()
+					showEmptyChapter(index)
 				}
 			} catch (e: CancellationException) {
 				throw e
 			} catch (e: Exception) {
-				if (generation == chapterLoadGeneration) showError(e)
+				if (generation == chapterLoadGeneration) showError(e, index)
 			} finally {
 				if (generation == chapterLoadGeneration) showLoading(false)
 			}
@@ -278,17 +282,30 @@ class NovelReaderActivity :
 		}
 	}
 
-	private fun showEmptyChapter() {
-        showError(IllegalStateException(getString(R.string.error_no_data_received)))
+	private fun showEmptyChapter(index: Int) {
+        showError(IllegalStateException(getString(R.string.error_no_data_received)), index)
     }
 
-	private fun showError(e: Exception) {
+	private fun showError(e: Exception, index: Int) {
 		viewBinding.readerView.cancelPendingChapterTransition()
+		Snackbar.make(viewBinding.root, e.message ?: getString(R.string.error_occurred), Snackbar.LENGTH_INDEFINITE)
+			.setAction(R.string.retry) { loadChapter(index, force = true) }.show()
+	}
+
+	private fun showTranslationError(e: Exception) {
+		val message = if (e is TranslateException.Http && e.provider == "GEMINI" && e.code in setOf(500, 503)) {
+			getString(R.string.translate_temporary_provider_error, e.code)
+		} else {
+			e.message ?: getString(R.string.error_occurred)
+		}
 		Snackbar.make(
 			viewBinding.root,
-			e.message ?: getString(R.string.error_occurred),
-			Snackbar.LENGTH_SHORT,
-		).setAction(R.string.try_again) { loadChapter(viewModel.currentChapterIndex.value, force = true) }.show()
+			message,
+			Snackbar.LENGTH_INDEFINITE,
+		).setAction(R.string.copy) {
+			copyToClipboard(getString(R.string.error), e.getCopyableErrorDetails())
+			Toast.makeText(this, R.string.error_copied, Toast.LENGTH_SHORT).show()
+		}.show()
 	}
 
 	private fun showLoading(isLoading: Boolean) {
@@ -427,8 +444,7 @@ class NovelReaderActivity :
 			} catch (e: CancellationException) {
 				throw e
 			} catch (e: Exception) {
-				Snackbar.make(viewBinding.root, e.message ?: getString(R.string.error_occurred), Snackbar.LENGTH_LONG)
-					.setAction(R.string.settings) { router.openReaderSettings() }.show()
+				showTranslationError(e)
 			} finally {
 				message.dismiss()
 				invalidateOptionsMenu()

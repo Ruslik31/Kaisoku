@@ -6,6 +6,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import org.koitharu.kotatsu.core.util.ext.getCopyableErrorDetails
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -76,22 +77,78 @@ class NovelTextTranslationTest {
 		assertEquals(3, cancelled)
 	}
 
+	@Test fun apiTextChunksRunConcurrentlyAndAreJoinedInOriginalOrder() = runTest {
+		val parts = listOf(
+			NovelTextTranslation.Part("first", true),
+			NovelTextTranslation.Part(" ", false),
+			NovelTextTranslation.Part("second", true),
+			NovelTextTranslation.Part("\n", false),
+			NovelTextTranslation.Part("third", true),
+		)
+		val progress = mutableListOf<Int>()
+		var active = 0
+		var peak = 0
+		val translated = NovelTextTranslation.translateParts(parts, { done, total ->
+			progress += done
+			assertEquals(3, total)
+		}, concurrency = 3) { text ->
+			active++
+			peak = maxOf(peak, active)
+			try {
+				delay(if (text == "first") 100 else 10)
+				"[$text]"
+			} finally {
+				active--
+			}
+		}
+
+		assertEquals("[first] [second]\n[third]", translated)
+		assertEquals(3, peak)
+		assertEquals(listOf(0, 1, 2, 3), progress)
+	}
+
 	@Test fun providerPayloadsContainTextWithoutImageOrOcrInstructions() {
 		val openai = NovelTextTranslation.payload("Read this", "auto", "ru", "model", false)
 		assertEquals("Read this", openai.getJSONArray("messages").getJSONObject(1).getString("content"))
+		assertFalse(openai.has("max_tokens"))
 		assertFalse(openai.toString().contains("image_url"))
 		val gemini = NovelTextTranslation.payload("Read this", "auto", "ru", "model", true)
 		assertEquals("Read this", gemini.getJSONArray("contents").getJSONObject(0)
 			.getJSONArray("parts").getJSONObject(0).getString("text"))
+		assertFalse(gemini.getJSONObject("generationConfig").has("maxOutputTokens"))
 		assertFalse(gemini.toString().contains("inline_data"))
 	}
 
 	@Test fun parsesBothProvidersAndRejectsTruncatedOrEmptyTranslations() {
 		assertEquals("Привет", NovelTextTranslation.response("""{"choices":[{"finish_reason":"stop","message":{"content":"Привет"}}]}"""))
 		assertEquals("Привет", NovelTextTranslation.response("""{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"hidden","thought":true},{"text":"Привет"}]}}]}"""))
-		for (body in listOf("{}", "null", """{"choices":[{"finish_reason":"length","message":{"content":"partial"}}]}""",
-			"""{"candidates":[{"finishReason":"SAFETY"}]}""", """{"choices":[{"finish_reason":"stop","message":{"content":null}}]}""")) {
+		for (body in listOf("{}", "null", """{"choices":[{"finish_reason":"stop","message":{"content":null}}]}""")) {
 			assertThrows(TranslateException.Parse::class.java) { NovelTextTranslation.response(body) }
 		}
+		for (body in listOf("""{"choices":[{"finish_reason":"length","message":{"content":"partial"}}]}""",
+			"""{"candidates":[{"finishReason":"SAFETY"}]}""")) {
+			assertThrows(TranslateException.ProviderResponse::class.java) { NovelTextTranslation.response(body) }
+		}
+	}
+
+	@Test fun geminiHttpErrorKeepsFullCopyableResponseAndRedactsApiKeys() {
+		val body = """{"error":{"message":"The service is temporarily overloaded","status":"UNAVAILABLE","details":[{"debug":"full server detail"}],"api_key":"AIza012345678901234567890123456789"}}"""
+		val error = TranslateException.Http(
+			code = 503,
+			responseBody = body,
+			provider = "GEMINI",
+			model = "gemini-test",
+			requestId = "request-123",
+			retryAfter = "3",
+		)
+
+		assertTrue(error.message.orEmpty().contains("503"))
+		val copied = error.getCopyableErrorDetails()
+		assertTrue(copied.contains("HTTP status: 503"))
+		assertTrue(copied.contains("Provider: GEMINI"))
+		assertTrue(copied.contains("request-123"))
+		assertTrue(copied.contains("full server detail"))
+		assertTrue(copied.contains("[REDACTED]"))
+		assertFalse(copied.contains("AIza012345678901234567890123456789"))
 	}
 }

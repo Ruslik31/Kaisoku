@@ -264,6 +264,7 @@
 			android:entries="@array/translate_providers"
 			android:entryValues="@array/translate_providers_values"
 			android:key="translate_provider"
+			android:summary="@string/translate_provider_summary"
 			android:title="@string/translate_provider"
 			app:useSimpleSummaryProvider="true" />
 

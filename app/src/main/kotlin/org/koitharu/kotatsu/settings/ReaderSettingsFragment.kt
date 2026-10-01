@@ -5,6 +5,7 @@ import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.os.Build
 import android.view.View
+import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.MultiSelectListPreference
 import androidx.preference.Preference
@@ -45,6 +46,7 @@ class ReaderSettingsFragment :
 
 	override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
 		addPreferencesFromResource(R.xml.pref_reader)
+		bindTranslateConfigPreferences()
 		findPreference<ListPreference>(AppSettings.KEY_READER_MODE)?.run {
 			entryValues = ReaderMode.entries.names()
 			setDefaultValueCompat(ReaderMode.STANDARD.name)
@@ -150,12 +152,36 @@ class ReaderSettingsFragment :
 	 */
 	private fun updateTranslateDependencies() {
 		val enabled = settings.isPageTranslationEnabled
-		val isLens = settings.translateProvider == TranslateProvider.GOOGLE_LENS
+		val provider = settings.translateProvider
+		val isLens = provider == TranslateProvider.GOOGLE_LENS
+		findPreference<EditTextPreference>(AppSettings.KEY_TRANSLATE_ENDPOINT)?.text = settings.translateEndpoint
+		findPreference<EditTextPreference>(AppSettings.KEY_TRANSLATE_API_KEY)?.text = settings.translateApiKey
+		findPreference<EditTextPreference>(AppSettings.KEY_TRANSLATE_MODEL)?.text = settings.translateModel
+		findPreference<EditTextPreference>(AppSettings.KEY_TRANSLATE_CUSTOM_HEADERS)?.text = settings.translateCustomHeaders
 		for (key in TRANSLATE_CONFIG_KEYS) {
 			findPreference<Preference>(key)?.isEnabled = enabled || key !in TRANSLATE_IMAGE_KEYS
 		}
 		for (key in TRANSLATE_BYOK_KEYS) {
 			findPreference<Preference>(key)?.isVisible = !isLens
+		}
+	}
+
+	private fun bindTranslateConfigPreferences() {
+		findPreference<EditTextPreference>(AppSettings.KEY_TRANSLATE_ENDPOINT)?.setOnPreferenceChangeListener { _, value ->
+			settings.translateEndpoint = value?.toString().orEmpty()
+			true
+		}
+		findPreference<EditTextPreference>(AppSettings.KEY_TRANSLATE_API_KEY)?.setOnPreferenceChangeListener { _, value ->
+			settings.translateApiKey = value?.toString().orEmpty()
+			true
+		}
+		findPreference<EditTextPreference>(AppSettings.KEY_TRANSLATE_MODEL)?.setOnPreferenceChangeListener { _, value ->
+			settings.translateModel = value?.toString().orEmpty()
+			true
+		}
+		findPreference<EditTextPreference>(AppSettings.KEY_TRANSLATE_CUSTOM_HEADERS)?.setOnPreferenceChangeListener { _, value ->
+			settings.translateCustomHeaders = value?.toString().orEmpty()
+			true
 		}
 	}
 

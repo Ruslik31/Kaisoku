@@ -20,10 +20,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.core.network.MangaHttpClient
 import org.koitharu.kotatsu.core.prefs.AppSettings
-import org.koitharu.kotatsu.parsers.util.await
 import java.io.ByteArrayOutputStream
-import java.io.IOException
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.ceil
@@ -38,12 +35,7 @@ class MultimodalTranslator @Inject constructor(
 	private val rateMutex = Mutex()
 	private var lastCallAt = 0L
 
-	// Bound each request so a stalled provider can't hang the page (and spin the progress) forever.
-	private val translateClient by lazy {
-		okHttpClient.newBuilder()
-			.callTimeout(REQUEST_TIMEOUT_SEC, TimeUnit.SECONDS)
-			.build()
-	}
+	private val translateClient by lazy { TranslationHttpClient(okHttpClient) }
 
 	/** Reuse provider configuration for text; the AI rate limit does not throttle Google Translate. */
 	suspend fun translateText(text: String, onProgress: (Int, Int) -> Unit = { _, _ -> }): String = withContext(Dispatchers.IO) {
@@ -55,6 +47,7 @@ class MultimodalTranslator @Inject constructor(
 				googleTranslate.translateText(part, source, target)
 			}
 		}
+		val customHeaders = settings.translateCustomHeaders.trim()
 		val endpoint = settings.translateEndpoint.trim().ifEmpty { throw TranslateException.NoEndpoint() }
 		val apiKey = settings.translateApiKey.trim().ifEmpty { throw TranslateException.NoKey() }
 		val model = settings.translateModel.trim().ifBlank {
@@ -64,26 +57,25 @@ class MultimodalTranslator @Inject constructor(
 		val target = settings.translateTargetLanguage
 		val gemini = provider == TranslateProvider.GEMINI || endpoint.contains("generateContent") ||
 			endpoint.contains("googleapis.com/v1beta/models/")
-		val parts = NovelTextTranslation.parts(text)
-		val total = parts.count { it.translate }
-		var done = 0
-		onProgress(done, total)
-		buildString {
-			for (part in parts) {
-				kotlinx.coroutines.currentCoroutineContext().ensureActive()
-				if (!part.translate) { append(part.text); continue }
-				val payload = NovelTextTranslation.payload(part.text, source, target, model, gemini)
+		NovelTextTranslation.translateParts(
+			parts = NovelTextTranslation.parts(text),
+			onProgress = onProgress,
+			concurrency = settings.translateConcurrency,
+		) { part ->
+			NovelTextTranslation.translateValidatedPart(part, source, target) { excerpt ->
+				val payload = NovelTextTranslation.payload(excerpt, source, target, model, gemini)
 				val request = Request.Builder().url(resolveUrl(endpoint, apiKey, model, gemini))
 					.post(payload.toString().toRequestBody(JSON_MEDIA_TYPE)).apply {
 						if (!gemini) header("Authorization", "Bearer $apiKey")
-						applyCustomHeaders(this)
+						applyCustomHeaders(this, customHeaders)
 					}.build()
-				append(executeWithRetry(request).use { response ->
-					val body = response.body.string()
-					if (!response.isSuccessful) throw TranslateException.Http(response.code, body)
-					NovelTextTranslation.response(body)
-				})
-				onProgress(++done, total)
+				executeWithRetry(request).use { response ->
+					val body = response.body?.string().orEmpty()
+					if (!response.isSuccessful) {
+						throw response.toTranslationHttpException(body, if (gemini) "GEMINI" else provider.name, model)
+					}
+					NovelTextTranslation.response(body, if (gemini) "GEMINI" else provider.name, model)
+				}
 			}
 		}
 	}
@@ -101,6 +93,7 @@ class MultimodalTranslator @Inject constructor(
 		onTotal: (Int) -> Unit,
 		onTileDone: (success: Boolean) -> Unit,
 	): PageTranslationResult = withContext(Dispatchers.IO) {
+		val customHeaders = settings.translateCustomHeaders.trim()
 		val endpoint = settings.translateEndpoint.trim()
 		val apiKey = settings.translateApiKey.trim()
 		val model = settings.translateModel.trim().ifBlank {
@@ -130,7 +123,7 @@ class MultimodalTranslator @Inject constructor(
 		for (tile in tiles) {
 			var ok = false
 			try {
-				all += translateTile(bitmap, tile, sourceLang, targetLang, endpoint, apiKey, model, isNativeGoogleFormat)
+				all += translateTile(bitmap, tile, sourceLang, targetLang, endpoint, apiKey, model, isNativeGoogleFormat, customHeaders)
 				anySuccess = true
 				ok = true
 			} catch (e: CancellationException) {
@@ -157,6 +150,7 @@ class MultimodalTranslator @Inject constructor(
 		apiKey: String,
 		model: String,
 		isNativeGoogleFormat: Boolean,
+		customHeaders: String,
 	): List<TranslatedBlock> {
 		val base64Image = runInterruptible { encodeRegion(src, tile.y0, tile.y1 - tile.y0) }
 		if (base64Image.isEmpty()) throw TranslateException.Parse("Failed to encode bitmap")
@@ -177,7 +171,7 @@ class MultimodalTranslator @Inject constructor(
 				if (!isNativeGoogleFormat) {
 					header("Authorization", "Bearer $apiKey")
 				}
-				applyCustomHeaders(this)
+				applyCustomHeaders(this, customHeaders)
 			}
 			.build()
 
@@ -185,7 +179,11 @@ class MultimodalTranslator @Inject constructor(
 		return response.use {
 			val body = it.body?.string().orEmpty()
 			if (!it.isSuccessful) {
-				throw TranslateException.Http(it.code, body)
+				throw it.toTranslationHttpException(
+					body,
+					if (isNativeGoogleFormat) "GEMINI" else settings.translateProvider.name,
+					model,
+				)
 			}
 			val tileBlocks = parseResponse(body, src.width, tile.y1 - tile.y0)
 			mapTileToFull(tileBlocks, tile.y0, tile.y1, src.height)
@@ -193,24 +191,17 @@ class MultimodalTranslator @Inject constructor(
 	}
 
 	/** One request, honoring a global rate limit and backing off on 429 / 5xx (incl. Retry-After). */
-	private suspend fun executeWithRetry(request: Request): Response {
-		var attempt = 0
-		while (true) {
-			rateGate()
-			val response = try {
-				translateClient.newCall(request).await()
-			} catch (e: IOException) {
-				throw TranslateException.Network(e)
-			}
-			if (response.isSuccessful || attempt >= MAX_RETRIES) return response
-			val retryable = response.code == 429 || response.code in 500..599
-			if (!retryable) return response
-			val retryAfterMs = response.header("Retry-After")?.trim()?.toLongOrNull()?.let { it * 1000L }
-			response.close()
-			delay((retryAfterMs ?: (BASE_BACKOFF_MS shl attempt)).coerceAtMost(MAX_BACKOFF_MS))
-			attempt++
-		}
-	}
+	private suspend fun executeWithRetry(request: Request): Response = translateClient.execute(request, ::rateGate)
+
+	private fun Response.toTranslationHttpException(body: String, provider: String, model: String) =
+		TranslateException.Http(
+			code = code,
+			responseBody = body,
+			provider = provider,
+			model = model,
+			requestId = header("x-goog-request-id") ?: header("x-request-id") ?: header("x-guploader-uploadid"),
+			retryAfter = header("Retry-After"),
+		)
 
 	/** Space out request starts so free-tier quotas aren't blown by tiling / fast page turns. */
 	private suspend fun rateGate() {
@@ -227,7 +218,6 @@ class MultimodalTranslator @Inject constructor(
 		return JSONObject().apply {
 			put("model", model)
 			put("temperature", 0.1)
-			put("max_tokens", 4096)
 			put(
 				"messages",
 				JSONArray().put(
@@ -301,8 +291,7 @@ class MultimodalTranslator @Inject constructor(
 		return withMethod
 	}
 
-	private fun applyCustomHeaders(builder: Request.Builder) {
-		val headers = settings.translateCustomHeaders.trim()
+	private fun applyCustomHeaders(builder: Request.Builder, headers: String) {
 		if (headers.isBlank() || !headers.startsWith("{")) return
 		runCatching {
 			val json = JSONObject(headers)
@@ -481,10 +470,6 @@ class MultimodalTranslator @Inject constructor(
 		private const val MAX_TILE_ASPECT = 1.4f
 		private const val MAX_TILES = 12
 		private const val TILE_OVERLAP = 0.06f
-		private const val MAX_RETRIES = 3
-		private const val BASE_BACKOFF_MS = 1000L
-		private const val MAX_BACKOFF_MS = 30_000L
 		private const val MAX_DUPLICATE = 3
-		private const val REQUEST_TIMEOUT_SEC = 90L
 	}
 }

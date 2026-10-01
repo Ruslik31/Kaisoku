@@ -64,6 +64,7 @@ import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
 import org.koitharu.kotatsu.core.ui.widgets.ZoomControl
 import org.koitharu.kotatsu.core.util.IdlingDetector
 import org.koitharu.kotatsu.core.util.ext.copyToClipboard
+import org.koitharu.kotatsu.core.util.ext.getCopyableErrorDetails
 import org.koitharu.kotatsu.core.util.ext.getParcelableExtraCompat
 import org.koitharu.kotatsu.core.util.ext.getThemeDimensionPixelOffset
 import org.koitharu.kotatsu.core.util.ext.hasGlobalPoint
@@ -287,11 +288,14 @@ class ReaderActivity :
                 is org.koitharu.kotatsu.reader.translate.TranslateException.NoKey ->
                     getString(R.string.translate_setup_required)
                 is org.koitharu.kotatsu.reader.translate.TranslateException.Http ->
-                    "HTTP ${error.code}: ${error.responseBody.take(120)}"
+                    error.message ?: "HTTP ${error.code}"
                 else -> error.localizedMessage ?: getString(R.string.error_occurred)
             }
             Snackbar.make(viewBinding.container, msg, Snackbar.LENGTH_INDEFINITE)
-                .setAction(R.string.copy) { copyToClipboard("Kaisoku error", msg) }
+                .setAction(R.string.copy) {
+                    copyToClipboard(getString(R.string.error), error.getCopyableErrorDetails())
+                    android.widget.Toast.makeText(this, R.string.error_copied, android.widget.Toast.LENGTH_SHORT).show()
+                }
                 .show()
         }
         viewModel.readerMode.observe(this, Lifecycle.State.STARTED, this::onInitReader)

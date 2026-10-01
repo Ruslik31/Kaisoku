@@ -52,6 +52,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	private val connectivityManager = context.connectivityManager
 	private val mangaListBadgesDefault = ArraySet(context.resources.getStringArray(R.array.values_list_badges))
 
+	init {
+		migrateLegacyTranslationConfig()
+	}
+
 	var isFirstLaunch: Boolean
 		get() = prefs.getBoolean(KEY_FIRST_LAUNCH, true)
 		set(value) = prefs.edit { putBoolean(KEY_FIRST_LAUNCH, value) }
@@ -61,20 +65,20 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		set(value) = prefs.edit { putEnumValue(KEY_TRANSLATE_PROVIDER, value) }
 
 	var translateEndpoint: String
-		get() = prefs.getString(KEY_TRANSLATE_ENDPOINT, null).orEmpty()
-		set(value) = prefs.edit { putString(KEY_TRANSLATE_ENDPOINT, value) }
+		get() = prefs.getString(translationConfigKey(KEY_TRANSLATE_ENDPOINT), null).orEmpty()
+		set(value) = prefs.edit { putString(translationConfigKey(KEY_TRANSLATE_ENDPOINT), value) }
 
 	var translateApiKey: String
-		get() = prefs.getString(KEY_TRANSLATE_API_KEY, null).orEmpty()
-		set(value) = prefs.edit { putString(KEY_TRANSLATE_API_KEY, value) }
+		get() = prefs.getString(translationConfigKey(KEY_TRANSLATE_API_KEY), null).orEmpty()
+		set(value) = prefs.edit { putString(translationConfigKey(KEY_TRANSLATE_API_KEY), value) }
 
 	var translateModel: String
-		get() = prefs.getString(KEY_TRANSLATE_MODEL, null).orEmpty()
-		set(value) = prefs.edit { putString(KEY_TRANSLATE_MODEL, value) }
+		get() = prefs.getString(translationConfigKey(KEY_TRANSLATE_MODEL), null).orEmpty()
+		set(value) = prefs.edit { putString(translationConfigKey(KEY_TRANSLATE_MODEL), value) }
 
 	var translateCustomHeaders: String
-		get() = prefs.getString(KEY_TRANSLATE_CUSTOM_HEADERS, null).orEmpty()
-		set(value) = prefs.edit { putString(KEY_TRANSLATE_CUSTOM_HEADERS, value) }
+		get() = prefs.getString(translationConfigKey(KEY_TRANSLATE_CUSTOM_HEADERS), null).orEmpty()
+		set(value) = prefs.edit { putString(translationConfigKey(KEY_TRANSLATE_CUSTOM_HEADERS), value) }
 
 	var translateSourceLanguage: String
 		get() = prefs.getString(KEY_TRANSLATE_SOURCE_LANG, null) ?: "auto"
@@ -117,6 +121,40 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val isPageTranslationConfigured: Boolean
 		get() = translateProvider == org.koitharu.kotatsu.reader.translate.TranslateProvider.GOOGLE_LENS ||
 			(translateApiKey.isNotBlank() && translateEndpoint.isNotBlank())
+
+	private fun translationConfigKey(key: String): String = "${key}_${translationConfigSuffix(translateProvider)}"
+
+	private fun translationConfigSuffix(provider: org.koitharu.kotatsu.reader.translate.TranslateProvider): String =
+		if (provider == org.koitharu.kotatsu.reader.translate.TranslateProvider.GEMINI) "gemini" else "openai"
+
+	private fun migrateLegacyTranslationConfig() {
+		if (prefs.getBoolean(KEY_TRANSLATE_PROFILES_MIGRATED, false)) return
+		val legacyKeys = arrayOf(
+			KEY_TRANSLATE_ENDPOINT,
+			KEY_TRANSLATE_API_KEY,
+			KEY_TRANSLATE_MODEL,
+			KEY_TRANSLATE_CUSTOM_HEADERS,
+		)
+		val legacyEndpoint = prefs.getString(KEY_TRANSLATE_ENDPOINT, null).orEmpty()
+		val legacyModel = prefs.getString(KEY_TRANSLATE_MODEL, null).orEmpty()
+		val selectedProvider = translateProvider
+		val legacyProvider = when {
+			selectedProvider != org.koitharu.kotatsu.reader.translate.TranslateProvider.GOOGLE_LENS -> selectedProvider
+			legacyEndpoint.contains("generateContent", ignoreCase = true) ||
+				legacyEndpoint.contains("googleapis.com", ignoreCase = true) ||
+				legacyModel.startsWith("gemini", ignoreCase = true) ->
+				org.koitharu.kotatsu.reader.translate.TranslateProvider.GEMINI
+			else -> org.koitharu.kotatsu.reader.translate.TranslateProvider.OPENAI_COMPATIBLE
+		}
+		val legacyValues = legacyKeys.mapNotNull { key -> prefs.getString(key, null)?.let { key to it } }
+		prefs.edit {
+			for ((key, value) in legacyValues) {
+				val profileKey = "${key}_${translationConfigSuffix(legacyProvider)}"
+				if (!prefs.contains(profileKey)) putString(profileKey, value)
+			}
+			putBoolean(KEY_TRANSLATE_PROFILES_MIGRATED, true)
+		}
+	}
 
 	var listMode: ListMode
 		get() = prefs.getEnumValue(KEY_LIST_MODE, ListMode.GRID)
@@ -1176,6 +1214,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_TRANSLATE_API_KEY = "translate_api_key"
 		const val KEY_TRANSLATE_MODEL = "translate_model"
 		const val KEY_TRANSLATE_CUSTOM_HEADERS = "translate_custom_headers"
+		const val KEY_TRANSLATE_PROFILES_MIGRATED = "translate_profiles_migrated"
 		const val KEY_TRANSLATE_SOURCE_LANG = "translate_source_lang"
 		const val KEY_TRANSLATE_TARGET_LANG = "translate_target_lang"
 		const val KEY_TRANSLATE_TRIGGER_MODE = "translate_trigger_mode"
