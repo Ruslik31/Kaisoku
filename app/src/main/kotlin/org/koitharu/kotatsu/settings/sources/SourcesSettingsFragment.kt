@@ -15,6 +15,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.TriStateOption
 import org.koitharu.kotatsu.core.ui.BasePreferenceFragment
 import org.koitharu.kotatsu.core.util.ext.getQuantityStringSafe
+import org.koitharu.kotatsu.core.util.ext.copyToClipboard
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.setDefaultValueCompat
@@ -110,6 +111,7 @@ class SourcesSettingsFragment : BasePreferenceFragment(R.string.remote_sources),
 		when (key) {
 			AppSettings.KEY_SOURCES_ENABLED_ALL -> updateEnableAllDependencies()
 			AppSettings.KEY_USE_ANDROID_EXTENSIONS -> viewModel.refreshInstalledSources()
+			AppSettings.KEY_SHOW_PLUGIN_APK_HANDLER -> viewModel.setPluginApkHandlerEnabled(settings.isPluginApkHandlerEnabled)
 		}
 	}
 
@@ -149,6 +151,11 @@ class SourcesSettingsFragment : BasePreferenceFragment(R.string.remote_sources),
 	private fun showExtensionErrors(errors: List<String>) {
 		MaterialAlertDialogBuilder(requireContext())
 			.setTitle(R.string.mihon_extension_errors)
+			.apply {
+				if (errors.isNotEmpty()) setNeutralButton(R.string.copy) { _, _ ->
+					requireContext().copyToClipboard(getString(R.string.mihon_extension_errors), errors.joinToString("\n\n"))
+				}
+			}
 			.setMessage(errors.takeIf { it.isNotEmpty() }?.joinToString("\n\n") ?: getString(R.string.no_mihon_extension_errors))
 			.setPositiveButton(android.R.string.ok, null)
 			.show()

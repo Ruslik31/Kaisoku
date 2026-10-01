@@ -52,6 +52,12 @@
         android:summary="@string/use_android_installed_extensions_summary"
         android:title="@string/use_android_installed_extensions" />
 
+    <SwitchPreferenceCompat
+        android:defaultValue="true"
+        android:key="show_plugin_apk_handler"
+        android:summary="@string/show_plugin_apk_handler_summary"
+        android:title="@string/show_plugin_apk_handler" />
+
     <Preference
         android:key="mihon_extension_errors"
         android:persistent="false"

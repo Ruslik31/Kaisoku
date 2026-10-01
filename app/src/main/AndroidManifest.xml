@@ -176,6 +176,13 @@
 		<activity
 			android:name="org.koitharu.kotatsu.settings.sources.PluginActivity"
 			android:excludeFromRecents="true"
+			android:exported="false"
+			android:noHistory="true" />
+		<activity-alias
+			android:name="org.koitharu.kotatsu.settings.sources.PluginApkActivityAlias"
+			android:targetActivity="org.koitharu.kotatsu.settings.sources.PluginActivity"
+			android:enabled="true"
+			android:excludeFromRecents="true"
 			android:exported="true"
 			android:noHistory="true">
 			<intent-filter>
@@ -197,7 +204,7 @@
 				<data android:mimeType="application/x-java-archive" />
 				<data android:mimeType="application/vnd.android.package-archive" />
 			</intent-filter>
-		</activity>
+		</activity-alias>
 		<activity
 			android:name="org.koitharu.kotatsu.settings.reader.ReaderTapGridConfigActivity"
 			android:label="@string/reader_actions" />

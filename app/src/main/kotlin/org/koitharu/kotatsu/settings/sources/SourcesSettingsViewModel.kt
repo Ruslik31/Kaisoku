@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.settings.sources
 
+import org.koitharu.kotatsu.R
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
@@ -18,6 +19,7 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.ui.BaseViewModel
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.core.parser.mihon.MihonExtensionManager
 import javax.inject.Inject
@@ -28,6 +30,7 @@ class SourcesSettingsViewModel @Inject constructor(
 	private val database: MangaDatabase,
 	@ApplicationContext private val context: Context,
 	private val extensionManager: MihonExtensionManager,
+	private val settings: AppSettings,
 ) : BaseViewModel() {
 
 	val onBrokenSourcesLoaded = MutableEventFlow<List<BrokenSourceItem>>()
@@ -35,6 +38,11 @@ class SourcesSettingsViewModel @Inject constructor(
 	val onExtensionErrorsLoaded = MutableEventFlow<List<String>>()
 
 	private val linksHandlerActivity = ComponentName(context, "org.koitharu.kotatsu.details.ui.DetailsByLinkActivity")
+	private val pluginApkHandlerActivity = ComponentName(context, "org.koitharu.kotatsu.settings.sources.PluginApkActivityAlias")
+
+	init {
+		setPluginApkHandlerEnabled(settings.isPluginApkHandlerEnabled)
+	}
 
 	val enabledSourcesCount = sourcesRepository.observeEnabledSourcesCount()
 		.withErrorHandling()
@@ -55,6 +63,14 @@ class SourcesSettingsViewModel @Inject constructor(
 		isLinksEnabled.value = isLinksEnabled()
 	}
 
+	fun setPluginApkHandlerEnabled(isEnabled: Boolean) {
+		context.packageManager.setComponentEnabledSetting(
+			pluginApkHandlerActivity,
+			if (isEnabled) COMPONENT_ENABLED_STATE_ENABLED else COMPONENT_ENABLED_STATE_DISABLED,
+			PackageManager.DONT_KILL_APP,
+		)
+	}
+
 	fun refreshInstalledSources() {
 		launchLoadingJob(Dispatchers.IO) {
 			sourcesRepository.refreshInstalledMihonSources()
@@ -64,7 +80,11 @@ class SourcesSettingsViewModel @Inject constructor(
 	fun loadExtensionErrors() {
 		launchLoadingJob(Dispatchers.IO) {
 			sourcesRepository.refreshInstalledMihonSources()
-			onExtensionErrorsLoaded.call(extensionManager.getLoadFailures())
+			val failures = extensionManager.getLoadFailures()
+			onExtensionErrorsLoaded.call(
+				listOf(extensionManager.getScanSummary()) +
+					failures.ifEmpty { listOf(context.getString(R.string.no_mihon_extension_errors)) },
+			)
 		}
 	}
 

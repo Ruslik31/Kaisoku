@@ -19,6 +19,16 @@ class MihonExtensionRepoServiceFormatTest {
     }
 
     @Test
+    fun acceptsJsonWhitespaceWithoutStrippingProtobufTags() {
+        assertEquals("[]", "\uFEFF \n\t[]".encodeToByteArray().normalizeIndexJson().decodeToString())
+        assertEquals("{}", "\r\n {}".encodeToByteArray().normalizeIndexJson().decodeToString())
+        val proto = byteArrayOf(10, 3, 65, 66, 67)
+        org.junit.Assert.assertArrayEquals(proto, proto.normalizeIndexJson())
+        val bracketLengthProto = byteArrayOf(10, 91) + ByteArray(91) { 65 }
+        org.junit.Assert.assertArrayEquals(bracketLengthProto, bracketLengthProto.normalizeIndexJson())
+    }
+
+    @Test
     fun detectsGzipMagicAndDecompresses() {
         val plain = """{"name":"Keiyoushi","extensionList":{"extensions":[]}}""".encodeToByteArray()
         val gzipped = java.io.ByteArrayOutputStream().use { bos ->

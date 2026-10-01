@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.parser.mihon.repo.MihonPrivateExtensionStore
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.util.ext.getCopyableErrorDetails
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,7 +32,10 @@ class MihonExtensionManager @Inject constructor(
 	private var cachedSources: List<LoadedSource>? = null
 	@Volatile
 	private var cachedFailures: List<String> = emptyList()
+	@Volatile
+	private var scanSummary: String = ""
 
+	@Synchronized
 	fun invalidate() {
 		cachedSources = null
 	}
@@ -39,6 +43,8 @@ class MihonExtensionManager @Inject constructor(
 	fun getInstalledSources(): List<MihonMangaSource> = ensureLoaded().map { it.wrapper }
 
 	fun getLoadFailures(): List<String> = cachedFailures
+
+	fun getScanSummary(): String = scanSummary
 
 	fun resolve(source: MihonMangaSource): LoadedSource? {
 		return ensureLoaded().firstOrNull { it.wrapper.matches(source) }
@@ -66,9 +72,10 @@ class MihonExtensionManager @Inject constructor(
 		} else {
 			emptySequence()
 		}
+		val privateScan = privateExtensionStore.scanInstalledPackages()
 		val extensionPackages = (
 			sharedPackages +
-			privateExtensionStore.listInstalledPackages()
+			privateScan.packages
 				.asSequence()
 				.map { MihonInstalledExtensionPackage(it, isPrivate = true) }
 			)
@@ -96,13 +103,16 @@ class MihonExtensionManager @Inject constructor(
 			}
 			.toList()
 		Log.w(TAG, "Scanning ${extensionPackages.size} Mihon extension packages")
-		val failures = ArrayList<String>()
+		val failures = ArrayList(privateScan.failures)
 		val sources = extensionPackages
 			.asSequence()
 			.flatMap { loadSourcesFromPackage(pm, it, failures).asSequence() }
 			.sortedBy { it.wrapper.displayName?.lowercase() ?: it.wrapper.packageName.lowercase() }
 			.toList()
 		cachedFailures = failures
+		scanSummary = "Private APKs: ${privateScan.archiveCount}; recognized private packages: ${privateScan.packages.size}; " +
+			"selected packages: ${extensionPackages.size}; loaded sources: ${sources.size}; " +
+			"Android-installed extensions: ${settings.useAndroidInstalledExtensions}"
 		return sources
 	}
 
@@ -210,7 +220,7 @@ class MihonExtensionManager @Inject constructor(
 		}.onFailure {
 			Log.w(TAG, "Failed to load ${completeInfo.packageName}", it)
 			failures += "${completeInfo.packageName} ${completeInfo.versionName ?: "unknown version"}: " +
-				(it.message ?: it.javaClass.simpleName)
+				it.getCopyableErrorDetails()
 		}.getOrDefault(emptyList())
 	}
 

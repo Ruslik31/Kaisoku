@@ -193,6 +193,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getBoolean(KEY_USE_ANDROID_EXTENSIONS, true)
 		set(value) = prefs.edit { putBoolean(KEY_USE_ANDROID_EXTENSIONS, value) }
 
+	var isPluginApkHandlerEnabled: Boolean
+		get() = prefs.getBoolean(KEY_SHOW_PLUGIN_APK_HANDLER, true)
+		set(value) = prefs.edit { putBoolean(KEY_SHOW_PLUGIN_APK_HANDLER, value) }
+
 	val isNavLabelsVisible: Boolean
 		get() = prefs.getBoolean(KEY_NAV_LABELS, true)
 
@@ -1054,6 +1058,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_TRACKER_PROGRESS_REFRESH_DONE = "tracker_progress_refresh_done"
 		const val KEY_AUTO_PLUGINS = "auto_plugins"
 		const val KEY_USE_ANDROID_EXTENSIONS = "use_android_installed_extensions"
+		const val KEY_SHOW_PLUGIN_APK_HANDLER = "show_plugin_apk_handler"
 		const val KEY_LAST_AUTO_PLUGINS = "last_auto_plugins"
 		const val KEY_NOTIFICATIONS_SETTINGS = "notifications_settings"
 		const val KEY_NOTIFICATIONS_SOUND = "notifications_sound"

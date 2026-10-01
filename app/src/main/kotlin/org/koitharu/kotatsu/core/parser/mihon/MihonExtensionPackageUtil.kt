@@ -130,7 +130,7 @@ internal object MihonExtensionPackageUtil {
 
 	/**
 	 * TachiyomiX 1.6+ NSFW/content-warning flag read: `tachiyomix.contentWarning` is the Int enum
-	 * (UNSPECIFIED=0, SAFE=1, MIXED=2, NSFW=3) where MIXED and NSFW gate, OR'd with the legacy
+	 * (SAFE=0, MIXED=1, NSFW=2) where MIXED and NSFW gate, OR'd with the legacy
 	 * `tachiyomi.extension.nsfw` flag which has been emitted as Int, Boolean and "1"/"true" strings.
 	 */
 	fun readNsfwFlag(metaData: android.os.Bundle): Boolean {
@@ -191,13 +191,11 @@ internal object MihonExtensionPackageUtil {
 		}
 	}
 
-	private fun ApplicationInfo.fixBasePaths(apkPath: String) {
-		if (sourceDir == null) {
-			sourceDir = apkPath
-		}
-		if (publicSourceDir == null) {
-			publicSourceDir = apkPath
-		}
+	internal fun ApplicationInfo.fixBasePaths(apkPath: String) {
+		// Archive metadata is not installed-package metadata. Always load the file we parsed,
+		// even when PackageManager supplies an empty or stale base path.
+		sourceDir = apkPath
+		publicSourceDir = apkPath
 	}
 
 	private fun Signature.sha256Fingerprint(): String {

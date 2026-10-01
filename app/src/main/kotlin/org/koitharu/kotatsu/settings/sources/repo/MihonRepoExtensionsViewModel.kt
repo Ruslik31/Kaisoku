@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.parser.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.core.parser.mihon.repo.MihonPrivateExtensionStore
 import org.koitharu.kotatsu.core.parser.mihon.repo.MihonRepoExtensionDescriptor
 import org.koitharu.kotatsu.core.parser.mihon.repo.MihonExtensionRepoRepository
@@ -36,6 +37,7 @@ class MihonRepoExtensionsViewModel @Inject constructor(
 	@ApplicationContext private val context: Context,
 	private val repoRepository: MihonExtensionRepoRepository,
 	private val mangaSourcesRepository: MangaSourcesRepository,
+	private val extensionManager: MihonExtensionManager,
 	savedStateHandle: SavedStateHandle,
 ) : BaseViewModel() {
 
@@ -117,7 +119,14 @@ class MihonRepoExtensionsViewModel @Inject constructor(
 					when (val result = repoRepository.installExtension(descriptor.extension)) {
 						MihonPrivateExtensionStore.InstallResult.Success -> {
 							mangaSourcesRepository.refreshInstalledMihonSources()
-							onMessage.call(context.getString(R.string.extension_installed))
+							val failures = extensionManager.getLoadFailures().filter {
+								it.startsWith(descriptor.extension.pkgName + " ")
+							}
+							if (failures.isEmpty()) {
+								onMessage.call(context.getString(R.string.extension_installed))
+							} else {
+								errorEvent.call(IllegalStateException(failures.joinToString("\n")))
+							}
 							refresh()
 						}
 

@@ -47,7 +47,7 @@ import javax.inject.Inject
 class SourcesCatalogViewModel @Inject constructor(
 	private val repository: MangaSourcesRepository,
 	db: MangaDatabase,
-	settings: AppSettings,
+	private val settings: AppSettings,
 ) : BaseViewModel() {
 
 	val onActionDone = MutableEventFlow<ReversibleAction>()
@@ -90,8 +90,12 @@ class SourcesCatalogViewModel @Inject constructor(
 				),
 				repository.observeInstalledMihonSources().onStart { emit(emptyList()) },
 				repository.observeInstalledPluginSources().onStart { emit(emptyList()) },
-				refreshTrigger,
-			) { _, _, _, _ -> Unit 			}.mapLatest {
+				repository.observeInstalledLnReaderSources().onStart { emit(emptyList()) },
+				combine(
+					refreshTrigger,
+					settings.observe(AppSettings.KEY_DISABLE_NSFW, AppSettings.KEY_SOURCES_ENABLED_ALL),
+				) { _, _ -> Unit },
+			) { _, _, _, _, _ -> Unit 			}.mapLatest {
 				runCatching {
 					repository.getParserSourcesSnapshot()
 				}.onFailure { error ->
@@ -208,6 +212,7 @@ class SourcesCatalogViewModel @Inject constructor(
 		launchJob(Dispatchers.IO) {
 			repository.refreshInstalledMihonSources()
 			repository.refreshInstalledPluginSources()
+			repository.refreshInstalledLnReaderSources()
 			refreshTrigger.value += 1
 		}
 	}
@@ -233,7 +238,10 @@ class SourcesCatalogViewModel @Inject constructor(
 			sortOrder = SourcesSortOrder.ALPHABETIC,
 			snapshot = snapshot,
 		)
-		return if (sources.isEmpty()) {
+		val hiddenExtensions = settings.isNsfwContentDisabled && snapshot.any {
+			it.isMihon && it.isNsfw && (!it.isEnabled || settings.isAllSourcesEnabled)
+		}
+		val result = if (sources.isEmpty()) {
 			listOf(
 				if (query == null) {
 					SourceCatalogItem.Hint(
@@ -254,6 +262,13 @@ class SourcesCatalogViewModel @Inject constructor(
 				SourceCatalogItem.Source(source = it)
 			}
 		}
+		return if (hiddenExtensions && filter.mihonMode != SourceCatalogFilterMode.EXCLUDE) {
+			listOf(SourceCatalogItem.Hint(
+				icon = R.drawable.ic_info_outline,
+				title = R.string.extension_sources_hidden,
+				text = R.string.extension_sources_hidden_summary,
+			)) + result
+		} else result
 	}
 
 	@WorkerThread

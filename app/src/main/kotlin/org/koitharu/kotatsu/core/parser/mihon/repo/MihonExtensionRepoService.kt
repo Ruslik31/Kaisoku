@@ -98,16 +98,13 @@ class MihonExtensionRepoService @Inject constructor(
 		repo: MihonExtensionRepo,
 		url: String,
 		depth: Int,
-		optional: Boolean = false,
+		suppliedBytes: ByteArray? = null,
 	): List<MihonAvailableExtension> {
 		if (depth > MAX_INDEX_HOPS) {
 			throw IOException("Extension repository index redirects too many times: $url")
 		}
-		val bytes = fetchBytes(url) ?: if (optional) {
-			return emptyList()
-		} else {
-			throw IOException("Extension repository index is missing or empty: $url")
-		}
+		val bytes = suppliedBytes ?: fetchBytes(url)
+			?: throw IOException("Extension repository index is missing or empty: $url")
 		return when (bytes.firstOrNull()) {
 			OPEN_BRACKET -> {
 				// Legacy flat index.min.json array.
@@ -187,10 +184,10 @@ class MihonExtensionRepoService @Inject constructor(
 		depth: Int,
 	): List<MihonAvailableExtension> {
 		for (candidate in candidates) {
-			val result = loadEntries(repo, candidate, depth, optional = true)
-			if (result.isNotEmpty()) return result
+			val bytes = fetchBytes(candidate) ?: continue
+			return loadEntries(repo, candidate, depth, suppliedBytes = bytes)
 		}
-		return emptyList()
+		throw IOException("Extension repository index is missing or empty: ${repo.baseUrl}")
 	}
 
 	private fun resolveRepoIndexUrl(repo: MihonExtensionRepo, value: String): String {
@@ -205,7 +202,7 @@ class MihonExtensionRepoService @Inject constructor(
 		).await().use { response ->
 			if (response.code == 404) return@withContext null
 			if (!response.isSuccessful) throw IOException("Repository request failed with HTTP ${response.code}: $url")
-			response.body.bytes().gunzipIfNeeded().takeIf { it.isNotEmpty() }
+			response.body.bytes().gunzipIfNeeded().normalizeIndexJson().takeIf { it.isNotEmpty() }
 		}
 	}
 
@@ -310,4 +307,14 @@ internal fun legacyModernIndexCandidates(repoBaseUrl: String, pointer: String? =
 internal fun resolveRepoIndexUrlFromBase(repoBaseUrl: String, value: String): String {
 	val base = repoBaseUrl.trimEnd('/') + "/"
 	return base.toHttpUrlOrNull()?.resolve(value)?.toString() ?: value
+}
+
+/** Strip JSON whitespace/BOM only when JSON is detected; protobuf often starts with 0x0a. */
+internal fun ByteArray.normalizeIndexJson(): ByteArray {
+	var start = if (size >= 3 && this[0] == 0xef.toByte() && this[1] == 0xbb.toByte() && this[2] == 0xbf.toByte()) 3 else 0
+	while (start < size && this[start].toInt() in listOf(9, 10, 13, 32)) start++
+	if (start == 0 || getOrNull(start)?.toInt() !in listOf(91, 123)) return this
+	val candidate = copyOfRange(start, size)
+	// A protobuf string length may itself equal '[' or '{'; do not strip its field tag.
+	return if (runCatching { Json.parseToJsonElement(candidate.decodeToString()) }.isSuccess) candidate else this
 }

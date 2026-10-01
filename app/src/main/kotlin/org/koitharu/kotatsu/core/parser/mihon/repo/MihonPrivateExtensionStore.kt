@@ -23,14 +23,39 @@ class MihonPrivateExtensionStore @Inject constructor(
 	private val extensionDir: File
 		get() = context.filesDir.subdir(DIR_NAME)
 
-	fun listInstalledPackages(): List<PackageInfo> {
-		return extensionDir.listFiles()
-			.orEmpty()
-			.asSequence()
-			.filter { it.isFile && it.extension == FILE_EXTENSION }
-			.mapNotNull { MihonExtensionPackageUtil.getPackageArchiveInfoOrNull(pm, it) }
-			.filter(MihonExtensionPackageUtil::isMihonExtension)
-			.toList()
+	data class PackageScan(
+		val packages: List<PackageInfo>,
+		val failures: List<String>,
+		val archiveCount: Int,
+	)
+
+	fun listInstalledPackages(): List<PackageInfo> = scanInstalledPackages().packages
+
+	fun scanInstalledPackages(): PackageScan {
+		val files = extensionDir.listFiles()
+			?: return PackageScan(emptyList(), listOf("Cannot read private extension directory: $extensionDir"), 0)
+		val archives = files.filter { it.isFile && it.extension.equals(FILE_EXTENSION, ignoreCase = true) }
+		val failures = ArrayList<String>()
+		val packages = archives.mapNotNull { file ->
+			try {
+				val info = MihonExtensionPackageUtil.getPackageArchiveInfoOrNull(pm, file)
+				when {
+					info == null -> {
+						failures += "${file.name}: Android could not read the installed APK metadata (${file.length()} bytes)"
+						null
+					}
+					!MihonExtensionPackageUtil.isMihonExtension(info) -> {
+						failures += "${file.name}: installed APK has no recognized extension metadata"
+						null
+					}
+					else -> info
+				}
+			} catch (e: Exception) {
+				failures += "${file.name}: ${e.javaClass.simpleName}: ${e.message}"
+				null
+			}
+		}
+		return PackageScan(packages, failures, archives.size)
 	}
 
 	fun findInstalledPackage(pkgName: String): PackageInfo? {
@@ -94,7 +119,11 @@ class MihonPrivateExtensionStore @Inject constructor(
 		return runCatching {
 			target.delete()
 			file.copyTo(target, overwrite = true)
-			target.setReadOnly()
+			check(target.setReadOnly()) { "Could not mark the installed extension APK read-only" }
+			val installedInfo = MihonExtensionPackageUtil.getPackageArchiveInfoOrNull(pm, target)
+			check(installedInfo != null && MihonExtensionPackageUtil.isMihonExtension(installedInfo)) {
+				"Android could not recognize the installed extension APK: ${target.name}"
+			}
 			notifyChanged()
 		}.fold(
 			onSuccess = { InstallResult.Success },

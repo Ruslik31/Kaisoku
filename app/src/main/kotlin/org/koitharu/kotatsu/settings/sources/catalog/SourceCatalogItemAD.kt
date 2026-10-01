@@ -63,6 +63,7 @@ fun sourceCatalogItemHintAD() = adapterDelegateViewBinding<SourceCatalogItem.Hin
 	binding.buttonRetry.isVisible = false
 
 	bind {
+		binding.icon.isVisible = item.title != R.string.extension_sources_hidden
 		binding.icon.setImageAsync(item.icon)
 		binding.textPrimary.setText(item.title)
 		binding.textSecondary.setTextAndVisible(item.text)
