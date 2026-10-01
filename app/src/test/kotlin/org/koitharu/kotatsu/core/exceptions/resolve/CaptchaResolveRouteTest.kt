@@ -25,11 +25,22 @@ class CaptchaResolveRouteTest {
 	}
 
 	@Test
-	fun `a background error may be resolved silently`() {
+	fun `an eligible error may be handed to the automatic resolver`() {
 		assertEquals(
 			CaptchaResolveRoute.AUTOMATIC,
 			captchaResolveRoute(isResolveActive = false, tryAutoResolve = true, isAutoResolveDisabled = false),
 		)
+	}
+
+	@Test
+	fun `automatic resolver never starts while app is backgrounded`() {
+		assertEquals(false, canStartAutomaticCaptchaResolve(isAppInForeground = false, isAutoResolveDisabled = false))
+	}
+
+	@Test
+	fun `automatic resolver respects the source setting`() {
+		assertEquals(false, canStartAutomaticCaptchaResolve(isAppInForeground = true, isAutoResolveDisabled = true))
+		assertEquals(true, canStartAutomaticCaptchaResolve(isAppInForeground = true, isAutoResolveDisabled = false))
 	}
 
 	@Test

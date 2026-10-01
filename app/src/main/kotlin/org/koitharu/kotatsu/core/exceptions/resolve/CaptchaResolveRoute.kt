@@ -30,3 +30,9 @@ fun captchaResolveRoute(
 	tryAutoResolve && !isAutoResolveDisabled -> CaptchaResolveRoute.AUTOMATIC
 	else -> CaptchaResolveRoute.MANUAL
 }
+
+/** Background workers may report a challenge, but must not start a UI flow for it. */
+internal fun canStartAutomaticCaptchaResolve(
+	isAppInForeground: Boolean,
+	isAutoResolveDisabled: Boolean,
+): Boolean = isAppInForeground && !isAutoResolveDisabled

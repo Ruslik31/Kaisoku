@@ -150,7 +150,9 @@ class TrackWorker @AssistedInject constructor(
 				is MangaUpdates.Failure -> {
 					val e = it.error
 					if (e is CloudFlareException) {
-						captchaHandler.handle(e)
+						// Tracker checks run unattended. Record the challenge and offer a notification,
+						// but never launch the CAPTCHA activity from background work.
+						captchaHandler.handle(e, tryAutoResolve = false)
 					}
 				}
 

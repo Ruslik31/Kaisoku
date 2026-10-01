@@ -115,7 +115,11 @@ class CaptchaAutoResolveCoordinator @Inject constructor(
 	}
 
 	suspend fun resolveIfEnabled(exception: CloudFlareProtectedException): Boolean {
-		if (SourceSettings(context, exception.source).isCaptchaAutoResolveDisabled) return false
+		if (!canStartAutomaticCaptchaResolve(
+				isAppInForeground = foregroundActivityHolder.current != null,
+				isAutoResolveDisabled = SourceSettings(context, exception.source).isCaptchaAutoResolveDisabled,
+			)
+		) return false
 		val lastSuccess = recentSuccessAt[exception.source]
 		if (lastSuccess != null && System.currentTimeMillis() - lastSuccess < RECENT_SUCCESS_COOLDOWN_MS) {
 			return true
@@ -125,7 +129,7 @@ class CaptchaAutoResolveCoordinator @Inject constructor(
 
 	/** Joins the current global session or atomically creates the only allowed solver session. */
 	suspend fun resolve(source: MangaSource, exception: CloudFlareProtectedException): Boolean {
-		if (source == UnknownMangaSource) return false
+		if (source == UnknownMangaSource || foregroundActivityHolder.current == null) return false
 		while (true) {
 			val claim = stateMutex.withLock {
 				activeSession?.let { return@withLock SessionClaim(it, isOwner = false) }
@@ -152,7 +156,10 @@ class CaptchaAutoResolveCoordinator @Inject constructor(
 	private suspend fun runSession(session: ResolveSession) {
 		var success = false
 		try {
-			launch(session)
+			// The app can enter the background after resolve() claims the slot. Recheck immediately
+			// before starting an Activity; background activity launches create surprise browser-like
+			// challenge screens and can stack when several tracked titles fail together.
+			if (!launch(session)) return
 			success = session.activityResult.await()
 			if (success) recentSuccessAt[session.source] = System.currentTimeMillis()
 		} catch (e: Throwable) {
@@ -167,17 +174,13 @@ class CaptchaAutoResolveCoordinator @Inject constructor(
 		}
 	}
 
-	private fun launch(session: ResolveSession) {
+	private fun launch(session: ResolveSession): Boolean {
 		val intent = AppRouter.cloudFlareResolveIntent(context, session.exception, hidden = true).apply {
 			putExtra(CloudFlareActivity.EXTRA_AUTO_RESOLVE, true)
 		}
-		val launcher = foregroundActivityHolder.current
-		if (launcher != null) {
-			launcher.startActivity(intent)
-		} else {
-			intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-			context.startActivity(intent)
-		}
+		val launcher = foregroundActivityHolder.current ?: return false
+		launcher.startActivity(intent)
+		return true
 	}
 
 	/** Keep the existing hidden WebView above newly opened app screens without constructing another one. */
