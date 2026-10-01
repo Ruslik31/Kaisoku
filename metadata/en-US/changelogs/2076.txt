@@ -1,0 +1,10 @@
+- Fixed Mihon and Cursed repository discovery.
+- Added repository progress and extension diagnostics.
+- Fixed chapter sorting and source reading order.
+- Preserved source and favourite selection order.
+- Added an extension-file app chooser setting.
+- Fixed network settings and restored upscaler settings.
+- Added novel reading statistics.
+- Prevented background CAPTCHA windows.
+- Improved AI translation profiles, retries and errors.
+- Updated the ManhwaDesu domain.
