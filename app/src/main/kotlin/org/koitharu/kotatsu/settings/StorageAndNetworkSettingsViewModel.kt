@@ -29,7 +29,10 @@ class StorageAndNetworkSettingsViewModel @Inject constructor(
 
     fun applyNetworkSettings() {
         // New connections resolve DNS with the selected provider. Active downloads keep running.
-        httpClient.connectionPool.evictAll()
+        launchJob(Dispatchers.IO) {
+            // Closing an idle TLS socket may write close_notify to the network.
+            httpClient.connectionPool.evictAll()
+        }
     }
 
     private suspend fun loadStorageUsage(): StorageUsage {

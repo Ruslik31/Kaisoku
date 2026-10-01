@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.sync.drive
 
 import android.content.Context
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.CommonStatusCodes
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -41,6 +42,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 	private val api: GoogleDriveApi,
 	private val backupRepository: BackupRepository,
 	private val sourceSettingsStore: DriveSourceSettingsStore,
+	private val appSettings: AppSettings,
 ) {
 
 	private val mutex = Mutex()
@@ -166,6 +168,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 					progress = null,
 					isMerge = true,
 					replaceSections = setOf(BackupSection.SETTINGS_READER_GRID),
+					preserveSettingsKeys = existingNetworkSettingsKeys(appSettings.getAllValues()),
 				)
 			}
 			sourceSettingsStore.restore(metadata.sourceSettings)

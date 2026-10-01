@@ -180,6 +180,7 @@ class BackupRepository @Inject constructor(
 		progress: FlowCollector<Progress>?,
 		isMerge: Boolean = false,
 		replaceSections: Set<BackupSection> = emptySet(),
+		preserveSettingsKeys: Set<String> = emptySet(),
     ): CompositeResult {
         progress?.emit(Progress.INDETERMINATE)
         var commonProgress = Progress(0, sections.size)
@@ -215,7 +216,7 @@ class BackupRepository @Inject constructor(
                     }
 
 					BackupSection.SETTINGS -> input.readMap().let {
-						settings.upsertAll(it.filterKeys { key -> key !in SensitiveBackupKeys.values }, isMerge)
+						settings.upsertAll(it.filterKeys { key -> key !in SensitiveBackupKeys.values && key !in preserveSettingsKeys }, isMerge)
                         CompositeResult.success()
                     }
 

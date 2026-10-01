@@ -2,7 +2,11 @@ package org.koitharu.kotatsu.settings
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.ComponentName
+import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.preference.PreferenceManager
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
@@ -21,6 +25,19 @@ import org.koitharu.kotatsu.settings.sources.ExtensionLanguageFilter
 import java.util.UUID
 
 class RepairPreferencesTest {
+    @Test fun privateArchiveAlwaysUsesItsActualPath() {
+        val info = android.content.pm.ApplicationInfo()
+        for (oldPath in listOf(null, "", "/old/location/extension.apk")) {
+            info.sourceDir = oldPath
+            info.publicSourceDir = oldPath
+            with(org.koitharu.kotatsu.core.parser.mihon.MihonExtensionPackageUtil) {
+                info.fixBasePaths("/private/extensions/example.apk")
+            }
+            assertEquals("/private/extensions/example.apk", info.sourceDir)
+            assertEquals(info.sourceDir, info.publicSourceDir)
+        }
+    }
+
     @Test fun disabledNetworkChoicesPersistAndOverrideLegacyProxy() = isolated { context ->
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         prefs.edit().putBoolean("images_proxy", true).commit()
@@ -59,17 +76,76 @@ class RepairPreferencesTest {
         }
     }
 
-    @Test fun novelReadingDirectionPersistsPerSourceAndCanBeReset() = isolated { context ->
-        val one = org.koitharu.kotatsu.core.model.MangaSource("lnreader:order-one")
-        val two = org.koitharu.kotatsu.core.model.MangaSource("lnreader:order-two")
+    @Test fun readingDirectionPersistsPerMangaSourceAndCanBeReset() = isolated { context ->
+        val one = org.koitharu.kotatsu.core.model.MangaSource("source:order-one")
+        val two = org.koitharu.kotatsu.core.model.MangaSource("source:order-two")
         val settings = org.koitharu.kotatsu.core.prefs.SourceSettings(context, one)
-        assertFalse(settings.isNovelReadingReversed)
-        settings.isNovelReadingReversed = true
+        assertFalse(settings.isReadingOrderReversed)
+        settings.isReadingOrderReversed = true
         val reopened = org.koitharu.kotatsu.core.prefs.SourceSettings(context, one)
-        assertTrue(reopened.isNovelReadingReversed)
-        assertFalse(org.koitharu.kotatsu.core.prefs.SourceSettings(context, two).isNovelReadingReversed)
-        reopened.isNovelReadingReversed = false
-        assertFalse(org.koitharu.kotatsu.core.prefs.SourceSettings(context, one).isNovelReadingReversed)
+        assertTrue(reopened.isReadingOrderReversed)
+        assertFalse(org.koitharu.kotatsu.core.prefs.SourceSettings(context, two).isReadingOrderReversed)
+        reopened.isReadingOrderReversed = false
+        assertFalse(org.koitharu.kotatsu.core.prefs.SourceSettings(context, one).isReadingOrderReversed)
+    }
+
+    @Test fun chapterListAndSourceReadingDirectionPersistIndependently() = isolated { context ->
+        val settings = AppSettings(context)
+        assertFalse(settings.isChaptersReverse)
+        settings.isChaptersReverse = true
+        assertTrue(AppSettings(context).isChaptersReverse)
+        val one = org.koitharu.kotatsu.core.model.MangaSource("source:reverse-one")
+        val two = org.koitharu.kotatsu.core.model.MangaSource("source:reverse-two")
+        val sourceSettings = org.koitharu.kotatsu.core.prefs.SourceSettings(context, one)
+        assertFalse(sourceSettings.isReadingOrderReversed)
+        sourceSettings.isReadingOrderReversed = false
+        assertFalse(org.koitharu.kotatsu.core.prefs.SourceSettings(context, one).isReadingOrderReversed)
+        assertFalse(org.koitharu.kotatsu.core.prefs.SourceSettings(context, two).isReadingOrderReversed)
+        assertTrue(AppSettings(context).isChaptersReverse)
+        settings.isChaptersReverse = false
+        assertFalse(AppSettings(context).isChaptersReverse)
+    }
+
+    @Test fun legacyReadingDirectionsMigrateWithoutOverwritingNewSelections() = isolated { context ->
+        val novel = org.koitharu.kotatsu.core.model.MangaSource("lnreader:reverse-migration")
+        val manga = org.koitharu.kotatsu.core.model.MangaSource("source:reverse-migration-manga")
+        for (source in listOf(novel, manga)) {
+            val prefs = context.getSharedPreferences(
+                org.koitharu.kotatsu.core.prefs.SourceSettings.prefsName(source), Context.MODE_PRIVATE,
+            )
+            prefs.edit().putBoolean("chapters_reverse_override", true).commit()
+            if (source == novel) prefs.edit().putBoolean("novel_reverse_reading", false).commit()
+            val migrated = org.koitharu.kotatsu.core.prefs.SourceSettings(context, source)
+            assertEquals(source != novel, migrated.isReadingOrderReversed)
+            migrated.isReadingOrderReversed = source == novel
+            assertEquals(source == novel, org.koitharu.kotatsu.core.prefs.SourceSettings(context, source).isReadingOrderReversed)
+        }
+    }
+
+    @Test fun extensionApkChooserEntryCanBeDisabledAndRestored() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val packageManager = context.packageManager
+        val component = ComponentName(
+            context,
+            "org.koitharu.kotatsu.settings.sources.PluginApkActivityAlias",
+        )
+        val query = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(Uri.parse("content://org.example.extension/file.apk"), "application/vnd.android.package-archive")
+        fun hasKaisokuHandler(): Boolean = packageManager.queryIntentActivities(query, 0)
+            .any {
+                it.activityInfo.packageName == context.packageName &&
+					(it.activityInfo.name == component.className ||
+						it.activityInfo.targetActivity == "org.koitharu.kotatsu.settings.sources.PluginActivity")
+			}
+
+        try {
+            packageManager.setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
+            assertTrue(hasKaisokuHandler())
+            packageManager.setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
+            assertFalse(hasKaisokuHandler())
+        } finally {
+            packageManager.setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, PackageManager.DONT_KILL_APP)
+        }
     }
 
     private inline fun isolated(block: (Context) -> Unit) {
@@ -128,5 +204,30 @@ class RepairPreferencesTest {
         assertNull(LNReaderStorage(two).get("plugin:book"))
         LNReaderStorage(one).set("plugin:book", null)
         assertTrue(LNReaderStorage(one).keys().isEmpty())
+    }
+
+    @Test fun restoredIntegerUpscaleThresholdMigratesWithoutReaderCrash() = isolated { context ->
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val settings = AppSettings(context)
+        for (value in listOf(1, 2, 3)) {
+            settings.upsertAll(mapOf(AppSettings.KEY_UPSCALE_THRESHOLD to value), isMerge = true)
+            assertEquals(value.toFloat(), settings.readerUpscaleConfig.threshold, 0f)
+            assertEquals(value.toFloat(), prefs.getFloat(AppSettings.KEY_UPSCALE_THRESHOLD, 0f), 0f)
+            assertEquals(value.toFloat(), AppSettings(context).readerUpscaleThreshold, 0f)
+        }
+        prefs.edit().putString(AppSettings.KEY_UPSCALE_THRESHOLD, "1.5").commit()
+        assertEquals(1.5f, settings.readerUpscaleThreshold, 0f)
+        prefs.edit().putString(AppSettings.KEY_UPSCALE_THRESHOLD, "invalid").commit()
+        assertEquals(1.5f, settings.readerUpscaleThreshold, 0f)
+    }
+
+    @Test fun fractionalUpscaleThresholdSurvivesJsonSettingsRestore() = isolated { context ->
+        val settings = AppSettings(context)
+        val jsonValue = org.json.JSONObject("{\"reader_upscale_threshold\":1.5}")
+            .get(AppSettings.KEY_UPSCALE_THRESHOLD)
+        assertTrue(jsonValue is Double)
+        settings.upsertAll(mapOf(AppSettings.KEY_UPSCALE_THRESHOLD to jsonValue))
+        assertEquals(1.5f, settings.readerUpscaleThreshold, 0f)
+        assertTrue(settings.getAllValues()[AppSettings.KEY_UPSCALE_THRESHOLD] is Float)
     }
 }

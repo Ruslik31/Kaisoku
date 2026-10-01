@@ -327,7 +327,8 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		set(value) = prefs.edit { putInt(KEY_UPSCALE_PASSES, value.coerceIn(0, 4)) }
 
 	var readerUpscaleThreshold: Float
-		get() = prefs.getFloat(KEY_UPSCALE_THRESHOLD, 1.5f).takeIf { it in setOf(1f, 1.5f, 2f, 3f) } ?: 1.5f
+		get() = prefs.getFloatCompat(KEY_UPSCALE_THRESHOLD, 1.5f, 1f, 3f)
+			.takeIf { it in setOf(1f, 1.5f, 2f, 3f) } ?: 1.5f
 		set(value) = prefs.edit { putFloat(KEY_UPSCALE_THRESHOLD, value) }
 
 	val readerUpscaleConfig: org.koitharu.kotatsu.reader.domain.UpscaleConfig
