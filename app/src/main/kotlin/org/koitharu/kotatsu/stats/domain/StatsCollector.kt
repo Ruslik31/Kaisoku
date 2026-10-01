@@ -5,7 +5,12 @@ import androidx.collection.set
 import dagger.hilt.android.ViewModelLifecycle
 import dagger.hilt.android.scopes.ViewModelScoped
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.RetainedLifecycleCoroutineScope
@@ -24,9 +29,10 @@ class StatsCollector @Inject constructor(
 
 	private val viewModelScope = RetainedLifecycleCoroutineScope(lifecycle)
 	private val stats = LongSparseArray<Entry>(1)
+	private var lastCommit: Job? = null
 
 	@Synchronized
-	fun onStateChanged(mangaId: Long, state: ReaderState) {
+	fun onStateChanged(mangaId: Long, state: ReaderState, historyUpdate: Job? = null) {
 		if (!settings.isStatsEnabled) {
 			return
 		}
@@ -34,38 +40,40 @@ class StatsCollector @Inject constructor(
 		val entry = stats[mangaId]
 		if (entry == null) {
 			stats[mangaId] = Entry(
-				state = state,
-				stats = StatsEntity(
-					mangaId = mangaId,
-					startedAt = now,
-					duration = 0,
-					pages = 0,
-				),
+				session = ReadingStatsSession.start(mangaId, state, now),
+				historyUpdate = historyUpdate,
 			)
 			return
 		}
-		val pagesDelta = if (entry.state.page != state.page || entry.state.chapterId != state.chapterId) 1 else 0
 		val newEntry = entry.copy(
-			stats = StatsEntity(
-				mangaId = mangaId,
-				startedAt = entry.stats.startedAt,
-				duration = now - entry.stats.startedAt,
-				pages = entry.stats.pages + pagesDelta,
-			),
+			session = entry.session.advance(state, now),
+			historyUpdate = historyUpdate ?: entry.historyUpdate,
 		)
 		stats[mangaId] = newEntry
-		commit(newEntry.stats)
+		commit(newEntry.session.stats, newEntry.historyUpdate)
 	}
 
 	@Synchronized
 	fun onPause(mangaId: Long) {
+		val entry = stats[mangaId] ?: return
 		stats.remove(mangaId)
+		if (settings.isStatsEnabled) {
+			commit(entry.session.advance(entry.session.state, System.currentTimeMillis()).stats, entry.historyUpdate)
+		}
 	}
 
-	private fun commit(entity: StatsEntity) {
-		viewModelScope.launch(Dispatchers.Default) {
+	@OptIn(DelicateCoroutinesApi::class)
+	private fun commit(entity: StatsEntity, historyUpdate: Job?) {
+		val previousCommit = lastCommit
+		lastCommit = viewModelScope.launch(Dispatchers.Default, CoroutineStart.ATOMIC) {
 			runCatchingCancellable {
-				db.getStatsDao().upsert(entity)
+				// Finish the final pause write even when the reader's ViewModel is cleared.
+				withContext(NonCancellable) {
+					previousCommit?.join()
+					// Statistics reference history; a first novel session must wait for that row.
+					historyUpdate?.join()
+					db.getStatsDao().upsert(entity)
+				}
 			}.onFailure { e ->
 				e.printStackTraceDebug()
 			}
@@ -73,7 +81,7 @@ class StatsCollector @Inject constructor(
 	}
 
 	private data class Entry(
-		val state: ReaderState,
-		val stats: StatsEntity,
+		val session: ReadingStatsSession,
+		val historyUpdate: Job?,
 	)
 }

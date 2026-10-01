@@ -364,9 +364,11 @@ class NovelReaderActivity :
 	private fun saveCurrentProgress() {
 		if (isScrollMode) {
 			val anchor = continuousAnchor() ?: return
-			viewModel.saveProgress(anchor.first, anchor.second)
+			val page = continuousChapterView()?.pageAtProgress(anchor.second, scrollViewportHeight())
+			viewModel.saveProgress(anchor.first, anchor.second, page)
 		} else if (lastLoadedChapterIndex >= 0 && viewBinding.readerView.isLaidOut) {
-			viewModel.saveProgress(lastLoadedChapterIndex, viewBinding.readerView.getProgressRatio())
+			viewModel.saveProgress(lastLoadedChapterIndex, viewBinding.readerView.getProgressRatio(),
+				viewBinding.readerView.getDisplayPageIndex())
 		}
 	}
 
@@ -677,11 +679,14 @@ class NovelReaderActivity :
 	override fun onPause() {
 		super.onPause()
 		saveCurrentProgress()
+		viewModel.onPause()
 	}
 
 	override fun onResume() {
 		super.onResume()
+		viewModel.onResume()
 		viewModel.configuredReadingReversed()?.let(::onReverseReadingChanged)
+		updateProgressUi()
 	}
 
 	override fun onStop() {

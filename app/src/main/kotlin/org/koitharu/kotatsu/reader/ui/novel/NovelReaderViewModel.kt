@@ -13,6 +13,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.core.model.MangaHistory
@@ -32,6 +33,7 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderState
+import org.koitharu.kotatsu.stats.domain.StatsCollector
 import android.content.Context
 import androidx.core.net.toUri
 import org.koitharu.kotatsu.core.model.isLocal
@@ -49,6 +51,7 @@ class NovelReaderViewModel @Inject constructor(
 	private val historyUpdateUseCase: HistoryUpdateUseCase,
 	private val localRepository: LocalMangaRepository,
 	private val appSettings: AppSettings,
+	private val statsCollector: StatsCollector,
 	private val translator: org.koitharu.kotatsu.reader.translate.MultimodalTranslator,
 ) : BaseViewModel() {
 
@@ -72,6 +75,9 @@ class NovelReaderViewModel @Inject constructor(
 	private var lastSavedState: ReaderState? = null
 	private var lastSavedRatio = 0f
 	private var lastSavedPercent = -1f
+	private var lastHistoryUpdate: Job? = null
+	private var isReadingActive = false
+	private var lastStatsState: ReaderState? = null
 	private val translations = object : LinkedHashMap<Long, Pair<String, String>>(8, .75f, true) {
 		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Pair<String, String>>?) = size > 8
 	}
@@ -177,17 +183,47 @@ class NovelReaderViewModel @Inject constructor(
 	}
 
 	/** Persist the current reading position. Ratio: 0..1 within the chapter. */
-	fun saveProgress(chapterIndex: Int, ratio: Float) {
+	fun saveProgress(chapterIndex: Int, ratio: Float, displayPage: Int? = null) {
 		val target = manga.value ?: return
 		val chapter = chapters.value.getOrNull(chapterIndex) ?: return
 		val total = chapters.value.size
 		val state = novelHistoryPosition(chapter.id, ratio)
 		lastSavedRatio = novelProgressRatio(state.scroll)
 		val percent = if (total > 0) (chapterIndex + lastSavedRatio) / total else 0f
-		if (lastSavedState == state && lastSavedPercent == percent) return
-		lastSavedState = state
-		lastSavedPercent = percent
-		if (!isIncognitoMode) historyUpdateUseCase.invokeAsync(target, state, percent.coerceIn(0f, 1f))
+		if (lastSavedState != state || lastSavedPercent != percent) {
+			lastSavedState = state
+			lastSavedPercent = percent
+			if (!isIncognitoMode) {
+				lastHistoryUpdate = historyUpdateUseCase.invokeAsync(target, state, percent.coerceIn(0f, 1f))
+			}
+		}
+		if (displayPage != null) onReadingPositionChanged(chapterIndex, displayPage)
+	}
+
+	/** Display pages are statistics only; history keeps the stable character ratio. */
+	private fun onReadingPositionChanged(chapterIndex: Int, page: Int) {
+		if (!isReadingActive || isIncognitoMode || isUiLoading.value) return
+		if (!appSettings.isStatsEnabled) {
+			lastStatsState = null
+			return
+		}
+		val target = manga.value ?: return
+		val chapter = chapters.value.getOrNull(chapterIndex) ?: return
+		val state = ReaderState(chapter.id, page, 0)
+		if (lastStatsState == state) return
+		lastStatsState = state
+		statsCollector.onStateChanged(target.id, state, lastHistoryUpdate)
+	}
+
+	fun onResume() {
+		isReadingActive = true
+		lastStatsState = null
+	}
+
+	fun onPause() {
+		isReadingActive = false
+		lastStatsState = null
+		manga.value?.let { statsCollector.onPause(it.id) }
 	}
 
 	/**
