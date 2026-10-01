@@ -15,6 +15,7 @@
     <string name="extract_text">Extract text</string>
     <string name="translate_page">Translate page</string>
     <string name="copy">Copy</string>
+    <string name="error_copied">Error details copied</string>
     <string name="ocr_recognizing">Recognizing…</string>
     <string name="ocr_no_text">No text detected.</string>
     <string name="translate_setup_required">Configure an AI provider in Settings → Reader → AI translation</string>
@@ -24,7 +25,8 @@
     <string name="ai_translation_summary">OCR + translate a page via your own LLM API (BYOK)</string>
     <string name="translate_enabled">Enable page translation</string>
     <string name="translate_enabled_summary">Beta — adds the translate &amp; extract-text actions in the reader</string>
-    <string name="translate_provider">Provider</string>
+	<string name="translate_provider">Provider</string>
+	<string name="translate_provider_summary">OpenAI-compatible and Gemini API settings are saved separately.</string>
     <string name="translate_endpoint">API endpoint</string>
     <string name="translate_api_key">API key</string>
     <string name="translate_model">Model</string>
@@ -152,9 +154,8 @@
     <string name="novel_show_original">Show original chapter</string>
     <string name="novel_translating">Translating chapter…</string>
     <string name="novel_translation_progress">Translating chapter: %1$d/%2$d</string>
+    <string name="translate_temporary_provider_error">Gemini returned HTTP %1$d. The app retried the request; wait and try again. If it keeps happening, copy the details and check your Gemini API model and project.</string>
     <string name="novel_source_settings">Source settings</string>
-    <string name="novel_reverse_reading_order">Reverse reading order</string>
-    <string name="novel_reverse_reading_order_summary">Reverse chapter navigation and continuous reading for all novels from this source. Your current position is kept.</string>
     <string name="novel_reverse_list_display">Reverse list display</string>
     <string name="novel_reading_mode">Reading mode</string>
     <string name="novel_mode_paged">Paged</string>
@@ -244,6 +245,8 @@
 	<string name="anilist_refresh_error">Could not refresh AniList; showing saved library: %1$s</string>
 	<string name="use_android_installed_extensions">Use Android-installed extensions</string>
 	<string name="use_android_installed_extensions_summary">Include extensions installed by Android/Mihon. Disable to use only app-private extensions.</string>
+	<string name="show_plugin_apk_handler">Show Kaisoku when opening extension files</string>
+	<string name="show_plugin_apk_handler_summary">Allow Kaisoku to appear in Android’s app chooser for extension APK and archive files.</string>
 	<string name="mihon_extension_errors">Extension loading errors</string>
 	<string name="mihon_extension_errors_summary">Show why an installed extension could not be loaded</string>
 	<string name="no_mihon_extension_errors">No extension loading errors were found.</string>
@@ -311,6 +314,9 @@
     <string name="text_clear_updates_feed_prompt">Clear all update history permanently?</string>
     <string name="check_for_new_chapters">Check for new chapters</string>
     <string name="reverse">Reverse</string>
+    <string name="reverse_chapters_global">Reverse chapter list</string>
+    <string name="reverse_chapters_for_source">Reverse reading order</string>
+    <string name="source_reverse_reading_order_summary">Reverse chapter navigation and continuous reading for all titles from this source. Your current position is kept.</string>
     <string name="chapters_grid_view">Grid view</string>
     <string name="sign_in">Sign in</string>
     <string name="auth_required">Sign in to view this content</string>
@@ -1409,4 +1415,6 @@
     <string name="reset_dns_image_proxy_summary">Disable DNS over HTTPS and image optimization proxy.</string>
 	<string name="adding_extension_repo">Adding repository…</string>
 	<string name="extension_repo_add_timeout">The repository did not respond in time. Please try again.</string>
+	<string name="extension_sources_hidden">Some extension sources are hidden</string>
+	<string name="extension_sources_hidden_summary">Disable NSFW is enabled in Settings → Sources. It also hides extensions marked as mixed-content, including MangaDex. Installed extensions still need to be enabled with + to appear in Explore.</string>
 </resources>

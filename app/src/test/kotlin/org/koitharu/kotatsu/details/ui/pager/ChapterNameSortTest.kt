@@ -5,6 +5,7 @@ import org.junit.Test
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
+import org.koitharu.kotatsu.reader.domain.itemsInReadingOrder
 
 class ChapterNameSortTest {
 
@@ -24,6 +25,27 @@ class ChapterNameSortTest {
 		val sorted = chapters.sortedWith(CHAPTER_NAME_COMPARATOR)
 
 		assertEquals(listOf(2f, 10f), sorted.map { it.chapter.number })
+	}
+
+	@Test
+	fun displayControlsRemainIndependentOfSourceReadingDirection() {
+		val chapters = listOf(item(10f, "Chapter 10"), item(1f, "Chapter 1"), item(2f, "Chapter 2"))
+		for (readingReversed in listOf(false, true)) {
+			val readingOrder = itemsInReadingOrder(chapters, readingReversed)
+			assertEquals(listOf(2f, 1f, 10f), chapters.orderChapterList(true, false).map { it.chapter.number })
+			assertEquals(listOf(10f, 1f, 2f), chapters.orderChapterList(false, false).map { it.chapter.number })
+			assertEquals(listOf(1f, 2f, 10f), chapters.orderChapterList(false, true).map { it.chapter.number })
+			assertEquals(listOf(10f, 2f, 1f), chapters.orderChapterList(true, true).map { it.chapter.number })
+			assertEquals(readingOrder, itemsInReadingOrder(chapters, readingReversed))
+		}
+	}
+
+	@Test
+	fun disablingNameSortRestoresTheOriginalSourceSequence() {
+		val chapters = listOf(item(10f, "Chapter 10"), item(2f, "Chapter 2"), item(1f, "Chapter 1"))
+		assertEquals(listOf(1f, 2f, 10f), chapters.orderChapterList(false, true).map { it.chapter.number })
+		assertEquals(listOf(10f, 2f, 1f), chapters.orderChapterList(false, false).map { it.chapter.number })
+		assertEquals(listOf(1f, 2f, 10f), chapters.orderChapterList(false, true).map { it.chapter.number })
 	}
 
 	private fun item(number: Float, title: String?) = ChapterListItem(

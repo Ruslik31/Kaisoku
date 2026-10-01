@@ -644,6 +644,11 @@ class ReaderActivity :
         viewModel.switchChapterBy(delta)
     }
 
+    fun setReadingOrderReversed(reversed: Boolean) {
+        viewModel.saveVisibleState(readerManager.currentReader?.getCurrentStateSnapshot())
+        viewModel.setReadingOrderReversed(reversed)
+    }
+
     override fun openMenu() {
         viewModel.saveVisibleState(readerManager.currentReader?.getCurrentStateSnapshot())
         val currentMode = readerManager.currentMode ?: return

@@ -1043,6 +1043,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_HISTORY_GROUPING = "history_grouping"
 		const val KEY_UPDATED_GROUPING = "updated_grouping"
 		const val KEY_PROGRESS_INDICATORS = "progress_indicators"
+		/** Global chapter-list display order, independent of source reading direction. */
 		const val KEY_REVERSE_CHAPTERS = "reverse_chapters"
 		const val KEY_GRID_VIEW_CHAPTERS = "grid_view_chapters"
 		const val KEY_INCOGNITO_NSFW = "incognito_nsfw"

@@ -43,14 +43,13 @@ class SourceSettingsFragment : BasePreferenceFragment(0), Preference.OnPreferenc
 		preferenceManager.sharedPreferencesName = SourceSettings.prefsName(viewModel.source)
 		addPreferencesFromResource(R.xml.pref_source)
 		addPreferencesFromRepository(viewModel.repository)
-		if (viewModel.source.name.startsWith("lnreader:")) {
-			preferenceScreen.addPreference(SwitchPreferenceCompat(requireContext()).apply {
-				key = SourceSettings.KEY_NOVEL_REVERSE_READING
-				setTitle(R.string.novel_reverse_reading_order)
-				setSummary(R.string.novel_reverse_reading_order_summary)
-				setDefaultValue(false)
-			})
-		}
+		val sourceSettings = SourceSettings(requireContext(), viewModel.source)
+		preferenceScreen.addPreference(SwitchPreferenceCompat(requireContext()).apply {
+			key = SourceSettings.KEY_REVERSE_READING_ORDER
+			setTitle(R.string.reverse_chapters_for_source)
+			setSummary(R.string.source_reverse_reading_order_summary)
+			setDefaultValue(sourceSettings.isReadingOrderReversed)
+		})
 		val isValidSource = viewModel.repository !is EmptyMangaRepository
 
 		findPreference<SwitchPreferenceCompat>(KEY_ENABLE)?.run {

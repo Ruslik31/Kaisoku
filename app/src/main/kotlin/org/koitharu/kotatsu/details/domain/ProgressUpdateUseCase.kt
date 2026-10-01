@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.details.domain
 
+import org.koitharu.kotatsu.reader.domain.readingOrderIndex
 import androidx.room.withTransaction
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.getPreferredBranch
@@ -55,15 +56,15 @@ class ProgressUpdateUseCase @Inject constructor(
 			return PROGRESS_NONE
 		}
 		val chapterIndex = chapters.indexOfFirst { x -> x.id == history.chapterId }
+		val readingIndex = readingOrderIndex(chapterIndex, chaptersCount, SourceSettings(context, seed.source).isReadingOrderReversed)
 		// Novel scroll stores a character ratio, not an image-page number.
 		val result = if (seed.source.name.startsWith(LnReaderMangaSource.NAME_PREFIX)) {
 			val ratio = org.koitharu.kotatsu.reader.ui.novel.novelProgressRatio(history.scroll.toInt())
-			val index = if (SourceSettings(context, seed.source).isNovelReadingReversed) chaptersCount - chapterIndex - 1 else chapterIndex
-			(index + ratio) / chaptersCount
+			(readingIndex + ratio) / chaptersCount
 		} else {
 			val pagesCount = chapterRepo.getPages(chapter).size
 			if (pagesCount == 0) return PROGRESS_NONE
-			calculateReaderPercent(chapterIndex, chaptersCount, history.page, pagesCount)
+			calculateReaderPercent(readingIndex, chaptersCount, history.page, pagesCount)
 		}
 		if (result != history.percent || history.chaptersCount != chaptersCount) {
 			updateHistoryIfUnchanged(

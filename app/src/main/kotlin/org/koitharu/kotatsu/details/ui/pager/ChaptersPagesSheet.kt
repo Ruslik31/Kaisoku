@@ -94,7 +94,9 @@ class ChaptersPagesSheet : BaseAdaptiveSheet<SheetChaptersPagesBinding>(),
 		binding.toolbar.addMenuProvider(menuProvider)
 
 		val menuInvalidator = MenuInvalidator(binding.toolbar)
-		viewModel.isChaptersReversed.observe(viewLifecycleOwner, menuInvalidator)
+		viewModel.isReadingOrderReversed.observe(viewLifecycleOwner, menuInvalidator)
+		viewModel.isChaptersSortedByName.observe(viewLifecycleOwner, menuInvalidator)
+		viewModel.isGlobalChaptersReversed.observe(viewLifecycleOwner, menuInvalidator)
 		viewModel.isChaptersInGridView.observe(viewLifecycleOwner, menuInvalidator)
 		viewModel.isDownloadedOnly.observe(viewLifecycleOwner, menuInvalidator)
 

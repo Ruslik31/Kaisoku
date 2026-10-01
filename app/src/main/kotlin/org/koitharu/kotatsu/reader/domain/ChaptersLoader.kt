@@ -77,6 +77,11 @@ class ChaptersLoader @Inject constructor(
 
 	fun peekChapter(chapterId: Long): MangaChapter? = chapters[chapterId]
 
+	/** Keep the visible chapter without fetching it again; old-direction preloads are discarded. */
+	suspend fun retainVisibleChapter(chapterId: Long, pages: List<ReaderPage>) = mutex.withLock {
+		chapterPages.retainVisibleChapter(chapterId, pages)
+	}
+
 	fun hasPages(chapterId: Long): Boolean {
 		return chapterId in chapterPages
 	}

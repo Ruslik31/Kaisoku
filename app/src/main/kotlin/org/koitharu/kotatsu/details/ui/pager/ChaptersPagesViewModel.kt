@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.details.ui.pager
 
+import org.koitharu.kotatsu.reader.domain.readingOrderIndex
 import android.app.Activity
+import android.content.Context
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -23,6 +25,7 @@ import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
 import org.koitharu.kotatsu.core.model.toChipModel
 import org.koitharu.kotatsu.core.util.AlphanumComparator
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.core.prefs.observeAsStateFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
@@ -59,7 +62,14 @@ internal val CHAPTER_NAME_COMPARATOR: Comparator<ChapterListItem> = Comparator {
 		?: left.chapter.number.compareTo(right.chapter.number)
 }
 
+/** Display ordering only: never feed this result into reader navigation. */
+internal fun List<ChapterListItem>.orderChapterList(reversed: Boolean, sortedByName: Boolean): List<ChapterListItem> {
+	val ordered = if (sortedByName) sortedWith(CHAPTER_NAME_COMPARATOR) else this
+	return if (reversed) ordered.asReversed() else ordered
+}
+
 abstract class ChaptersPagesViewModel(
+	private val appContext: Context,
 	@JvmField protected val settings: AppSettings,
 	@JvmField protected val interactor: DetailsInteractor,
 	private val bookmarksRepository: BookmarksRepository,
@@ -91,11 +101,22 @@ abstract class ChaptersPagesViewModel(
 		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
-	val isChaptersReversed = settings.observeAsStateFlow(
+	private val sourceReadingOrderReversed = mangaDetails
+		.map { it?.toManga()?.source }
+		.distinctUntilChanged()
+		.flatMapLatest { source ->
+			if (source == null) flowOf(false) else SourceSettings(appContext, source).observeReadingOrderReversed()
+		}
+
+	val isGlobalChaptersReversed = settings.observeAsStateFlow(
 		scope = viewModelScope + Dispatchers.Default,
 		key = AppSettings.KEY_REVERSE_CHAPTERS,
 		valueProducer = { isChaptersReverse },
 	)
+
+	// Reading direction is source-specific. The global reverse setting only orders the list.
+	val isReadingOrderReversed = sourceReadingOrderReversed
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
 	val isChaptersInGridView = settings.observeAsStateFlow(
 		scope = viewModelScope + Dispatchers.Default,
@@ -104,6 +125,7 @@ abstract class ChaptersPagesViewModel(
 	)
 
 	private val sortChaptersByName = MutableStateFlow(false)
+	val isChaptersSortedByName: StateFlow<Boolean> get() = sortChaptersByName
 
 	val isDownloadedOnly = MutableStateFlow(false)
 
@@ -156,16 +178,11 @@ abstract class ChaptersPagesViewModel(
 				isDownloadedOnly = downloadedOnly,
 			).orEmpty()
 		},
-		isChaptersReversed,
+		isGlobalChaptersReversed,
 		sortChaptersByName,
 		chaptersQuery,
 	) { list, reversed, sortedByName, query ->
-		val ordered = if (sortedByName) {
-			list.sortedWith(CHAPTER_NAME_COMPARATOR)
-		} else {
-			list
-		}
-		(if (reversed) ordered.asReversed() else ordered).filterSearch(query)
+		list.orderChapterList(reversed, sortedByName).filterSearch(query)
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
 	val quickFilter = combine(
@@ -197,15 +214,20 @@ abstract class ChaptersPagesViewModel(
 		}
 	}
 
-	fun setChaptersReversed(newValue: Boolean) {
-		settings.isChaptersReverse = newValue
+	open fun setReadingOrderReversed(newValue: Boolean) {
+		mangaDetails.value?.toManga()?.source?.let { source ->
+			SourceSettings(appContext, source).isReadingOrderReversed = newValue
+		}
+	}
+
+	protected fun isCurrentSourceChaptersReversed(): Boolean {
+		val source = mangaDetails.value?.toManga()?.source ?: return false
+		return SourceSettings(appContext, source).isReadingOrderReversed == true
 	}
 
 	fun setChaptersInGridView(newValue: Boolean) {
 		settings.isChaptersGridView = newValue
 	}
-
-	fun isChaptersSortedByName(): Boolean = sortChaptersByName.value
 
 	fun setChaptersSortedByName(newValue: Boolean) {
 		mangaDetails.value?.id?.let { settings.setChaptersSortedByName(it, newValue) }
@@ -230,7 +252,7 @@ abstract class ChaptersPagesViewModel(
 			val chapters = checkNotNull(manga.chapters[selectedBranch.value])
 			val chapterIndex = chapters.indexOfFirst { it.id == chapterId }
 			check(chapterIndex in chapters.indices) { "Chapter not found" }
-			val percent = chapterIndex / chapters.size.toFloat()
+			val percent = readingOrderIndex(chapterIndex, chapters.size, isCurrentSourceChaptersReversed()) / chapters.size.toFloat()
 			historyRepository.addOrUpdate(
 				manga = manga.toManga(),
 				chapterId = chapterId,

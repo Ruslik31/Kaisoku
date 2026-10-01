@@ -18,6 +18,7 @@ import org.koitharu.kotatsu.core.util.progress.IntPercentLabelFormatter
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.Companion.TAB_BOOKMARKS
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.Companion.TAB_CHAPTERS
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.Companion.TAB_PAGES
+import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import java.lang.ref.WeakReference
 
 class ChapterPagesMenuProvider(
@@ -40,8 +41,9 @@ class ChapterPagesMenuProvider(
 					(actionView as? SearchView)?.setupChaptersSearchView()
 				}
 				menu.findItem(R.id.action_search)?.isVisible = viewModel.emptyReason.value == null
-				menu.findItem(R.id.action_reversed)?.isChecked = viewModel.isChaptersReversed.value == true
-				menu.findItem(R.id.action_sort_by_name)?.isChecked = viewModel.isChaptersSortedByName()
+				menu.findItem(R.id.action_reverse_chapter_list)?.isChecked = viewModel.isGlobalChaptersReversed.value == true
+				menu.findItem(R.id.action_reverse_reading_order)?.isChecked = viewModel.isReadingOrderReversed.value
+				menu.findItem(R.id.action_sort_by_name)?.isChecked = viewModel.isChaptersSortedByName.value
 				menu.findItem(R.id.action_grid_view)?.isChecked = viewModel.isChaptersInGridView.value == true
 				menu.findItem(R.id.action_downloaded)?.let { menuItem ->
 					menuItem.isVisible = viewModel.mangaDetails.value?.local != null
@@ -60,13 +62,21 @@ class ChapterPagesMenuProvider(
 	}
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
-		R.id.action_reversed -> {
-			viewModel.setChaptersReversed(!menuItem.isChecked)
+		R.id.action_reverse_chapter_list -> {
+			settings.isChaptersReverse = !settings.isChaptersReverse
+			true
+		}
+
+		R.id.action_reverse_reading_order -> {
+			val reversed = !viewModel.isReadingOrderReversed.value
+			val reader = sheet.activity as? ReaderActivity
+			if (reader != null) reader.setReadingOrderReversed(reversed)
+			else viewModel.setReadingOrderReversed(reversed)
 			true
 		}
 
 		R.id.action_sort_by_name -> {
-			viewModel.setChaptersSortedByName(!menuItem.isChecked)
+			viewModel.setChaptersSortedByName(!viewModel.isChaptersSortedByName.value)
 			true
 		}
 

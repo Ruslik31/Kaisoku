@@ -13,6 +13,7 @@
     <string name="novel_reader_beta">Чтение новелл · Бета</string>
     <string name="lnreader_repositories_summary">Поиск и установка источников новелл. Чтение новелл — бета-функция.</string>
     <string name="translate_provider_google_lens">Google Объектив / Google Переводчик (без ключа)</string>
+    <string name="translate_provider_summary">Настройки API для OpenAI-совместимых сервисов и Gemini сохраняются отдельно.</string>
     <string name="novel_translation_settings">Настройки перевода</string>
     <string name="local_storage">Локальное хранилище</string>
     <string name="favourites">Избранное</string>
@@ -31,6 +32,7 @@
     <string name="chapter_d_of_d">Глава %1$d из %2$d</string>
     <string name="close">Закрыть</string>
     <string name="try_again">Повторить</string>
+    <string name="error_copied">Сведения об ошибке скопированы</string>
     <string name="clear_history">Очистить историю</string>
     <string name="nothing_found">Ничего не найдено</string>
     <string name="history_is_empty">Истории пока нет</string>
@@ -93,6 +95,7 @@
     <string name="switch_pages">Листание страниц</string>
     <string name="_continue">Продолжить</string>
     <string name="error">Ошибка</string>
+    <string name="translate_temporary_provider_error">Gemini вернул HTTP %1$d. Приложение повторило запрос; подождите и попробуйте снова. Если ошибка повторяется, скопируйте сведения и проверьте модель и проект Gemini API.</string>
     <string name="clear_thumbs_cache">Очистить кэш миниатюр</string>
     <string name="clear_search_history">Очистить историю поиска</string>
     <string name="search_history_cleared">Очищено</string>
@@ -184,13 +187,14 @@
     <string name="text_clear_updates_feed_prompt">Удалить всю историю обновлений навсегда\?</string>
     <string name="check_for_new_chapters">Проверка новых глав</string>
     <string name="reverse">В обратном порядке</string>
+    <string name="reverse_chapters_global">Обратный порядок списка глав</string>
+    <string name="reverse_chapters_for_source">Обратный порядок чтения</string>
+    <string name="source_reverse_reading_order_summary">Обратный порядок глав при переходах и непрерывном чтении всех произведений этого источника. Текущая позиция сохраняется.</string>
     <string name="novel_translate_chapter">Перевести главу</string>
     <string name="novel_show_original">Показать оригинал главы</string>
     <string name="novel_translating">Перевод главы…</string>
     <string name="novel_translation_progress">Перевод главы: %1$d/%2$d</string>
     <string name="novel_source_settings">Настройки источника</string>
-    <string name="novel_reverse_reading_order">Обратный порядок чтения</string>
-    <string name="novel_reverse_reading_order_summary">Обратный порядок глав при переходах и непрерывном чтении всех новелл этого источника. Текущая позиция сохранится.</string>
     <string name="novel_reverse_list_display">Обратный порядок списка</string>
     <string name="sign_in">Войти</string>
     <string name="auth_required">Авторизуйтесь, чтобы просмотреть этот контент</string>
@@ -927,6 +931,8 @@
     <string name="reset_dns_image_proxy_summary">Отключить DNS поверх HTTPS и прокси для оптимизации изображений.</string>
 	<string name="use_android_installed_extensions">Использовать расширения, установленные Android</string>
 	<string name="use_android_installed_extensions_summary">Учитывать расширения, установленные Android/Mihon. Отключите, чтобы использовать только расширения приложения.</string>
+	<string name="show_plugin_apk_handler">Показывать Kaisoku при открытии файлов расширений</string>
+	<string name="show_plugin_apk_handler_summary">Разрешить Kaisoku отображаться в меню Android для APK и архивов расширений.</string>
 	<string name="mihon_extension_errors">Ошибки загрузки расширений</string>
 	<string name="mihon_extension_errors_summary">Узнать, почему установленное расширение не загрузилось</string>
 	<string name="no_mihon_extension_errors">Ошибок загрузки расширений не обнаружено.</string>
@@ -945,4 +951,6 @@
 	<string name="anilist_refresh_error">Не удалось обновить AniList; показываем сохранённую библиотеку: %1$s</string>
 	<string name="adding_extension_repo">Добавление репозитория…</string>
 	<string name="extension_repo_add_timeout">Репозиторий не ответил вовремя. Попробуйте ещё раз.</string>
+	<string name="extension_sources_hidden">Некоторые источники расширений скрыты</string>
+	<string name="extension_sources_hidden_summary">В Настройках → Источники включено отключение NSFW. Оно также скрывает расширения со смешанным контентом, включая MangaDex. Чтобы установленный источник появился в Обзоре, включите его кнопкой +.</string>
 </resources>

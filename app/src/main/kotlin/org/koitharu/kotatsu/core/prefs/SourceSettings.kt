@@ -3,6 +3,9 @@ package org.koitharu.kotatsu.core.prefs
 import android.content.Context
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener
 import androidx.core.content.edit
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import org.koitharu.kotatsu.core.util.ext.getEnumValue
 import org.koitharu.kotatsu.core.util.ext.putEnumValue
 import org.koitharu.kotatsu.core.util.ext.sanitizeHeaderValue
@@ -48,6 +51,18 @@ class SourceSettings(context: Context, source: MangaSource) : MangaSourceConfig 
                 }
                 legacy.edit(commit = true) { clear() }
             }
+        if (!prefs.contains(KEY_REVERSE_READING_ORDER)) {
+            val legacyKeys = if (source.name.startsWith("lnreader:")) {
+                listOf(KEY_NOVEL_REVERSE_READING, KEY_CHAPTERS_REVERSE)
+            } else {
+                listOf(KEY_CHAPTERS_REVERSE)
+            }
+            legacyKeys.firstOrNull(prefs::contains)?.let { key ->
+                prefs.edit(commit = true) {
+                    putBoolean(KEY_REVERSE_READING_ORDER, prefs.getBoolean(key, false))
+                }
+            }
+        }
     }
 
 	var defaultSortOrder: SortOrder?
@@ -57,9 +72,18 @@ class SourceSettings(context: Context, source: MangaSource) : MangaSourceConfig 
 	val isSlowdownEnabled: Boolean
 		get() = prefs.getBoolean(KEY_SLOWDOWN, false)
 
-	var isNovelReadingReversed: Boolean
-		get() = prefs.getBoolean(KEY_NOVEL_REVERSE_READING, false)
-		set(value) = prefs.edit { putBoolean(KEY_NOVEL_REVERSE_READING, value) }
+	var isReadingOrderReversed: Boolean
+		get() = prefs.getBoolean(KEY_REVERSE_READING_ORDER, false)
+		set(value) = prefs.edit { putBoolean(KEY_REVERSE_READING_ORDER, value) }
+
+	fun observeReadingOrderReversed(): Flow<Boolean> = callbackFlow {
+		val listener = OnSharedPreferenceChangeListener { _, key ->
+			if (key == KEY_REVERSE_READING_ORDER) trySend(isReadingOrderReversed)
+		}
+		prefs.registerOnSharedPreferenceChangeListener(listener)
+		trySend(isReadingOrderReversed)
+		awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+	}
 
 	val isCaptchaNotificationsDisabled: Boolean
 		get() = prefs.getBoolean(KEY_NO_CAPTCHA, false)
@@ -117,6 +141,8 @@ class SourceSettings(context: Context, source: MangaSource) : MangaSourceConfig 
 		const val KEY_SLOWDOWN = "slowdown"
 		const val KEY_SORT_ORDER = "sort_order"
 		const val KEY_NOVEL_REVERSE_READING = "novel_reverse_reading"
+		const val KEY_REVERSE_READING_ORDER = "reverse_reading_order"
+		const val KEY_CHAPTERS_REVERSE = "chapters_reverse_override"
 
         fun prefsName(source: MangaSource): String {
             return source.name.substringAfter(':').replace(File.separatorChar, '$')

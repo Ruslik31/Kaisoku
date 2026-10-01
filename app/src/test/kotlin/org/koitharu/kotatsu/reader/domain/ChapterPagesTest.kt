@@ -67,6 +67,33 @@ class ChapterPagesTest {
 		assertEquals(subList.size, pages.size(2L))
 	}
 
+	@Test
+	fun changingDirectionRetainsVisiblePagesAndDiscardsOldPreloads() {
+		val pages = ChapterPages()
+		val visible = List(12) { page(2L).copy(index = it) }
+		pages.addLast(1L, List(3) { page(1L) })
+		pages.addLast(2L, visible)
+		pages.addLast(3L, List(4) { page(3L) })
+		val anchor = visible[8]
+		pages.retainVisibleChapter(2L, visible)
+		assertEquals(1, pages.chaptersSize)
+		assertEquals(visible, pages.toList())
+		assertEquals(anchor, pages[8])
+		// In reversed reading, chapter 1 now follows chapter 2 and can be preloaded again.
+		assertTrue(pages.addLast(1L, List(3) { page(1L) }))
+		assertEquals(anchor, pages[8])
+	}
+
+	@Test
+	fun directionChangeUsesVisibleSnapshotAfterInterruptedLoadChangedBuffer() {
+		val pages = ChapterPages()
+		val visible = List(12) { page(2L).copy(index = it) }
+		pages.addLast(3L, List(4) { page(3L) })
+		pages.retainVisibleChapter(2L, visible)
+		assertEquals(visible, pages.subList(2L))
+		assertEquals(0, pages.size(3L))
+	}
+
 	private fun page(chapterId: Long) = ReaderPage(
 		id = Random.nextLong(),
 		url = "http://localhost",

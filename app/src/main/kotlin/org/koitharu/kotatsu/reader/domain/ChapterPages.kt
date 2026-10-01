@@ -62,6 +62,15 @@ class ChapterPages private constructor(private val pages: ArrayDeque<ReaderPage>
 		pages.clear()
 	}
 
+	/** Use the visible snapshot even if an interrupted preload already changed this buffer. */
+	@Synchronized
+	fun retainVisibleChapter(chapterId: Long, visiblePages: List<ReaderPage>) {
+		require(visiblePages.isNotEmpty() && visiblePages.all { it.chapterId == chapterId })
+		val snapshot = visiblePages.toList()
+		clear()
+		addLast(chapterId, snapshot)
+	}
+
 	fun size(id: Long) = indices[id]?.run {
 		endInclusive - start + 1
 	} ?: 0

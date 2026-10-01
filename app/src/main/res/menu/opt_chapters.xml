@@ -21,10 +21,17 @@
 		app:showAsAction="never" />
 
 	<item
-		android:id="@+id/action_reversed"
+		android:id="@+id/action_reverse_chapter_list"
 		android:checkable="true"
 		android:orderInCategory="20"
-		android:title="@string/reverse"
+		android:title="@string/reverse_chapters_global"
+		app:showAsAction="never" />
+
+	<item
+		android:id="@+id/action_reverse_reading_order"
+		android:checkable="true"
+		android:orderInCategory="21"
+		android:title="@string/reverse_chapters_for_source"
 		app:showAsAction="never" />
 
 	<item

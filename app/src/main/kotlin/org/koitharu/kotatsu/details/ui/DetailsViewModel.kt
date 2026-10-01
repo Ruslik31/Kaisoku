@@ -1,8 +1,10 @@
 package org.koitharu.kotatsu.details.ui
 
+import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,6 +61,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DetailsViewModel @Inject constructor(
+	@ApplicationContext context: Context,
 	private val historyRepository: HistoryRepository,
 	bookmarksRepository: BookmarksRepository,
 	settings: AppSettings,
@@ -75,6 +78,7 @@ class DetailsViewModel @Inject constructor(
 	private val readingTimeUseCase: ReadingTimeUseCase,
 	statsRepository: StatsRepository,
 ) : ChaptersPagesViewModel(
+	appContext = context,
 	settings = settings,
 	interactor = interactor,
 	bookmarksRepository = bookmarksRepository,

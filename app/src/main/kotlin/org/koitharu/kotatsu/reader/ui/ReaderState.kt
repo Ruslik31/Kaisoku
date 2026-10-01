@@ -18,9 +18,10 @@ data class ReaderState(
 		scroll = history.scroll,
 	)
 
-	constructor(manga: Manga, branch: String?) : this(
+	constructor(manga: Manga, branch: String?, reversed: Boolean = false) : this(
 		chapterId = manga.chapters?.let {
-			it.firstOrNull { x -> x.branch == branch } ?: it.firstOrNull()
+			val ordered = if (reversed) it.asReversed() else it
+			ordered.firstOrNull { x -> x.branch == branch } ?: ordered.firstOrNull()
 		}?.id ?: error("Cannot find first chapter"),
 		page = 0,
 		scroll = 0,

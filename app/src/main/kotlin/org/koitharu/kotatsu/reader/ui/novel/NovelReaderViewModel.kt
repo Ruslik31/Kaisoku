@@ -149,7 +149,7 @@ class NovelReaderViewModel @Inject constructor(
 			val requested: ReaderState? = this@NovelReaderViewModel.requestedState?.takeIf { s ->
 				chapters.value.any { it.id == s.chapterId }
 			}
-			val reversed = readingSource.value?.let { SourceSettings(appContext, it).isNovelReadingReversed } ?: false
+			val reversed = readingSource.value?.let { SourceSettings(appContext, it).isReadingOrderReversed } ?: false
 			val sequence = novelReadingSequence(chapters.value, reversed, requested?.chapterId ?: history?.chapterId)
 			isReadingReversed.value = reversed
 			chapters.value = sequence.chapters
@@ -234,7 +234,7 @@ class NovelReaderViewModel @Inject constructor(
 	fun configuredReadingReversed(): Boolean? {
 		// Initial loading applies the preference after it has resolved the complete sequence.
 		if (chapterRequest.value == null) return null
-		return readingSource.value?.let { SourceSettings(appContext, it).isNovelReadingReversed }
+		return readingSource.value?.let { SourceSettings(appContext, it).isReadingOrderReversed }
 	}
 
 	suspend fun loadChapterHtml(index: Int): String? {

@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.reader.ui
 
+import org.koitharu.kotatsu.reader.domain.readingOrderIndex
+import android.content.Context
 import android.net.Uri
 import androidx.annotation.AnyThread
 import androidx.annotation.MainThread
@@ -7,9 +9,11 @@ import androidx.annotation.WorkerThread
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -102,7 +106,8 @@ internal fun calculateReaderPercent(
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
-    private val savedStateHandle: SavedStateHandle,
+	@ApplicationContext private val context: Context,
+	private val savedStateHandle: SavedStateHandle,
     private val dataRepository: MangaDataRepository,
     private val historyRepository: HistoryRepository,
     private val bookmarksRepository: BookmarksRepository,
@@ -122,7 +127,8 @@ class ReaderViewModel @Inject constructor(
     downloadScheduler: DownloadWorker.Scheduler,
     readerSettingsProducerFactory: ReaderSettings.Producer.Factory,
 ) : ChaptersPagesViewModel(
-    settings = settings,
+	appContext = context,
+	settings = settings,
     interactor = interactor,
     bookmarksRepository = bookmarksRepository,
     historyRepository = historyRepository,
@@ -134,6 +140,7 @@ class ReaderViewModel @Inject constructor(
 
     private var loadingJob: Job? = null
     private var preloadJob: Job? = null
+    private var preloadGroup = SupervisorJob(viewModelScope.coroutineContext[Job])
     private var pageSaveJob: Job? = null
     private var bookmarkJob: Job? = null
     private var stateChangeJob: Job? = null
@@ -249,6 +256,16 @@ class ReaderViewModel @Inject constructor(
     init {
         initIncognitoMode()
         loadImpl()
+        launchJob {
+            var previousOrder = isCurrentSourceChaptersReversed()
+            isReadingOrderReversed.collect { reversed ->
+                if (previousOrder != reversed) {
+                    applyReadingOrderChange()
+                }
+                previousOrder = reversed
+                uiState.update { it?.copy(chaptersReversed = reversed) }
+            }
+        }
         launchJob(Dispatchers.Default) {
             val mangaId = manga.filterNotNull().first().id
             if (!isIncognitoMode.firstNotNull()) {
@@ -574,6 +591,41 @@ class ReaderViewModel @Inject constructor(
     }
 
     @MainThread
+    private fun applyReadingOrderChange() {
+        val state = getCurrentState() ?: return
+        val visiblePages = content.value.pages.filter { it.chapterId == state.chapterId }
+        if (visiblePages.none { it.index == state.page }) return
+        navCursor.settle(state.chapterId)
+        stateChangeJob?.cancel()
+        val previousLoad = loadingJob
+        previousLoad?.cancel()
+        val previousPreload = synchronized(contentStateLock) {
+            stateRevision++
+            pendingReaderReplacement = PendingReaderReplacement(
+                id = ++nextReaderReplacementId,
+                state = state,
+                restoreExistingReader = true,
+            )
+            cancelPreloads()
+        }
+        loadingJob = launchLoadingJob(Dispatchers.Default) {
+            previousLoad?.cancelAndJoin()
+            previousPreload.join()
+            chaptersLoader.retainVisibleChapter(state.chapterId, visiblePages)
+            synchronized(contentStateLock) {
+                ensureActive()
+                readingState.value = state
+                pendingReaderReplacement = PendingReaderReplacement(
+                    id = ++nextReaderReplacementId,
+                    state = state,
+                    restoreExistingReader = true,
+                )
+                publishContentLocked(ReaderContent(chaptersLoader.snapshot(), state))
+            }
+        }
+    }
+
+    @MainThread
     fun switchChapterBy(delta: Int) {
         if (delta == 0) {
             // Reload the current chapter in place, keeping the page/scroll position.
@@ -587,7 +639,7 @@ class ReaderViewModel @Inject constructor(
         // chapter mid load, which made rapid presses misfire (no advance / jump to chapter start /
         // wrong direction). The cursor chains presses deterministically.
         val allChapters = mangaDetails.value?.allChapters ?: return
-        val allChapterIds = itemsInReadingOrder(allChapters, settings.isChaptersReverse).map { it.id }
+        val allChapterIds = itemsInReadingOrder(allChapters, isCurrentSourceChaptersReversed()).map { it.id }
         val targetId = navCursor.resolveRelative(
             allChapterIds = allChapterIds,
             liveChapterId = readingState.value?.chapterId,
@@ -600,10 +652,18 @@ class ReaderViewModel @Inject constructor(
     private fun launchChapterSwitch(chapterId: Long, page: Int, scroll: Int) {
         stateChangeJob?.cancel()
         val prevJob = loadingJob
+        val prevPreload = cancelPreloads()
+        // Explicit navigation supersedes a direction-change anchor, including rapid button presses.
+        synchronized(contentStateLock) {
+            stateRevision++
+            pendingReaderReplacement = null
+        }
         loadingJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
+            prevPreload.join()
             replaceContent(ReaderContent(emptyList(), null))
             chaptersLoader.loadSingleChapter(chapterId)
+            ensureActive()
             val newState = ReaderState(chapterId, page, scroll)
             replaceContent(ReaderContent(chaptersLoader.snapshot(), newState))
             saveCurrentState(newState)
@@ -877,17 +937,32 @@ class ReaderViewModel @Inject constructor(
 
     @AnyThread
     private fun loadPrevNextChapter(currentId: Long, isNext: Boolean) {
-        val prevJob = preloadJob
-        preloadJob = launchLoadingJob(Dispatchers.Default) {
-            prevJob?.join()
-            chaptersLoader.loadPrevNextChapter(
-                mangaDetails.requireValue(),
-                currentId,
-                isNext,
-                reversed = settings.isChaptersReverse,
-            )
-            replaceContent(ReaderContent(chaptersLoader.snapshot(), null))
+        synchronized(contentStateLock) {
+            if (pendingReaderReplacement != null) return
+            val prevJob = preloadJob
+            preloadJob = launchLoadingJob(Dispatchers.Default + preloadGroup) {
+                prevJob?.join()
+                chaptersLoader.loadPrevNextChapter(
+                    mangaDetails.requireValue(),
+                    currentId,
+                    isNext,
+                    reversed = isCurrentSourceChaptersReversed(),
+                )
+                synchronized(contentStateLock) {
+                    ensureActive()
+                    replaceContent(ReaderContent(chaptersLoader.snapshot(), null))
+                }
+            }
         }
+    }
+
+    /** Cancel queued requests as well as the request currently fetching pages. */
+    private fun cancelPreloads(): Job = synchronized(contentStateLock) {
+        val previousGroup = preloadGroup
+        previousGroup.cancel()
+        preloadGroup = SupervisorJob(viewModelScope.coroutineContext[Job])
+        preloadJob = null
+        previousGroup
     }
 
     private fun replaceContent(newContent: ReaderContent) {
@@ -949,7 +1024,7 @@ class ReaderViewModel @Inject constructor(
             percent = computePercent(state.chapterId, state.page),
             incognito = isIncognitoMode.value == true,
             scrollProgress = lastScrollProgress,
-            chaptersReversed = settings.isChaptersReverse,
+            chaptersReversed = isCurrentSourceChaptersReversed(),
         )
         uiState.value = newState
         if (isIncognitoMode.value == false) {
@@ -967,7 +1042,7 @@ class ReaderViewModel @Inject constructor(
         if (chaptersCount == 0 || pagesCount == 0) {
             return PROGRESS_NONE
         }
-        return calculateReaderPercent(chapterIndex, chaptersCount, pageIndex, pagesCount)
+        return calculateReaderPercent(readingOrderIndex(chapterIndex, chaptersCount, isCurrentSourceChaptersReversed()), chaptersCount, pageIndex, pagesCount)
     }
 
     private fun observeIsWebtoonZoomEnabled() = settings.observeAsFlow(
@@ -1030,7 +1105,7 @@ class ReaderViewModel @Inject constructor(
                 if (chapter.branch == requestedBranch) {
                     ReaderState(history)
                 } else {
-                    ReaderState(manga, requestedBranch)
+                    ReaderState(manga, requestedBranch, org.koitharu.kotatsu.core.prefs.SourceSettings(context, manga.source).isReadingOrderReversed)
                 }
             } else {
                 ReaderState(history)
@@ -1039,7 +1114,7 @@ class ReaderViewModel @Inject constructor(
 
         // start from beginning
         val preferredBranch = requestedBranch ?: manga.getPreferredBranch(null)
-        return ReaderState(manga, preferredBranch)
+        return ReaderState(manga, preferredBranch, org.koitharu.kotatsu.core.prefs.SourceSettings(context, manga.source).isReadingOrderReversed)
     }
 
     private fun Exception.mergeWith(other: Exception?): Exception = if (other == null) {
