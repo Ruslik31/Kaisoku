@@ -1,0 +1,2 @@
+Restore Mihon extension compatibility.
+Update Lunar reader validation.
