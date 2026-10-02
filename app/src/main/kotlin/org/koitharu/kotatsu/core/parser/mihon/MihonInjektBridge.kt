@@ -68,7 +68,7 @@ class MihonInjektBridge @Inject constructor(
 				addSingleton(typeReference(Application::class.java), application)
 				addSingleton(typeReference(Context::class.java), applicationContext)
 				addSingleton(typeReference(NetworkHelper::class.java), networkHelper)
-				addSingleton(typeReference(OkHttpClient::class.java), httpClient)
+				addSingleton(typeReference(OkHttpClient::class.java), networkHelper.client)
 				addSingleton(typeReference(CookieJar::class.java), cookieJar)
 				addSingleton(typeReference(Json::class.java), json)
 				addSingleton(typeReference(StringFormat::class.java), json)

@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.core.parser.mihon
 
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.interceptor.UncaughtExceptionInterceptor
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
@@ -18,6 +19,7 @@ class MihonNetworkHelper(
 ) : NetworkHelper() {
 
 	override val client: OkHttpClient = httpClient.newBuilder()
+		.apply { interceptors().add(0, UncaughtExceptionInterceptor()) }
 		.addInterceptor(MihonCloudFlareInterceptor())
 		.build()
 
