@@ -32,6 +32,20 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Tune Gradle for CI
+        # Overrides the project's gradle.properties from the user home, so upstream files stay
+        # untouched. R8 on the release build spent ~10 of ~16 minutes with a 4 GB heap; the
+        # runner has 16 GB. Kotlin compiles inside the Gradle daemon so two JVMs do not compete
+        # for memory, and the build cache lets unchanged tasks come from the restored Gradle cache.
+        run: |
+          mkdir -p ~/.gradle
+          cat >> ~/.gradle/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx10g -XX:+UseParallelGC -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          kotlin.compiler.execution.strategy=in-process
+          org.gradle.caching=true
+          org.gradle.parallel=true
+          EOF
+
       - name: Create local.properties
         env:
           TG_TOKEN: ${{ secrets.TG_BACKUP_BOT_TOKEN }}
