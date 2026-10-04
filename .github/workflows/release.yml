@@ -84,7 +84,8 @@ jobs:
           if [ -f "$RUNNER_TEMP/keystore.jks" ]; then
             export KEYSTORE_FILE="$RUNNER_TEMP/keystore.jks"
           fi
-          ./gradlew :app:assembleRelease
+          # lintVital runs alongside R8 and competes with it for the runner's 4 cores.
+          ./gradlew :app:assembleRelease -x lintVitalRelease
 
       - name: Prepare named release APK
         id: tag
