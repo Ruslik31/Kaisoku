@@ -825,13 +825,14 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getBoolean(KEY_DISCORD_RPC_SKIP_NSFW, false)
 
 	/** One of [DISCORD_STATUS_ONLINE], [DISCORD_STATUS_IDLE], [DISCORD_STATUS_DND], [DISCORD_STATUS_INVISIBLE] */
-	val discordRpcStatus: String
+	var discordRpcStatus: String
 		get() = prefs.getString(KEY_DISCORD_RPC_STATUS, null)
 			?: if (prefs.getBoolean(KEY_DISCORD_RPC_INVISIBLE_LEGACY, false)) {
 				DISCORD_STATUS_INVISIBLE
 			} else {
 				DISCORD_STATUS_ONLINE
 			}
+		set(value) = prefs.edit { putString(KEY_DISCORD_RPC_STATUS, value) }
 
 	val isDiscordRpcInvisible: Boolean
 		get() = discordRpcStatus == DISCORD_STATUS_INVISIBLE
