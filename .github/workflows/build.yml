@@ -47,6 +47,18 @@ jobs:
             echo "tg_backup_bot_token=$TG_TOKEN" >> local.properties
           fi
 
+      - name: Mark experimental version
+        # Pushes to this fork build the fork's own code, which carries changes upstream does not
+        # have, so those builds get an "-experimental" version name. Builds dispatched from
+        # upstream keep upstream's version name.
+        if: github.event_name == 'push' && github.ref_type == 'branch'
+        run: |
+          BASE=$(sed -n "s/^[[:space:]]*versionName = '\(.*\)'.*/\1/p" app/build.gradle)
+          VERSION="${BASE}-experimental-${GITHUB_SHA::7}"
+          sed -i "s/versionName = '${BASE}'/versionName = '${VERSION}'/" app/build.gradle
+          echo "EXPERIMENTAL_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "Version name: ${VERSION}"
+
       - name: Unit tests
         run: ./gradlew testDebugUnitTest
 
@@ -72,6 +84,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Kaisoku-debug
+          name: Kaisoku-debug${{ env.EXPERIMENTAL_VERSION && format('-{0}', env.EXPERIMENTAL_VERSION) || '' }}
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

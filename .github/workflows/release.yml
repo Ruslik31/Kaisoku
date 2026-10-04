@@ -3,6 +3,11 @@ name: Release
 on:
   push:
     tags: ["*"]
+    branches: [unstable]
+    paths-ignore:
+      - "**.md"
+      - LICENSE
+      - .github/screenshots/**
   repository_dispatch:
     types: [source_pushed]
   workflow_dispatch:
@@ -11,6 +16,9 @@ jobs:
   android:
     name: Android Release Build
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,6 +41,18 @@ jobs:
             echo "tg_backup_bot_token=$TG_TOKEN" >> local.properties
           fi
 
+      - name: Mark experimental version
+        # Pushes to this fork build the fork's own code, which carries changes upstream does not
+        # have, so those builds get an "-experimental" version name. Builds dispatched from
+        # upstream keep upstream's version name.
+        if: github.event_name == 'push' && github.ref_type == 'branch'
+        run: |
+          BASE=$(sed -n "s/^[[:space:]]*versionName = '\(.*\)'.*/\1/p" app/build.gradle)
+          VERSION="${BASE}-experimental-${GITHUB_SHA::7}"
+          sed -i "s/versionName = '${BASE}'/versionName = '${VERSION}'/" app/build.gradle
+          echo "EXPERIMENTAL_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "Version name: ${VERSION}"
+
       - name: Decode keystore
         env:
           KEYSTORE: ${{ secrets.KEYSTORE }}
@@ -53,10 +73,19 @@ jobs:
           ./gradlew :app:assembleRelease
 
       - name: Prepare named release APK
+        id: tag
         run: |
-          TAG="${{ github.event.release.tag_name || github.ref_name }}"
-          if [[ "$TAG" != v* ]]; then
-            TAG="v${TAG}"
+          if [ -n "$EXPERIMENTAL_VERSION" ]; then
+            TAG="v${EXPERIMENTAL_VERSION}"
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            TAG="${{ github.event.release.tag_name || github.ref_name }}"
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            if [[ "$TAG" != v* ]]; then
+              TAG="v${TAG}"
+            fi
           fi
           mkdir -p artifacts
           for apk in app/build/outputs/apk/release/*.apk; do
@@ -87,6 +116,8 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
+          tag_name: ${{ needs.android.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ needs.android.outputs.prerelease == 'true' }}
           files: |
             artifacts/*.apk
