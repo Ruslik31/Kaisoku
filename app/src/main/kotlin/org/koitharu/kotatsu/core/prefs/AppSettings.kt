@@ -824,6 +824,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val isDiscordRpcSkipNsfw: Boolean
 		get() = prefs.getBoolean(KEY_DISCORD_RPC_SKIP_NSFW, false)
 
+	val isDiscordRpcInvisible: Boolean
+		get() = prefs.getBoolean(KEY_DISCORD_RPC_INVISIBLE, false)
+
 	var discordToken: String?
 		get() = prefs.getString(KEY_DISCORD_TOKEN, null)?.trim()?.nullIfEmpty()
 		set(value) = prefs.edit { putString(KEY_DISCORD_TOKEN, value?.nullIfEmpty()) }
@@ -1205,6 +1208,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_MANGA_LIST_BADGES = "manga_list_badges"
 		const val KEY_DISCORD_RPC = "discord_rpc"
 		const val KEY_DISCORD_RPC_SKIP_NSFW = "discord_rpc_skip_nsfw"
+		const val KEY_DISCORD_RPC_INVISIBLE = "discord_rpc_invisible"
 		const val KEY_DISCORD_TOKEN = "discord_token"
 		const val KEY_DISCORD_RPC_OAUTH = "discord_rpc_oauth"
 		const val KEY_DISCORD_OAUTH_BROWSER = "discord_oauth_browser"

@@ -884,6 +884,8 @@
     <string name="reading_s">Чтение %s</string>
     <string name="read_on_s">Читать дальше %s</string>
     <string name="rpc_skip_nsfw_summary">Не использовать RPC для контента для взрослых</string>
+    <string name="discord_rpc_invisible">Невидимка</string>
+    <string name="discord_rpc_invisible_summary">Показываться не в сети с Kaisoku и скрывать активность. Время активности продолжает идти и снова появится после отключения невидимки</string>
     <string name="invalid_token">Недействительный токен: %s</string>
     <string name="show_floating_control_button">Показать плавающую кнопку управления</string>
     <string name="unavailable">Недоступно</string>

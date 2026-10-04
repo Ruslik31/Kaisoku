@@ -1228,6 +1228,8 @@
     <string name="read_on_s">Read on %s</string>
     <string name="discord_rpc_open_in_s">Open in %s</string>
     <string name="rpc_skip_nsfw_summary">Do not use RPC for adult content</string>
+    <string name="discord_rpc_invisible">Invisible</string>
+    <string name="discord_rpc_invisible_summary">Appear offline from Kaisoku and hide the activity. The elapsed time keeps counting and shows again when invisible is turned off</string>
     <string name="invalid_token">Invalid token: %s</string>
     <string name="show_floating_control_button">Show floating control button</string>
     <string name="autoscroll_hold_boost">Hold to speed up</string>

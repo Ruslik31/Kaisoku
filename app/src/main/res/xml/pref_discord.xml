@@ -34,6 +34,13 @@
 		android:title="@string/discord_oauth_browser" />
 
 	<SwitchPreferenceCompat
+		android:defaultValue="false"
+		android:dependency="discord_rpc"
+		android:key="discord_rpc_invisible"
+		android:summary="@string/discord_rpc_invisible_summary"
+		android:title="@string/discord_rpc_invisible" />
+
+	<SwitchPreferenceCompat
 		android:dependency="discord_rpc"
 		android:key="discord_rpc_skip_nsfw"
 		android:summary="@string/rpc_skip_nsfw_summary"
