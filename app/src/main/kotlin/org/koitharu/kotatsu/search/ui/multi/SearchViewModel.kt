@@ -7,13 +7,13 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
@@ -25,7 +25,6 @@ import org.koitharu.kotatsu.core.model.UnknownMangaSource
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.ui.BaseViewModel
-import org.koitharu.kotatsu.core.util.ext.append
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.toLocale
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
@@ -44,6 +43,7 @@ import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.search.domain.SearchKind
 import org.koitharu.kotatsu.search.domain.SearchV2Helper
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
 private const val MAX_PARALLELISM = 4
@@ -68,6 +68,8 @@ class SearchViewModel @Inject constructor(
 	private val results = MutableStateFlow<List<SearchResultsListModel>>(emptyList())
 
 	private var searchJob: Job? = null
+	private var continuationJob: Job? = null
+	private val searchGeneration = AtomicLong()
 
 	val list: StateFlow<List<ListModel>> = combine(
 		results,
@@ -117,7 +119,9 @@ class SearchViewModel @Inject constructor(
 	}
 
 	fun retry() {
+		searchGeneration.incrementAndGet()
 		searchJob?.cancel()
+		continuationJob?.cancel()
 		results.value = emptyList()
 		includeDisabledSources.value = false
 		doSearch()
@@ -150,10 +154,13 @@ class SearchViewModel @Inject constructor(
 			return
 		}
 		val prevJob = searchJob
-		searchJob = launchLoadingJob(Dispatchers.Default) {
-			includeDisabledSources.value = true
+		val generation = searchGeneration.get()
+		val searchQuery = query
+		val searchPinnedOnly = pinnedOnly.value
+		includeDisabledSources.value = true
+		continuationJob = launchLoadingJob(Dispatchers.Default) {
 			prevJob?.join()
-			val sources = if (pinnedOnly.value) {
+			val sources = if (searchPinnedOnly) {
 				emptyList()
 			} else {
 				sourcesRepository.getDisabledSources()
@@ -163,7 +170,7 @@ class SearchViewModel @Inject constructor(
 			sources.map { source ->
 				launch {
 					semaphore.withPermit {
-						appendResult(searchSource(source))
+						appendResult(searchSource(source, searchQuery), generation)
 					}
 				}
 			}.joinAll()
@@ -171,33 +178,40 @@ class SearchViewModel @Inject constructor(
 	}
 
 	private fun doSearch() {
-		val prevJob = searchJob
+		val previousJobs = listOfNotNull(searchJob, continuationJob)
+		continuationJob = null
+		val generation = searchGeneration.incrementAndGet()
+		val searchQuery = query
+		val searchPinnedOnly = pinnedOnly.value
 		searchJob = launchLoadingJob(Dispatchers.Default) {
-			prevJob?.cancelAndJoin()
-			appendResult(searchHistory())
-			appendResult(searchFavorites())
-			appendResult(searchLocal())
-			val sources = if (pinnedOnly.value) {
-				sourcesRepository.getPinnedSources().toList()
-			} else {
-				sourcesRepository.getEnabledSources()
-			}
-			val semaphore = Semaphore(MAX_PARALLELISM)
-			sources.map { source ->
-				launch {
-					semaphore.withPermit {
-						appendResult(searchSource(source))
-					}
-				}
-			}.joinAll()
+			cancelSearchTasks(previousJobs)
+			runSearchTasks(
+				localTasks = listOf(
+					{ appendResult(searchHistory(searchQuery), generation) },
+					{ appendResult(searchFavorites(searchQuery), generation) },
+					{ appendResult(searchLocal(searchQuery), generation) },
+				),
+				remoteTasks = {
+					val sources = if (searchPinnedOnly) sourcesRepository.getPinnedSources().toList()
+					else sourcesRepository.getEnabledSources()
+					val semaphore = Semaphore(MAX_PARALLELISM)
+					sources.map { source ->
+						launch {
+							semaphore.withPermit {
+								appendResult(searchSource(source, searchQuery), generation)
+							}
+						}
+					}.joinAll()
+				},
+			)
 		}
 	}
 
 	// impl
 
-	private suspend fun searchSource(source: MangaSource): SearchResultsListModel? = runCatchingCancellable {
+	private suspend fun searchSource(source: MangaSource, searchQuery: String): SearchResultsListModel? = runCatchingCancellable {
 		val searchHelper = searchHelperFactory.create(source)
-		searchHelper(query, kind)
+		searchHelper(searchQuery, kind)
 	}.fold(
 		onSuccess = { result ->
 			if (result == null || result.manga.isEmpty()) {
@@ -227,8 +241,8 @@ class SearchViewModel @Inject constructor(
 		},
 	)
 
-	private suspend fun searchHistory(): SearchResultsListModel? = runCatchingCancellable {
-		historyRepository.search(query, kind, Int.MAX_VALUE)
+	private suspend fun searchHistory(searchQuery: String): SearchResultsListModel? = runCatchingCancellable {
+		historyRepository.search(searchQuery, kind, Int.MAX_VALUE)
 	}.fold(
 		onSuccess = { result ->
 			if (result.isNotEmpty()) {
@@ -256,8 +270,8 @@ class SearchViewModel @Inject constructor(
 		},
 	)
 
-	private suspend fun searchFavorites(): SearchResultsListModel? = runCatchingCancellable {
-		favouritesRepository.search(query, kind, Int.MAX_VALUE)
+	private suspend fun searchFavorites(searchQuery: String): SearchResultsListModel? = runCatchingCancellable {
+		favouritesRepository.search(searchQuery, kind, Int.MAX_VALUE)
 	}.fold(
 		onSuccess = { result ->
 			if (result.isNotEmpty()) {
@@ -289,8 +303,8 @@ class SearchViewModel @Inject constructor(
 		},
 	)
 
-	private suspend fun searchLocal(): SearchResultsListModel? = runCatchingCancellable {
-		searchHelperFactory.create(LocalMangaSource).invoke(query, kind)
+	private suspend fun searchLocal(searchQuery: String): SearchResultsListModel? = runCatchingCancellable {
+		searchHelperFactory.create(LocalMangaSource).invoke(searchQuery, kind)
 	}.fold(
 		onSuccess = { result ->
 			if (!result?.manga.isNullOrEmpty()) {
@@ -322,9 +336,9 @@ class SearchViewModel @Inject constructor(
 		},
 	)
 
-	private fun appendResult(item: SearchResultsListModel?) {
+	private fun appendResult(item: SearchResultsListModel?, generation: Long) {
 		if (item != null) {
-			results.append(item)
+			results.update { list -> if (generation == searchGeneration.get()) list + item else list }
 		}
 	}
 
