@@ -26,16 +26,16 @@ class SourceSettings(context: Context, source: MangaSource) : MangaSourceConfig 
     )
 
     init {
-        val newName = prefsName(source)
-        listOf(source.name, "plugin.jar:$newName")
-            .filter { it != newName }
+        legacyPrefsNames(source)
             .forEach { legacyName ->
                 val legacy = context.getSharedPreferences(legacyName, Context.MODE_PRIVATE)
                 if (legacy.all.isEmpty()) {
                     return@forEach
                 }
                 prefs.edit(commit = true) {
-                    legacy.all.forEach { (key, value) ->
+                    legacy.all.forEach entry@{ (key, value) ->
+                        // A legacy file must not revert a newer selection in the current file.
+                        if (prefs.contains(key)) return@entry
                         when (value) {
                             is String -> putString(key, value)
                             is Boolean -> putBoolean(key, value)
@@ -146,6 +146,15 @@ class SourceSettings(context: Context, source: MangaSource) : MangaSourceConfig 
 
         fun prefsName(source: MangaSource): String {
             return source.name.substringAfter(':').replace(File.separatorChar, '$')
+        }
+
+        internal fun legacyPrefsNames(source: MangaSource): List<String> {
+            val currentName = prefsName(source)
+            // Mihon IDs contain a slash. Android never allowed those raw IDs as preference
+            // filenames, so there cannot be a valid legacy file under that name to migrate.
+            return listOf(source.name, "plugin.jar:$currentName")
+                .filter { it != currentName && File.separatorChar !in it && '\u0000' !in it }
+                .distinct()
         }
 	}
 }

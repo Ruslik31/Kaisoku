@@ -25,6 +25,27 @@ import org.koitharu.kotatsu.settings.sources.ExtensionLanguageFilter
 import java.util.UUID
 
 class RepairPreferencesTest {
+    @Test fun mihonSourceSettingsOpenAndPersistWithoutIllegalLegacyPaths() = isolated { context ->
+        for (sourceId in listOf("elftoon/3896703921896511395", "ehentai/123")) {
+            val source = org.koitharu.kotatsu.core.model.MangaSource("mihon:eu.kanade.tachiyomi.extension.$sourceId")
+            val settings = org.koitharu.kotatsu.core.prefs.SourceSettings(context, source)
+            settings.isReadingOrderReversed = true
+            assertTrue(org.koitharu.kotatsu.core.prefs.SourceSettings(context, source).isReadingOrderReversed)
+        }
+    }
+
+    @Test fun legacyFileMigrationPreservesCurrentSettings() = isolated { context ->
+        val source = org.koitharu.kotatsu.core.model.MangaSource("source:migration-current")
+        context.getSharedPreferences(source.name, Context.MODE_PRIVATE).edit()
+            .putBoolean("reverse_reading_order", true).putBoolean("slowdown", true).commit()
+        context.getSharedPreferences(org.koitharu.kotatsu.core.prefs.SourceSettings.prefsName(source), Context.MODE_PRIVATE)
+            .edit().putBoolean("reverse_reading_order", false).commit()
+        val settings = org.koitharu.kotatsu.core.prefs.SourceSettings(context, source)
+        assertFalse(settings.isReadingOrderReversed)
+        assertTrue(settings.isSlowdownEnabled)
+        assertTrue(context.getSharedPreferences(source.name, Context.MODE_PRIVATE).all.isEmpty())
+    }
+
     @Test fun privateArchiveAlwaysUsesItsActualPath() {
         val info = android.content.pm.ApplicationInfo()
         for (oldPath in listOf(null, "", "/old/location/extension.apk")) {
