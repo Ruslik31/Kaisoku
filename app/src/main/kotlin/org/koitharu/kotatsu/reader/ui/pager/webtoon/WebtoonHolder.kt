@@ -74,6 +74,12 @@ class WebtoonHolder internal constructor(
 		super.onStateChanged(state)
 	}
 
+	override fun onAnimatedImageShown(width: Int, height: Int) {
+		boundPageKey?.let { key ->
+			pageSizeCache.put(key, width, height)
+		}
+	}
+
 	override fun onReady() {
 		binding.ssiv.colorFilter = settings.colorFilter?.toColorFilter()
 		boundPageKey?.let { key ->
