@@ -106,6 +106,12 @@
 		android:summary="@string/reader_optimize_summary"
 		android:title="@string/reader_optimize" />
 
+	<SwitchPreferenceCompat
+		android:defaultValue="true"
+		android:key="reader_animated_pages"
+		android:summary="@string/reader_animated_pages_summary"
+		android:title="@string/reader_animated_pages" />
+
 	<Preference
 		android:persistent="false"
 		android:key="reader_upscale"
