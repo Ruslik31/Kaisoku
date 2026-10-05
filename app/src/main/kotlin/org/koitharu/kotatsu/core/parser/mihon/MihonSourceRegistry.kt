@@ -15,10 +15,18 @@ object MihonSourceRegistry {
 	private val pageDefinitions = ConcurrentHashMap<String, Page>()
 	private val defaultReferers = ConcurrentHashMap<String, String>()
 
+    @Synchronized
 	fun register(sourceInstance: Any, source: MangaSource, defaultReferer: String?) {
 		sources[sourceInstance] = source
 		(source as? MihonMangaSource)?.let {
-			definitions[it.name] = it
+            val previous = definitions.put(it.name, it)
+            if (previous !== it) {
+                clearPages(it.name)
+                defaultReferers.remove(it.name)
+                synchronized(sources) {
+                    sources.entries.removeAll { entry -> entry.value.name == it.name && entry.key !== sourceInstance }
+                }
+            }
 		}
 		if (!defaultReferer.isNullOrBlank()) {
 			defaultReferers[source.name] = defaultReferer
@@ -44,7 +52,9 @@ object MihonSourceRegistry {
 		}
 	}
 
+    @Synchronized
 	fun rememberPageHeaders(source: MangaSource, pageUrl: String, headers: Headers) {
+        if (definitions[source.name] !== source) return
 		if (headers.size == 0) {
 			return
 		}
@@ -55,7 +65,9 @@ object MihonSourceRegistry {
 		return pageHeaders[key(source, pageUrl)]
 	}
 
+    @Synchronized
 	fun rememberPage(source: MangaSource, pageUrl: String, page: Page) {
+        if (definitions[source.name] !== source) return
 		pageDefinitions[key(source, pageUrl)] = page
 	}
 
@@ -64,6 +76,23 @@ object MihonSourceRegistry {
 	}
 
 	fun getDefaultReferer(source: MangaSource): String? = defaultReferers[source.name]
+
+    @Synchronized
+    internal fun retainSources(names: Set<String>) {
+        definitions.keys.retainAll(names)
+        defaultReferers.keys.retainAll(names)
+        pageHeaders.keys.removeAll { it.substringBefore('\u0000') !in names }
+        pageDefinitions.keys.removeAll { it.substringBefore('\u0000') !in names }
+        synchronized(sources) {
+            sources.entries.removeAll { it.value.name !in names }
+        }
+    }
+
+    private fun clearPages(name: String) {
+        val prefix = name + '\u0000'
+        pageHeaders.keys.removeAll { it.startsWith(prefix) }
+        pageDefinitions.keys.removeAll { it.startsWith(prefix) }
+    }
 
 	private fun key(source: MangaSource, pageUrl: String): String = source.name + '\u0000' + pageUrl
 }

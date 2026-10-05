@@ -8,6 +8,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import org.koitharu.kotatsu.core.parser.mihon.MihonExtensionPackageUtil
 import org.koitharu.kotatsu.core.parser.mihon.MihonInstalledExtensionPackage
 import org.koitharu.kotatsu.core.util.ext.subdir
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -15,6 +16,7 @@ import javax.inject.Singleton
 @Singleton
 class MihonPrivateExtensionStore @Inject constructor(
 	@ApplicationContext private val context: Context,
+    private val settings: AppSettings,
 ) {
 
 	private val pm
@@ -71,9 +73,9 @@ class MihonPrivateExtensionStore @Inject constructor(
 		val privatePkg = findInstalledPackage(pkgName)?.let {
 			MihonInstalledExtensionPackage(it, isPrivate = true)
 		}
-		val sharedPkg = MihonExtensionPackageUtil.getPackageInfoOrNull(pm, pkgName)
+		val sharedPkg = if (settings.useAndroidInstalledExtensions) MihonExtensionPackageUtil.getPackageInfoOrNull(pm, pkgName)
 			?.takeIf(MihonExtensionPackageUtil::isMihonExtension)
-			?.let { MihonInstalledExtensionPackage(it, isPrivate = false) }
+			?.let { MihonInstalledExtensionPackage(it, isPrivate = false) } else null
 		return MihonExtensionPackageUtil.selectPreferred(sharedPkg, privatePkg)
 	}
 

@@ -1,10 +1,14 @@
 package org.koitharu.kotatsu.core.parser.mihon
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.util.Log
+import androidx.core.content.pm.PackageInfoCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -14,6 +18,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.getCopyableErrorDetails
 import javax.inject.Inject
 import javax.inject.Singleton
+import java.io.File
 
 @Singleton
 class MihonExtensionManager @Inject constructor(
@@ -34,6 +39,13 @@ class MihonExtensionManager @Inject constructor(
 	private var cachedFailures: List<String> = emptyList()
 	@Volatile
 	private var scanSummary: String = ""
+    private data class CachedPackage(
+        val sources: List<LoadedSource>,
+        val preferences: List<Pair<SharedPreferences, Map<String, *>>>,
+    ) {
+        fun isConfigurationCurrent(): Boolean = preferences.all { (prefs, snapshot) -> prefs.all == snapshot }
+    }
+    private val packageCache = MihonPackageCache<CachedPackage>()
 
 	@Synchronized
 	fun invalidate() {
@@ -50,6 +62,16 @@ class MihonExtensionManager @Inject constructor(
 		return ensureLoaded().firstOrNull { it.wrapper.matches(source) }
 	}
 
+    @Synchronized
+    fun isRelevantPackageChange(packageName: String): Boolean {
+        if (!settings.useAndroidInstalledExtensions) return false
+        if (packageCache.contains(packageName) || cachedSources?.any { it.wrapper.packageName == packageName } == true) {
+            return true
+        }
+        return MihonExtensionPackageUtil.getPackageInfoOrNull(context.packageManager, packageName)
+            ?.let(MihonExtensionPackageUtil::isMihonExtension) == true
+    }
+
 	private fun ensureLoaded(): List<LoadedSource> {
 		cachedSources?.let { return it }
 		synchronized(this) {
@@ -63,58 +85,61 @@ class MihonExtensionManager @Inject constructor(
 		}
 	}
 
-	private fun loadInstalledSources(): List<LoadedSource> {
-		val pm = context.packageManager
-		val sharedPackages = if (settings.useAndroidInstalledExtensions) {
-			MihonExtensionPackageUtil.getInstalledPackages(pm)
-				.asSequence()
-				.map { MihonInstalledExtensionPackage(it, isPrivate = false) }
-		} else {
-			emptySequence()
-		}
-		val privateScan = privateExtensionStore.scanInstalledPackages()
-		val extensionPackages = (
-			sharedPackages +
-			privateScan.packages
-				.asSequence()
-				.map { MihonInstalledExtensionPackage(it, isPrivate = true) }
-			)
-			.filter { extensionPackage ->
-				val pkgInfo = if (extensionPackage.isPrivate) {
-					extensionPackage.packageInfo
-				} else {
-					MihonExtensionPackageUtil.refreshPackageInfoIfNeeded(pm, extensionPackage.packageInfo)
-				}
-				val isExtension = MihonExtensionPackageUtil.isMihonExtension(pkgInfo)
-				if (isExtension) {
-					Log.w(
-						TAG,
-						"Found ${if (extensionPackage.isPrivate) "private" else "shared"} Mihon extension candidate ${pkgInfo.packageName}",
-					)
-				}
-				isExtension
-			}
-			.groupBy { it.packageInfo.packageName }
-			.mapNotNull { (_, packages) ->
-				MihonExtensionPackageUtil.selectPreferred(
-					shared = packages.firstOrNull { !it.isPrivate },
-					private = packages.firstOrNull { it.isPrivate },
-				)
-			}
-			.toList()
-		Log.w(TAG, "Scanning ${extensionPackages.size} Mihon extension packages")
-		val failures = ArrayList(privateScan.failures)
-		val sources = extensionPackages
-			.asSequence()
-			.flatMap { loadSourcesFromPackage(pm, it, failures).asSequence() }
-			.sortedBy { it.wrapper.displayName?.lowercase() ?: it.wrapper.packageName.lowercase() }
-			.toList()
-		cachedFailures = failures
-		scanSummary = "Private APKs: ${privateScan.archiveCount}; recognized private packages: ${privateScan.packages.size}; " +
-			"selected packages: ${extensionPackages.size}; loaded sources: ${sources.size}; " +
-			"Android-installed extensions: ${settings.useAndroidInstalledExtensions}"
-		return sources
-	}
+    private fun loadInstalledSources(): List<LoadedSource> {
+        val pm = context.packageManager
+        val sharedPackages = if (settings.useAndroidInstalledExtensions) {
+            MihonExtensionPackageUtil.getInstalledPackages(pm)
+                .asSequence()
+                .map { MihonInstalledExtensionPackage(it, isPrivate = false) }
+        } else {
+            emptySequence()
+        }
+        val privateScan = privateExtensionStore.scanInstalledPackages()
+        val extensionPackages = (
+            sharedPackages +
+            privateScan.packages
+                .asSequence()
+                .map { MihonInstalledExtensionPackage(it, isPrivate = true) }
+            )
+            .filter { extensionPackage ->
+                val pkgInfo = if (extensionPackage.isPrivate) {
+                    extensionPackage.packageInfo
+                } else {
+                    MihonExtensionPackageUtil.refreshPackageInfoIfNeeded(pm, extensionPackage.packageInfo)
+                }
+                val isExtension = MihonExtensionPackageUtil.isMihonExtension(pkgInfo)
+                if (isExtension) {
+                    Log.w(
+                        TAG,
+                        "Found ${if (extensionPackage.isPrivate) "private" else "shared"} Mihon extension candidate ${pkgInfo.packageName}",
+                    )
+                }
+                isExtension
+            }
+            .groupBy { it.packageInfo.packageName }
+            .mapNotNull { (_, packages) ->
+                MihonExtensionPackageUtil.selectPreferred(
+                    shared = packages.firstOrNull { !it.isPrivate },
+                    private = packages.firstOrNull { it.isPrivate },
+                )
+            }
+            .toList()
+        Log.w(TAG, "Scanning ${extensionPackages.size} Mihon extension packages")
+        val failures = ArrayList(privateScan.failures)
+        val sources = extensionPackages
+            .asSequence()
+            .flatMap { loadSourcesFromPackage(pm, it, failures).asSequence() }
+            .sortedBy { it.wrapper.displayName?.lowercase() ?: it.wrapper.packageName.lowercase() }
+            .toList()
+        // Prune after both install modes have been combined, never once per mode.
+        packageCache.retainPackages(extensionPackages.mapTo(HashSet()) { it.packageInfo.packageName })
+        MihonSourceRegistry.retainSources(sources.mapTo(HashSet()) { it.wrapper.name })
+        cachedFailures = failures
+        scanSummary = "Private APKs: ${privateScan.archiveCount}; recognized private packages: ${privateScan.packages.size}; " +
+            "selected packages: ${extensionPackages.size}; loaded sources: ${sources.size}; " +
+            "Android-installed extensions: ${settings.useAndroidInstalledExtensions}"
+        return sources
+    }
 
 	private fun loadSourcesFromPackage(
 		pm: PackageManager,
@@ -127,6 +152,7 @@ class MihonExtensionManager @Inject constructor(
 			MihonExtensionPackageUtil.refreshPackageInfoIfNeeded(pm, extensionPackage.packageInfo)
 		}
 		fun reportFailure(reason: String): List<LoadedSource> {
+            packageCache.remove(completeInfo.packageName)
 			failures += "${completeInfo.packageName} ${completeInfo.versionName ?: "unknown version"}: $reason"
 			return emptyList()
 		}
@@ -142,6 +168,22 @@ class MihonExtensionManager @Inject constructor(
 			return reportFailure("unsupported extension library $libVersion")
 		}
 		return runCatching {
+            val identity = MihonPackageIdentity(
+                packageName = completeInfo.packageName,
+                apkPath = apkPath,
+                isPrivate = extensionPackage.isPrivate,
+                versionCode = PackageInfoCompat.getLongVersionCode(completeInfo),
+                versionName = completeInfo.versionName,
+                entryClass = sourceClassName,
+                nativeLibraryPath = appInfo.nativeLibraryDir,
+                libVersion = libVersion,
+                isNsfw = MihonExtensionPackageUtil.readNsfwFlag(metaData),
+                signatures = MihonExtensionPackageUtil.getSignatures(completeInfo).orEmpty().sorted(),
+                apkDigest = MihonPackageCache.fingerprint(File(apkPath)),
+            )
+            packageCache.get(identity)?.takeIf { it.isConfigurationCurrent() }?.let {
+                return@runCatching it.sources
+            }
 			Log.w(
 				TAG,
 				"Loading ${if (extensionPackage.isPrivate) "private" else "shared"} Mihon extension package ${completeInfo.packageName} from $apkPath",
@@ -213,11 +255,28 @@ class MihonExtensionManager @Inject constructor(
 				)
 			}
 			if (loadedSources.isEmpty()) {
+                packageCache.remove(completeInfo.packageName)
 				failures += "${completeInfo.packageName} ${completeInfo.versionName ?: "unknown version"}: " +
 					"extension loaded but did not expose catalogue sources"
 			}
+            // E-Hentai bakes external forum WebView cookies into lazy host/header fields.
+            // APK and source preferences alone cannot establish that its session is unchanged.
+            if (loadedSources.isNotEmpty() && !completeInfo.packageName.endsWith(".ehentai")) {
+                val preferences = runCatching {
+                    loadedSources.mapNotNull { loaded ->
+                        (loaded.catalogueSource as? ConfigurableSource)?.getSourcePreferences()?.let { it to it.all }
+                    }
+                }
+                preferences.onSuccess { packageCache.put(identity, CachedPackage(loadedSources, it)) }
+                    .onFailure {
+                        if (it is CancellationException || it is InterruptedException) throw it
+                        packageCache.remove(completeInfo.packageName)
+                    }
+            }
 			loadedSources
 		}.onFailure {
+            if (it is InterruptedException || it is CancellationException) throw it
+            packageCache.remove(completeInfo.packageName)
 			Log.w(TAG, "Failed to load ${completeInfo.packageName}", it)
 			failures += "${completeInfo.packageName} ${completeInfo.versionName ?: "unknown version"}: " +
 				it.getCopyableErrorDetails()

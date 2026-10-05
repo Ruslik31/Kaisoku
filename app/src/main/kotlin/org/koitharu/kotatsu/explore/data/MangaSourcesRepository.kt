@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -782,6 +783,16 @@ class MangaSourcesRepository @Inject constructor(
 			awaitClose { context.unregisterReceiver(receiver) }
 		}.onStart {
 			emit(null)
+        }.filter { intent ->
+            when {
+                intent == null -> true
+                intent.action == MihonPrivateExtensionStore.ACTION_PRIVATE_EXTENSIONS_CHANGED -> true
+                intent.action == Intent.ACTION_PACKAGE_REMOVED &&
+                    intent.getBooleanExtra(Intent.EXTRA_REPLACING, false) -> false
+                else -> intent.data?.schemeSpecificPart?.let { name ->
+                    runInterruptible(Dispatchers.IO) { mihonExtensionManager.isRelevantPackageChange(name) }
+                } == true
+            }
 		}.map {
 			if (it != null) {
 				mihonExtensionManager.invalidate()
