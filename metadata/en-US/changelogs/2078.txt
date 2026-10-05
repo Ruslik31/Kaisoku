@@ -1,0 +1,6 @@
+Improve Google Drive synchronization.
+Repair Mihon loading and reader requests.
+Improve search and recommendations.
+Add novel speech and media controls.
+Update sources and add catalogs.
+Add Discord presence status choices.
