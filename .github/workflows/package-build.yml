@@ -1,0 +1,72 @@
+name: Package Build
+
+# One-off build of the latest experimental release under a separate package name,
+# so it installs next to the regular app.
+on:
+  push:
+    branches: [claude/project-thread-0ucebk]
+
+jobs:
+  android:
+    name: Android Release Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Tune Gradle for CI
+        run: |
+          mkdir -p ~/.gradle
+          cat >> ~/.gradle/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx10g -XX:+UseParallelGC -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          kotlin.compiler.execution.strategy=in-process
+          org.gradle.caching=true
+          org.gradle.parallel=true
+          EOF
+
+      - name: Create local.properties
+        env:
+          TG_TOKEN: ${{ secrets.TG_BACKUP_BOT_TOKEN }}
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          if [ -n "$TG_TOKEN" ]; then
+            echo "tg_backup_bot_token=$TG_TOKEN" >> local.properties
+          fi
+
+      - name: Decode keystore
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+        run: |
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | tr -d '\r\n ' | base64 -d > "$RUNNER_TEMP/keystore.jks"
+          fi
+
+      - name: Assemble signed release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -f "$RUNNER_TEMP/keystore.jks" ]; then
+            export KEYSTORE_FILE="$RUNNER_TEMP/keystore.jks"
+          fi
+          ./gradlew :app:assembleRelease
+          mkdir -p artifacts
+          cp app/build/outputs/apk/release/*.apk artifacts/kaisoku-v9.8.6-beta5-experimental-fcf99f6-ruslik31.apk
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ruslik31-package-fcf99f6
+          name: ruslik31-package-fcf99f6 (temporary)
+          body: One-off build of v9.8.6-beta5-experimental-fcf99f6 with package io.github.glitch228.kaisoku.ruslik31. Safe to delete.
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          files: artifacts/*.apk

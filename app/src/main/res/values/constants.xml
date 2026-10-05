@@ -12,7 +12,7 @@
 	<string name="wallet_btc" translatable="false">bc1qnjk6n8jcgmpwdzgtwk3q0k08mysr503fsx8m32</string>
 	<string name="url_error_report" translatable="false">https://github.com/glitch-228/Kaisoku/issues/new/choose</string>
 	<string name="acra_report_url" translatable="false"></string>
-	<string name="account_type_sync" translatable="false">io.github.glitch228.kaisoku.sync</string>
+	<string name="account_type_sync" translatable="false">io.github.glitch228.kaisoku.ruslik31.sync</string>
 	<string name="github_updates_repo" translatable="false">glitch-228/Kaisoku</string>
 	<string name="shikimori_clientId" translatable="false">Mw6F0tPEOgyV7F9U9Twg50Q8SndMY7hzIOfXg0AX_XU</string>
 	<string name="shikimori_clientSecret" translatable="false">euBMt1GGRSDpVIFQVPxZrO7Kh6X4gWyv0dABuj4B-M8</string>
@@ -24,8 +24,8 @@
 	<string name="kitsu_clientSecret" translatable="false">54d7307928f63414defd96399fc31ba847961ceaecef3a5fd93144e960c0e151</string>
 	<string name="acra_login" translatable="false"></string>
 	<string name="acra_password" translatable="false"></string>
-	<string name="sync_authority_history" translatable="false">io.github.glitch228.kaisoku.history</string>
-	<string name="sync_authority_favourites" translatable="false">io.github.glitch228.kaisoku.favourites</string>
+	<string name="sync_authority_history" translatable="false">io.github.glitch228.kaisoku.ruslik31.history</string>
+	<string name="sync_authority_favourites" translatable="false">io.github.glitch228.kaisoku.ruslik31.favourites</string>
 	<string name="tg_backup_bot_name" translatable="false">kotatsu_backup_bot</string>
 	<string name="discord_app_id" translatable="false">1542501820180598816</string>
 	<string name="app_icon_url" translatable="false">https://raw.githubusercontent.com/glitch-228/Kaisoku/refs/heads/devel/metadata/en-US/images/icon.png</string>
