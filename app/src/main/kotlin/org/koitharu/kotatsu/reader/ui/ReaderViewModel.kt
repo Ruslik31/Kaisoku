@@ -835,6 +835,7 @@ class ReaderViewModel @Inject constructor(
 
     fun setIncognitoMode(value: Boolean, dontAskAgain: Boolean) {
         isIncognitoMode.value = value
+        if (value) discordRpc.clearRpc()
         if (dontAskAgain) {
             settings.incognitoModeForNsfw = if (value) TriStateOption.ENABLED else TriStateOption.DISABLED
         }
