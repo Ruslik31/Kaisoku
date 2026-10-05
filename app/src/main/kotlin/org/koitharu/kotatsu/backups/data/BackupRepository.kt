@@ -45,6 +45,8 @@ import org.koitharu.kotatsu.filter.data.PersistableFilter
 import org.koitharu.kotatsu.filter.data.SavedFiltersRepository
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.data.TapGridSettings
+import org.koitharu.kotatsu.sync.drive.DriveReplicaCodec.readBounded
+import org.koitharu.kotatsu.sync.drive.DriveReplicaJournal
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.File
@@ -76,6 +78,7 @@ class BackupRepository @Inject constructor(
         output: ZipOutputStream,
         progress: FlowCollector<Progress>?,
 		sections: Set<BackupSection> = BackupSection.entries.toSet(),
+        includeCustomCovers: Boolean = false,
     ) {
         output.setLevel(java.util.zip.Deflater.BEST_COMPRESSION)
         progress?.emit(Progress.INDETERMINATE)
@@ -96,7 +99,7 @@ class BackupRepository @Inject constructor(
 
                 BackupSection.CATEGORIES -> output.writeJsonArray(
                     section = BackupSection.CATEGORIES,
-					data = database.getFavouriteCategoriesDao().dump().asFlow().map { CategoryBackup(it) },
+					data = database.getFavouriteCategoriesDao().dump().asFlow().map { CategoryBackup(it, categorySyncUid(it.categoryId)) },
                     serializer = serializer(),
                 )
 
@@ -141,8 +144,13 @@ class BackupRepository @Inject constructor(
                 )
 
                 BackupSection.SAVED_FILTERS -> {
-                    val sources = mangaSourcesRepository.getEnabledSources()
-                    val filters = sources.flatMap { source ->
+                    val sources = mangaSourcesRepository.getEnabledSources().let {
+                        if (includeCustomCovers) (it + mangaSourcesRepository.getDisabledSources()).distinctBy { s -> s.name } else it
+                    }
+                    val filters = sources.filter { source ->
+                        !includeCustomCovers || File(context.applicationInfo.dataDir,
+                            "shared_prefs/${source.name.replace(File.separatorChar, '$')}.xml").isFile
+                    }.flatMap { source ->
                         savedFiltersRepository.getAll(source)
                     }
                     output.writeJsonArray(
@@ -156,7 +164,8 @@ class BackupRepository @Inject constructor(
 					section = BackupSection.MANGA_PREFERENCES,
 					data = database.getPreferencesDao().dump().asFlow().map { prefs ->
 						val manga = checkNotNull(database.getMangaDao().find(prefs.mangaId))
-						MangaPreferencesBackup(manga, prefs).withoutCustomCover()
+						if (includeCustomCovers) backupCustomCover(MangaPreferencesBackup(manga, prefs))
+                        else MangaPreferencesBackup(manga, prefs).withoutCustomCover()
 					},
 					serializer = serializer(),
 				)
@@ -181,6 +190,7 @@ class BackupRepository @Inject constructor(
 		isMerge: Boolean = false,
 		replaceSections: Set<BackupSection> = emptySet(),
 		preserveSettingsKeys: Set<String> = emptySet(),
+        authoritativeRecords: Boolean = false,
     ): CompositeResult {
         progress?.emit(Progress.INDETERMINATE)
         var commonProgress = Progress(0, sections.size)
@@ -196,13 +206,13 @@ class BackupRepository @Inject constructor(
                         upsertManga(it.manga)
 						val incoming = it.toEntity()
 						val existing = getHistoryDao().findForRestore(incoming.mangaId)
-						if (!isMerge || existing == null || incoming.eventTimestamp > existing.eventTimestamp) {
+						if (authoritativeRecords || !isMerge || existing == null || incoming.eventTimestamp > existing.eventTimestamp) {
 							getHistoryDao().restore(incoming)
 						}
                     }
 
                     BackupSection.CATEGORIES -> input.readJsonArray<CategoryBackup>(serializer()).restoreToDb {
-						restoreCategory(it, isMerge, categoryIdRemap)
+						restoreCategory(it, isMerge && !authoritativeRecords, categoryIdRemap)
                     }
 
                     BackupSection.FAVOURITES -> input.readJsonArray<FavouriteBackup>(serializer()).restoreToDb {
@@ -210,13 +220,13 @@ class BackupRepository @Inject constructor(
 						val categoryId = categoryIdRemap[it.categoryId] ?: it.categoryId
 						val incoming = it.toEntity(categoryId)
 						val existing = getFavouritesDao().findForRestore(incoming.mangaId, incoming.categoryId)
-						if (!isMerge || existing == null || incoming.eventTimestamp > existing.eventTimestamp) {
+						if (authoritativeRecords || !isMerge || existing == null || incoming.eventTimestamp > existing.eventTimestamp) {
 							getFavouritesDao().upsert(incoming)
 						}
                     }
 
 					BackupSection.SETTINGS -> input.readMap().let {
-						settings.upsertAll(it.filterKeys { key -> key !in SensitiveBackupKeys.values && key !in preserveSettingsKeys }, isMerge)
+						settings.upsertAll(it.filterKeys { key -> !SensitiveBackupKeys.isSensitive(key) && key !in preserveSettingsKeys }, isMerge)
                         CompositeResult.success()
                     }
 
@@ -334,7 +344,7 @@ class BackupRepository @Inject constructor(
 
 	private fun dumpSettings(): String {
 		val map = settings.getAllValues().toMutableMap()
-		map.keys.removeAll(SensitiveBackupKeys.values)
+		map.keys.removeAll(SensitiveBackupKeys::isSensitive)
 		return JSONObject(map).toString()
     }
 
@@ -342,14 +352,39 @@ class BackupRepository @Inject constructor(
         return JSONObject(tapGridSettings.getAllValues()).toString()
     }
 
+    private fun categorySyncUid(id: Int): String? = database.openHelper.readableDatabase.query(
+        "SELECT uid FROM ${DriveReplicaJournal.CATEGORIES} WHERE category_id=?", arrayOf(id),
+    ).use { if (it.moveToFirst()) it.getString(0) else null }
+
+    private fun restoreCategorySyncUid(id: Int, uid: String?) {
+        if (uid != null && uid.isNotEmpty()) database.openHelper.writableDatabase.execSQL(
+            "INSERT OR REPLACE INTO ${DriveReplicaJournal.CATEGORIES}(category_id,uid) VALUES(?,?)", arrayOf(id, uid),
+        )
+    }
+
+    private fun backupCustomCover(backup: MangaPreferencesBackup): MangaPreferencesBackup {
+        val uri = backup.coverOverride?.let(Uri::parse) ?: return backup
+        if (uri.scheme != "file" && uri.scheme != "content") return backup
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBounded(MAX_CUSTOM_COVER_BYTES) }
+            ?: return backup.copy(coverOverride = null)
+        check(bytes.size in 1..MAX_CUSTOM_COVER_BYTES) { "Custom cover exceeds Google Drive size limit" }
+        val extension = uri.lastPathSegment?.substringAfterLast('.', "")
+            ?.takeIf { it.matches(Regex("[a-zA-Z0-9]{1,8}")) }
+        return backup.copy(coverOverride = null, coverData = Base64.getEncoder().encodeToString(bytes),
+            coverExtension = extension)
+    }
+
 	private fun restoreCustomCover(backup: MangaPreferencesBackup): String? {
 		val data = backup.coverData ?: return backup.coverOverride
+		if (data.length > MAX_CUSTOM_COVER_BYTES * 4 / 3 + 4) return backup.coverOverride
 		val bytes = runCatching { Base64.getDecoder().decode(data) }.getOrNull() ?: return backup.coverOverride
 		if (bytes.size !in 1..MAX_CUSTOM_COVER_BYTES) return backup.coverOverride
 		val dir = context.getExternalFilesDir("covers") ?: return backup.coverOverride
 		val suffix = backup.coverExtension?.takeIf { it.matches(Regex("[a-zA-Z0-9]{1,8}")) }
 			?.let { ".$it" }.orEmpty()
-		val file = File(dir, "sync-${backup.manga.id}$suffix")
+		val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+        val file = File(dir, "sync-${backup.manga.id}-$hash$suffix")
 		file.writeBytes(bytes)
 		return Uri.fromFile(file).toString()
 	}
@@ -360,32 +395,34 @@ class BackupRepository @Inject constructor(
         getMangaDao().upsert(manga.toEntity(), tags)
     }
 
-	private suspend fun MangaDatabase.restoreCategory(
-		backup: CategoryBackup,
-		isMerge: Boolean,
-		categoryIdRemap: MutableMap<Long, Long>,
-	) {
-		val dao = getFavouriteCategoriesDao()
-		if (!isMerge) {
-			dao.upsert(backup.toEntity())
-			categoryIdRemap[backup.categoryId.toLong()] = backup.categoryId.toLong()
-			return
-		}
-		val sameTitle = dao.findByTitleForRestore(backup.title)
-		val sameId = dao.findForRestore(backup.categoryId)
-		val existing = sameTitle ?: sameId?.takeIf { it.title == backup.title }
-		val targetId = when {
-			existing != null -> existing.categoryId
-			sameId == null -> backup.categoryId
-			else -> dao.insert(backup.toEntity(categoryId = 0)).toInt()
-		}
-		categoryIdRemap[backup.categoryId.toLong()] = targetId.toLong()
-		if (existing == null && sameId != null) return // inserted above after an id collision
-		val incoming = backup.toEntity(targetId)
-		if (existing == null || incoming.eventTimestamp > existing.eventTimestamp) {
-			dao.upsert(incoming)
-		}
-	}
+    private suspend fun MangaDatabase.restoreCategory(
+        backup: CategoryBackup,
+        isMerge: Boolean,
+        categoryIdRemap: MutableMap<Long, Long>,
+    ) {
+        val dao = getFavouriteCategoriesDao()
+        if (!isMerge) {
+            dao.upsert(backup.toEntity())
+            restoreCategorySyncUid(backup.categoryId, backup.syncUid)
+            categoryIdRemap[backup.categoryId.toLong()] = backup.categoryId.toLong()
+            return
+        }
+        val sameTitle = dao.findByTitleForRestore(backup.title)
+        val sameId = dao.findForRestore(backup.categoryId)
+        val existing = sameTitle ?: sameId?.takeIf { it.title == backup.title }
+        val targetId = when {
+            existing != null -> existing.categoryId
+            sameId == null -> backup.categoryId
+            else -> dao.insert(backup.toEntity(categoryId = 0)).toInt()
+        }
+        categoryIdRemap[backup.categoryId.toLong()] = targetId.toLong()
+        restoreCategorySyncUid(targetId, backup.syncUid)
+        if (existing == null && sameId != null) return // inserted above after an id collision
+        val incoming = backup.toEntity(targetId)
+        if (existing == null || incoming.eventTimestamp > existing.eventTimestamp) {
+            dao.upsert(incoming)
+        }
+    }
 
 	private val org.koitharu.kotatsu.history.data.HistoryEntity.eventTimestamp: Long
 		get() = maxOf(updatedAt, deletedAt)

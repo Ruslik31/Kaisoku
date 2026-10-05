@@ -5,6 +5,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonArray
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -47,24 +50,32 @@ class GoogleDriveApi @Inject constructor(@BaseHttpClient baseClient: OkHttpClien
 	)
 
 	@Serializable
-	private data class FileList(@SerialName("files") val files: List<DriveFile> = emptyList())
+	private data class FileList(
+        @SerialName("files") val files: List<DriveFile> = emptyList(),
+        @SerialName("nextPageToken") val nextPageToken: String? = null,
+    )
 
 	@Serializable
 	private data class AboutResponse(@SerialName("user") val user: DriveUser? = null)
 
-	suspend fun listSyncFiles(token: String): List<DriveFile> = executeJson(
-		Request.Builder()
-			.url(
-				"$DRIVE_BASE/files".toHttpUrl().newBuilder()
-					.addQueryParameter("spaces", "appDataFolder")
-					.addQueryParameter("q", "name = '$SYNC_FILE_NAME' and trashed = false")
-					.addQueryParameter("fields", "files(id,name,modifiedTime,version,size,md5Checksum)")
-					.build(),
-		)
-			.bearer(token)
-			.build(),
-		FileList.serializer(),
-	).files
+    suspend fun listSyncFiles(token: String): List<DriveFile> {
+        val files = mutableListOf<DriveFile>()
+        val seen = hashSetOf<String>()
+        var page: String? = null
+        do {
+            val result = executeJson(Request.Builder().url("$DRIVE_BASE/files".toHttpUrl().newBuilder()
+                .addQueryParameter("spaces", "appDataFolder")
+                .addQueryParameter("q", "(name = '$SYNC_FILE_NAME' or name contains '$REPLICA_PREFIX') and trashed = false")
+                .addQueryParameter("pageSize", "1000")
+                .addQueryParameter("pageToken", page)
+                .addQueryParameter("fields", "nextPageToken,files(id,name,modifiedTime,version,size,md5Checksum)")
+                .build()).bearer(token).build(), FileList.serializer())
+            files += result.files.filter { it.name == SYNC_FILE_NAME || it.name?.matches(REPLICA_NAME) == true }
+            page = result.nextPageToken
+            check(page == null || seen.add(page)) { "Google Drive repeated a listing page" }
+        } while (page != null)
+        return files.distinctBy(DriveFile::id)
+    }
 
 	suspend fun getFile(token: String, fileId: String): DriveFile = executeJson(
 		Request.Builder()
@@ -105,9 +116,12 @@ class GoogleDriveApi @Inject constructor(@BaseHttpClient baseClient: OkHttpClien
 		token: String,
 		fileId: String?,
 		length: Long,
-	): String = withContext(Dispatchers.IO) {
+        fileName: String = SYNC_FILE_NAME,
+    ): String = withContext(Dispatchers.IO) {
 		val metadata = if (fileId == null) {
-			"{\"name\":\"$SYNC_FILE_NAME\",\"parents\":[\"appDataFolder\"]}"
+			json.encodeToString(JsonObject.serializer(), JsonObject(mapOf(
+                "name" to JsonPrimitive(fileName), "parents" to JsonArray(listOf(JsonPrimitive("appDataFolder"))),
+            )))
 		} else {
 			"{}"
 		}
@@ -120,7 +134,7 @@ class GoogleDriveApi @Inject constructor(@BaseHttpClient baseClient: OkHttpClien
 		val builder = Request.Builder()
 			.url(url)
 			.bearer(token)
-			.header("X-Upload-Content-Type", "application/json")
+			.header("X-Upload-Content-Type", if (fileName.endsWith(".gz")) "application/gzip" else "application/json")
 			.header("X-Upload-Content-Length", length.toString())
 			.method(if (fileId == null) "POST" else "PATCH", requestBody)
 		client.newCall(builder.build()).execute().use { response ->
@@ -188,6 +202,9 @@ class GoogleDriveApi @Inject constructor(@BaseHttpClient baseClient: OkHttpClien
 
 	companion object {
 		const val SYNC_FILE_NAME = "kaisoku_sync.json"
+        const val REPLICA_PREFIX = "kaisoku_replica_"
+        private val REPLICA_NAME = Regex("kaisoku_replica_[a-zA-Z0-9-]+\\.json\\.gz")
+        fun replicaName(deviceId: String) = "$REPLICA_PREFIX$deviceId.json.gz"
 		private const val DRIVE_BASE = "https://www.googleapis.com/drive/v3"
 		private const val UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3"
 		private val JSON_MEDIA_TYPE = "application/json".toMediaType()

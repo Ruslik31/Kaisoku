@@ -3,6 +3,10 @@ package org.koitharu.kotatsu.backups.data
 import org.koitharu.kotatsu.core.prefs.AppSettings
 
 object SensitiveBackupKeys {
+    fun isSensitive(key: String): Boolean = key in values ||
+        key.startsWith("${AppSettings.KEY_TRANSLATE_API_KEY}_") ||
+        key.startsWith("${AppSettings.KEY_TRANSLATE_CUSTOM_HEADERS}_")
+
 	val values: Set<String> = setOf(
 		AppSettings.KEY_APP_PASSWORD,
 		AppSettings.KEY_APP_PASSWORD_NUMERIC,

@@ -159,7 +159,7 @@ fun getDatabaseMigrations(context: Context): Array<Migration> = arrayOf(
 fun MangaDatabase(context: Context): MangaDatabase = Room
 	.databaseBuilder(context, MangaDatabase::class.java, "kotatsu-db")
 	.addMigrations(*getDatabaseMigrations(context))
-	.addCallback(DatabasePrePopulateCallback(context.resources))
+	.addCallback(DatabasePrePopulateCallback(context.resources, context))
 	.build()
 
 fun InvalidationTracker.removeObserverAsync(observer: InvalidationTracker.Observer) {

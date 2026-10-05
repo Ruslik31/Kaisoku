@@ -1,26 +1,22 @@
 package org.koitharu.kotatsu.sync.drive
 
 import android.content.Context
-import org.koitharu.kotatsu.core.prefs.AppSettings
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.CommonStatusCodes
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.backups.data.BackupRepository
-import org.koitharu.kotatsu.backups.domain.BackupSection
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.security.MessageDigest
-import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,9 +36,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 	private val settings: SyncBackendSettings,
 	private val auth: GoogleDriveAuth,
 	private val api: GoogleDriveApi,
-	private val backupRepository: BackupRepository,
-	private val sourceSettingsStore: DriveSourceSettingsStore,
-	private val appSettings: AppSettings,
+    private val replicaStore: DriveReplicaStore,
 ) {
 
 	private val mutex = Mutex()
@@ -111,84 +105,90 @@ class GoogleDriveSyncRepository @Inject constructor(
 		return DriveSyncResult.Error("Google Drive authorization failed", retryable = false)
 	}
 
-	private suspend fun syncWithToken(token: String, remoteRefreshAttempt: Int = 0): DriveSyncResult {
-		api.getUser(token)?.let { user ->
-			settings.accountEmail = user.emailAddress
-			settings.accountName = user.displayName
-		}
-		val remoteFiles = api.listSyncFiles(token).sortedBy { it.modifiedTime }
-		val remote = remoteFiles.lastOrNull()
+    private suspend fun syncWithToken(token: String, remoteRefreshAttempt: Int = 0): DriveSyncResult {
+        val user = api.getUser(token) ?: throw IllegalStateException("Google Drive account identity is unavailable")
+        val account = user.emailAddress?.lowercase()?.takeIf(String::isNotBlank)
+            ?: throw IllegalStateException("Google Drive account identity is unavailable")
+        settings.accountEmail = user.emailAddress
+        settings.accountName = user.displayName
+        var remoteFiles = api.listSyncFiles(token).sortedBy { it.modifiedTime }
+        if (settings.uploadSessionUrl != null) {
+            if (settings.uploadAccount != account) settings.clearUploadState()
+            else resumeUploadIfValid(token, remoteFiles.find { it.id == settings.uploadFileId })
+            remoteFiles = api.listSyncFiles(token).sortedBy { it.modifiedTime }
+            // A resumed payload can predate local edits: continue and capture the current state.
+        }
+        val replicas = mutableListOf<DriveReplica>()
+        val legacy = mutableListOf<DriveReplicaStore.Legacy>()
+        val temporary = mutableListOf<File>()
+        val ownFiles = mutableListOf<GoogleDriveApi.DriveFile>()
+        var compatibility: GoogleDriveApi.DriveFile? = null
+        val sectionScope = settings.backupSections.map { it.name }.sorted().joinToString(",")
+        val migrationScope = "$account/$sectionScope"
+        try {
+            for (remote in remoteFiles.filter { it.name != GoogleDriveApi.SYNC_FILE_NAME }) {
+                val snapshot = download(token, remote).also(temporary::add)
+                val replica = DriveReplicaCodec.read(snapshot)
+                check(remote.name == GoogleDriveApi.replicaName(replica.device)) { "Google Drive replica identity mismatch" }
+                replicas += replica
+                if (replica.device == settings.deviceId) ownFiles += remote
+                clearDownloadState()
+            }
+            for (remote in remoteFiles.filter { it.name == GoogleDriveApi.SYNC_FILE_NAME }) {
+                val snapshot = download(token, remote).also(temporary::add)
+                val backup = tempFile("drive-legacy", ".zip").also(temporary::add)
+                val metadata = DriveSnapshotCodec.read(snapshot, backup)
+                if (metadata.deviceId == settings.deviceId && metadata.replicaBridge) compatibility = remote
+                val hasReplica = metadata.replicaBridge && replicas.any { it.device == metadata.deviceId }
+                if (!hasReplica && !replicaStore.hasLegacyVersion(migrationScope, remote.id, remote.version.orEmpty())) {
+                    legacy += DriveReplicaStore.Legacy(remote.id, remote.version.orEmpty(), backup, metadata)
+                }
+                clearDownloadState()
+            }
+            mutableProgress.value = DriveSyncProgress(DriveSyncProgress.Stage.MERGING)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            if (settings.backend != SyncBackend.GOOGLE_DRIVE) return DriveSyncResult.Success
+            val replica = replicaStore.merge(account, settings.deviceId, settings.backupSections, replicas, legacy)
+            // Check every file, including legacy duplicates, before publication. Another device only writes its own replica.
+            val changed = remoteFiles.any { api.getFile(token, it.id).version != it.version }
+            if (changed) {
+                if (remoteRefreshAttempt < 1) return syncWithToken(token, remoteRefreshAttempt + 1)
+                throw DriveApiException(409, "Google Drive sync data changed during merge")
+            }
+            mutableProgress.value = DriveSyncProgress(DriveSyncProgress.Stage.PREPARING)
+            val payload = tempFile("drive-replica", ".json.gz")
+            DriveReplicaCodec.write(payload, replica)
+            startUpload(token, ownFiles.lastOrNull(), payload, account, GoogleDriveApi.replicaName(settings.deviceId))
+            replicaStore.acknowledgeLegacy(migrationScope, replica)
+            // A schema-1 bridge lets older clients read newer data. New clients ignore bridges when the matching
+            // authoritative replica exists. If an old client edits one, its ordinary writer removes the marker.
+            val backup = tempFile("drive-compatibility", ".zip").also(temporary::add)
+            replicaStore.writeCompatibilityBackup(backup, replica)
+            val bridge = tempFile("drive-bridge", ".json")
+            DriveSnapshotCodec.write(bridge, backup, settings.deviceId,
+                sourceSettings = replicaStore.replicaSourceSettings(replica), replicaBridge = true)
+            startUpload(token, compatibility, bridge, account, GoogleDriveApi.SYNC_FILE_NAME)
+            return DriveSyncResult.Success
+        } finally {
+            temporary.forEach(File::delete)
+        }
+    }
 
-		if (settings.uploadSessionUrl != null && resumeUploadIfValid(token, remote)) {
-			return DriveSyncResult.Success
-		}
-
-		// Merge every duplicate before writing one canonical latest snapshot. Duplicates are
-		// retained because remote deletion is an explicit user action.
-		remoteFiles.forEach { restoreRemote(token, it) }
-
-		mutableProgress.value = DriveSyncProgress(DriveSyncProgress.Stage.PREPARING)
-		val localBackup = tempFile("drive-local", ".zip")
-		val payload = tempFile("drive-payload", ".json")
-		try {
-			ZipOutputStream(localBackup.outputStream().buffered()).use { output ->
-				backupRepository.createBackup(output, progress = null, sections = settings.backupSections)
-			}
-			DriveSnapshotCodec.write(
-				snapshot = payload,
-				backup = localBackup,
-				deviceId = settings.deviceId,
-				sourceSettings = sourceSettingsStore.dump(),
-			)
-		} finally {
-			localBackup.delete()
-		}
-		if (remote != null) {
-			val current = api.getFile(token, remote.id)
-			if (current.version != remote.version) {
-				payload.delete()
-				if (remoteRefreshAttempt == 0) return syncWithToken(token, remoteRefreshAttempt + 1)
-				throw DriveApiException(409, "Google Drive sync data changed during merge")
-			}
-		}
-		startUpload(token, remote, payload)
-		return DriveSyncResult.Success
-	}
-
-	private suspend fun restoreRemote(token: String, remote: GoogleDriveApi.DriveFile) {
-		val snapshot = download(token, remote)
-		val backup = tempFile("drive-remote", ".zip")
-		try {
-			val metadata = DriveSnapshotCodec.read(snapshot, backup)
-			mutableProgress.value = DriveSyncProgress(DriveSyncProgress.Stage.MERGING)
-			ZipInputStream(backup.inputStream().buffered()).use { input ->
-				backupRepository.restoreBackup(
-					input = input,
-					sections = settings.backupSections,
-					progress = null,
-					isMerge = true,
-					replaceSections = setOf(BackupSection.SETTINGS_READER_GRID),
-					preserveSettingsKeys = existingNetworkSettingsKeys(appSettings.getAllValues()),
-				)
-			}
-			sourceSettingsStore.restore(metadata.sourceSettings)
-		} finally {
-			backup.delete()
-			snapshot.delete()
-			clearDownloadState()
-		}
-	}
-
-	private suspend fun startUpload(token: String, remote: GoogleDriveApi.DriveFile?, payload: File) {
+	private suspend fun startUpload(
+        token: String, remote: GoogleDriveApi.DriveFile?, payload: File, account: String, fileName: String,
+    ) {
 		settings.clearUploadState(deletePayload = true)
 		settings.uploadPayloadPath = payload.absolutePath
+        settings.uploadAccount = account
+        settings.uploadFileName = fileName
 		settings.uploadPayloadHash = DriveSnapshotCodec.sha256(payload)
 		settings.uploadLength = payload.length()
 		settings.uploadOffset = 0L
 		settings.uploadFileId = remote?.id
 		settings.uploadBaseVersion = remote?.version
 		settings.uploadCreatedAt = System.currentTimeMillis()
-		settings.uploadSessionUrl = api.beginResumableUpload(token, remote?.id, payload.length())
+		settings.uploadSessionUrl = api.beginResumableUpload(token, remote?.id, payload.length(),
+            settings.uploadFileName ?: GoogleDriveApi.SYNC_FILE_NAME)
 		uploadPendingPayload(token)
 	}
 
@@ -214,7 +214,8 @@ class GoogleDriveSyncRepository @Inject constructor(
 			if (e.code != 404) throw e
 			settings.uploadOffset = 0L
 			settings.uploadCreatedAt = System.currentTimeMillis()
-			settings.uploadSessionUrl = api.beginResumableUpload(token, remote?.id, payload.length())
+			settings.uploadSessionUrl = api.beginResumableUpload(token, remote?.id, payload.length(),
+            settings.uploadFileName ?: GoogleDriveApi.SYNC_FILE_NAME)
 			null
 		}
 		if (state?.complete == true) {
@@ -242,7 +243,8 @@ class GoogleDriveSyncRepository @Inject constructor(
 					api.uploadChunk(session, bytes, offset, total)
 				} catch (e: DriveApiException) {
 					if (e.code != 404 || restartedSession) throw e
-					session = api.beginResumableUpload(token, settings.uploadFileId, total)
+					session = api.beginResumableUpload(token, settings.uploadFileId, total,
+                        settings.uploadFileName ?: GoogleDriveApi.SYNC_FILE_NAME)
 					settings.uploadSessionUrl = session
 					settings.uploadCreatedAt = System.currentTimeMillis()
 					offset = 0L

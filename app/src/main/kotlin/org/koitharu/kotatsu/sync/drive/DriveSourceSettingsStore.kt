@@ -6,6 +6,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -15,7 +16,9 @@ class DriveSourceSettingsStore @Inject constructor(
 	private val sourcesRepository: MangaSourcesRepository,
 ) {
 
-	suspend fun dump(): Map<String, Map<String, String>> = sourcesRepository.getEnabledSources().associate { source ->
+	suspend fun dump(): Map<String, Map<String, String>> = (sourcesRepository.getEnabledSources() + sourcesRepository.getDisabledSources()).distinctBy { it.name }
+        .filter { File(context.applicationInfo.dataDir, "shared_prefs/${SourceSettings.prefsName(it)}.xml").isFile }
+        .associate { source ->
 		val prefs = context.getSharedPreferences(SourceSettings.prefsName(source), Context.MODE_PRIVATE)
 		source.name to prefs.all.mapNotNull { (key, value) ->
 			if (key !in ALLOWED_KEYS) null else encode(value)?.let { key to it }
@@ -41,22 +44,24 @@ class DriveSourceSettingsStore @Inject constructor(
 		}
 	}
 
-	private fun encode(value: Any?): String? = when (value) {
-		is Boolean -> "b:$value"
-		is Int -> "i:$value"
-		is Long -> "l:$value"
-		is Float -> "f:$value"
-		is String -> "s:$value"
-		else -> null
-	}
 
 	companion object {
+        fun encode(value: Any?): String? = when (value) {
+            is Boolean -> "b:$value"
+            is Int -> "i:$value"
+            is Long -> "l:$value"
+            is Float -> "f:$value"
+            is String -> "s:$value"
+            else -> null
+        }
+
 		val ALLOWED_KEYS = setOf(
 			SourceSettings.KEY_DOMAIN,
 			SourceSettings.KEY_NO_CAPTCHA,
 			SourceSettings.KEY_NO_AUTO_CAPTCHA,
 			SourceSettings.KEY_SLOWDOWN,
 			SourceSettings.KEY_SORT_ORDER,
+            SourceSettings.KEY_REVERSE_READING_ORDER,
 			"show_suspicious",
 			"user_agent",
 			"split_translations",

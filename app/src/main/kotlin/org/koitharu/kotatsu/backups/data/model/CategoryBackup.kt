@@ -15,9 +15,10 @@ class CategoryBackup(
 	@SerialName("track") val track: Boolean = true,
 	@SerialName("show_in_lib") val isVisibleInLibrary: Boolean = true,
 	@SerialName("deleted_at") val deletedAt: Long = 0L,
+    @SerialName("sync_uid") val syncUid: String? = null,
 ) {
 
-	constructor(entity: FavouriteCategoryEntity) : this(
+	constructor(entity: FavouriteCategoryEntity, syncUid: String? = null) : this(
 		categoryId = entity.categoryId,
 		createdAt = entity.createdAt,
 		sortKey = entity.sortKey,
@@ -26,6 +27,7 @@ class CategoryBackup(
 		track = entity.track,
 		isVisibleInLibrary = entity.isVisibleInLibrary,
 		deletedAt = entity.deletedAt,
+        syncUid = syncUid,
 	)
 
 	fun toEntity(categoryId: Int = this.categoryId) = FavouriteCategoryEntity(

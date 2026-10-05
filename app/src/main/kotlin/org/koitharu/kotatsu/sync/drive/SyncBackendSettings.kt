@@ -11,6 +11,11 @@ import java.io.File
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import javax.inject.Provider
+import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 enum class SyncBackend {
 	NONE,
@@ -36,14 +41,27 @@ enum class DriveContentSection(val backupSections: Set<BackupSection>) {
 }
 
 @Singleton
-class SyncBackendSettings @Inject constructor(@ApplicationContext private val context: Context) {
+class SyncBackendSettings @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val database: Provider<MangaDatabase>,
+) {
 
-	private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+	private val recordingLock = Any()
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
 	var backend: SyncBackend
 		get() = prefs.getString(KEY_BACKEND, null)?.let { runCatching { SyncBackend.valueOf(it) }.getOrNull() }
 			?: migrateBackend()
-		set(value) = prefs.edit { putString(KEY_BACKEND, value.name) }
+		set(value) {
+            prefs.edit { putString(KEY_BACKEND, value.name) }
+            processLifecycleScope.launch(Dispatchers.IO) {
+                val db = database.get().openHelper.writableDatabase
+                synchronized(recordingLock) {
+                    db.execSQL("UPDATE ${DriveReplicaJournal.STATE} SET enabled=? WHERE id=1",
+                        arrayOf(if (prefs.getString(KEY_BACKEND, null) == SyncBackend.GOOGLE_DRIVE.name) 1 else 0))
+                }
+            }
+        }
 
 	var accountEmail: String?
 		get() = prefs.getString(KEY_ACCOUNT_EMAIL, null)
@@ -91,6 +109,14 @@ class SyncBackendSettings @Inject constructor(@ApplicationContext private val co
 		get() = prefs.getString(KEY_UPLOAD_SESSION, null)
 		set(value) = prefs.edit { putString(KEY_UPLOAD_SESSION, value) }
 
+    var uploadAccount: String?
+        get() = prefs.getString("upload_account", null)
+        set(value) = prefs.edit { putString("upload_account", value) }
+
+    var uploadFileName: String?
+        get() = prefs.getString("upload_file_name", null)
+        set(value) = prefs.edit { putString("upload_file_name", value) }
+
 	var uploadFileId: String?
 		get() = prefs.getString(KEY_UPLOAD_FILE_ID, null)
 		set(value) = prefs.edit { putString(KEY_UPLOAD_FILE_ID, value) }
@@ -122,6 +148,8 @@ class SyncBackendSettings @Inject constructor(@ApplicationContext private val co
 	fun clearUploadState(deletePayload: Boolean = true) {
 		if (deletePayload) uploadPayloadPath?.let(::File)?.takeIf(File::exists)?.delete()
 		prefs.edit {
+			remove("upload_account")
+            remove("upload_file_name")
 			remove(KEY_UPLOAD_SESSION)
 			remove(KEY_UPLOAD_FILE_ID)
 			remove(KEY_UPLOAD_BASE_VERSION)

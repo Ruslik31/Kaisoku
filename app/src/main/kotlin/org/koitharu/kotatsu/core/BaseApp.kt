@@ -39,6 +39,7 @@ import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.util.suspendlazy.getOrNull
 import org.koitharu.kotatsu.settings.work.WorkScheduleManager
+import org.koitharu.kotatsu.sync.drive.DrivePreferenceVersions
 import java.security.Security
 import javax.inject.Inject
 import javax.inject.Provider
@@ -80,6 +81,9 @@ open class BaseApp : Application(), Configuration.Provider {
 	@Inject
 	lateinit var lnReaderSourceManager: Provider<LnReaderSourceManager>
 
+    @Inject
+    lateinit var drivePreferenceVersions: DrivePreferenceVersions
+
 	override val workManagerConfiguration: Configuration
 		get() = Configuration.Builder()
 			.setWorkerFactory(workerFactory)
@@ -93,6 +97,7 @@ open class BaseApp : Application(), Configuration.Provider {
 		if (ACRA.isACRASenderServiceProcess()) {
 			return
 		}
+		drivePreferenceVersions.start()
 		PlatformRegistry.applicationContext = this // TODO replace with OkHttp.initialize
 		GlobalCrashHandler.install(this)
 		AppCompatDelegate.setDefaultNightMode(settings.theme)

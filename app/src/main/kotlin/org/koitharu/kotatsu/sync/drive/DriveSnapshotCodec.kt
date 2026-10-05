@@ -20,6 +20,7 @@ object DriveSnapshotCodec {
 		val deviceId: String,
 		val syncedAt: Long,
 		val sourceSettings: Map<String, Map<String, String>>,
+        val replicaBridge: Boolean = false,
 	)
 
 	fun write(
@@ -28,11 +29,13 @@ object DriveSnapshotCodec {
 		deviceId: String,
 		syncedAt: Long = System.currentTimeMillis(),
 		sourceSettings: Map<String, Map<String, String>> = emptyMap(),
+        replicaBridge: Boolean = false,
 	) {
 		val digest = calculateSha256(backup)
 		JsonWriter(OutputStreamWriter(FileOutputStream(snapshot), Charsets.UTF_8)).use { writer ->
 			writer.beginObject()
 			writer.name("schema").value(SCHEMA_VERSION.toLong())
+            if (replicaBridge) writer.name("replica_bridge").value(true)
 			writer.name("device_id").value(deviceId)
 			writer.name("synced_at").value(syncedAt)
 			writer.name("sha256").value(digest)
@@ -63,6 +66,7 @@ object DriveSnapshotCodec {
 		var syncedAt = 0L
 		var expectedHash: String? = null
 		var chunksSeen = false
+        var replicaBridge = false
 		val sourceSettings = linkedMapOf<String, Map<String, String>>()
 		val digest = MessageDigest.getInstance("SHA-256")
 		FileOutputStream(backup).use { output ->
@@ -71,6 +75,7 @@ object DriveSnapshotCodec {
 				while (reader.hasNext()) {
 					when (reader.nextName()) {
 						"schema" -> schema = reader.nextInt()
+                        "replica_bridge" -> replicaBridge = reader.nextBoolean()
 						"device_id" -> deviceId = reader.nextString()
 						"synced_at" -> syncedAt = reader.nextLong()
 						"sha256" -> expectedHash = reader.nextString()
@@ -106,7 +111,7 @@ object DriveSnapshotCodec {
 		check(schema > 0 && chunksSeen) { "Invalid Google Drive sync snapshot" }
 		val actualHash = digest.digest().toHex()
 		check(expectedHash == actualHash) { "Google Drive sync snapshot checksum mismatch" }
-		return Metadata(schema, deviceId, syncedAt, sourceSettings)
+		return Metadata(schema, deviceId, syncedAt, sourceSettings, replicaBridge)
 	}
 
 	fun sha256(file: File): String = calculateSha256(file)
