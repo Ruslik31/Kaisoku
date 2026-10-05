@@ -1417,4 +1417,10 @@
 	<string name="extension_repo_add_timeout">The repository did not respond in time. Please try again.</string>
 	<string name="extension_sources_hidden">Some extension sources are hidden</string>
 	<string name="extension_sources_hidden_summary">Disable NSFW is enabled in Settings → Sources. It also hides extensions marked as mixed-content, including MangaDex. Installed extensions still need to be enabled with + to appear in Explore.</string>
+    <string name="novel_read_aloud">Read aloud</string>
+    <string name="novel_stop_reading_aloud">Stop reading aloud</string>
+    <string name="novel_speech_voice">Choose a voice</string>
+    <string name="novel_speech_network">uses network</string>
+    <string name="novel_speech_unavailable">Speech is unavailable. Check your Android text-to-speech settings.</string>
+    <string name="novel_speech_language_unavailable">No installed speech voice supports this language. Add a voice in Android text-to-speech settings.</string>
 </resources>

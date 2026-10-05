@@ -14,8 +14,12 @@
 		android:title="@string/novel_reader_settings"
 		app:showAsAction="never" />
 
+    <item android:id="@+id/action_novel_speech_pause"
+        android:title="@string/novel_speech_pause" android:visible="false" app:showAsAction="never" />
 	<item android:id="@+id/action_novel_translate"
 		android:title="@string/novel_translate_chapter" app:showAsAction="never" />
+    <item android:id="@+id/action_novel_read_aloud"
+        android:title="@string/novel_read_aloud" app:showAsAction="never" />
 	<item android:id="@+id/action_novel_translation_settings"
 		android:title="@string/novel_translation_settings" app:showAsAction="never" />
 	<item android:id="@+id/action_novel_source_settings"

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="novel_speech_pause">Pause reading aloud</string>
+    <string name="novel_speech_resume">Resume reading aloud</string>
+    <string name="novel_speech_translation_boundary">Reading aloud stopped: the next chapter has no cached translation. Translate it in the reader first.</string>
+</resources>

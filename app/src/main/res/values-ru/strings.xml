@@ -953,4 +953,10 @@
 	<string name="extension_repo_add_timeout">Репозиторий не ответил вовремя. Попробуйте ещё раз.</string>
 	<string name="extension_sources_hidden">Некоторые источники расширений скрыты</string>
 	<string name="extension_sources_hidden_summary">В Настройках → Источники включено отключение NSFW. Оно также скрывает расширения со смешанным контентом, включая MangaDex. Чтобы установленный источник появился в Обзоре, включите его кнопкой +.</string>
+    <string name="novel_read_aloud">Читать вслух</string>
+    <string name="novel_stop_reading_aloud">Остановить чтение вслух</string>
+    <string name="novel_speech_voice">Выберите голос</string>
+    <string name="novel_speech_network">требуется сеть</string>
+    <string name="novel_speech_unavailable">Озвучивание недоступно. Проверьте настройки синтеза речи Android.</string>
+    <string name="novel_speech_language_unavailable">Нет установленного голоса для этого языка. Добавьте голос в настройках синтеза речи Android.</string>
 </resources>

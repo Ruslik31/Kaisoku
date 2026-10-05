@@ -90,6 +90,13 @@ class NovelReaderViewModel @Inject constructor(
 		return synchronized(translations) { translations[id]?.first == translationConfig() }
 	}
 
+    internal fun speechTranslationsSnapshot(): Map<Long, String> {
+        val config = translationConfig()
+        return synchronized(translations) {
+            translations.filterValues { it.first == config }.mapValues { it.value.second }
+        }
+    }
+
 	fun showOriginalChapter(index: Int) {
 		val id = chapters.value.getOrNull(index)?.id ?: return
 		synchronized(translations) { translations.remove(id) }

@@ -23,6 +23,8 @@ import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.core.model.getLocale
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
@@ -69,6 +71,9 @@ class NovelReaderActivity :
 	private var chapterLoadJob: kotlinx.coroutines.Job? = null
 	private var preloadJob: kotlinx.coroutines.Job? = null
 	private var translationJob: kotlinx.coroutines.Job? = null
+    private var speechJob: kotlinx.coroutines.Job? = null
+    @Inject
+    internal lateinit var speechController: NovelSpeechController
 	private var lastLoadedChapterIndex = -1
 	private var chapterLoadGeneration = 0L
 	private lateinit var scrollLayoutManager: NovelScrollLayoutManager
@@ -78,43 +83,48 @@ class NovelReaderActivity :
 	override val readerMode: org.koitharu.kotatsu.core.prefs.ReaderMode?
 		get() = null
 
-	override fun onCreate(savedInstanceState: Bundle?) {
-		super.onCreate(savedInstanceState)
-		setContentView(ActivityNovelReaderBinding.inflate(layoutInflater))
-		WindowCompat.setDecorFitsSystemWindows(window, false)
-		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
-		supportActionBar?.title = null
-		supportActionBar?.subtitle = getString(R.string.novel_reader_beta)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(ActivityNovelReaderBinding.inflate(layoutInflater))
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
+        supportActionBar?.title = null
+        supportActionBar?.subtitle = getString(R.string.novel_reader_beta)
 
-		controlDelegate = ReaderControlDelegate(resources, settings, tapGridSettings, this)
+        controlDelegate = ReaderControlDelegate(resources, settings, tapGridSettings, this)
 
-		viewBinding.actionsView.listener = this
-		viewBinding.actionsView.isSliderEnabled = true
-		addMenu()
+        viewBinding.actionsView.listener = this
+        viewBinding.actionsView.isSliderEnabled = true
+        addMenu()
 
-		setupReaderView()
-		setupContinuousScroll()
-		isScrollMode = viewModel.readerSettings.value.readingMode == NovelReadingMode.SCROLL
-		viewBinding.readerView.isVisible = !isScrollMode
-		viewBinding.continuousScrollView.isVisible = isScrollMode
+        setupReaderView()
+        setupContinuousScroll()
+        isScrollMode = viewModel.readerSettings.value.readingMode == NovelReadingMode.SCROLL
+        viewBinding.readerView.isVisible = !isScrollMode
+        viewBinding.continuousScrollView.isVisible = isScrollMode
 
-		viewModel.manga.observe(this) { manga ->
-			if (manga != null) {
-				supportActionBar?.title = manga.title
-			}
-		}
-		viewModel.isUiLoading.observe(this) { showLoading(it) }
-		viewModel.chapterRequest.observe(this) { request ->
-			if (request != null && request.first >= 0) {
-				loadChapter(request.first, force = true)
-			}
-		}
-		viewModel.readerSettings.observe(this) { applySettings(it) }
-		viewModel.onError.observeEvent(this) { e ->
-			Snackbar.make(viewBinding.root, e.message ?: getString(R.string.error_occurred), Snackbar.LENGTH_SHORT)
-				.show()
-		}
-	}
+        speechController.state.observe(this) { state ->
+            invalidateOptionsMenu()
+            state.error?.let { Snackbar.make(viewBinding.root, it, Snackbar.LENGTH_LONG).show() }
+        }
+        viewModel.manga.observe(this) { manga ->
+            if (manga != null) {
+                if (speechController.isActive && speechController.state.value.mangaId != manga.id) speechController.stop()
+                supportActionBar?.title = manga.title
+            }
+        }
+        viewModel.isUiLoading.observe(this) { showLoading(it) }
+        viewModel.chapterRequest.observe(this) { request ->
+            if (request != null && request.first >= 0) {
+                loadChapter(request.first, force = true)
+            }
+        }
+        viewModel.readerSettings.observe(this) { applySettings(it) }
+        viewModel.onError.observeEvent(this) { e ->
+            Snackbar.make(viewBinding.root, e.message ?: getString(R.string.error_occurred), Snackbar.LENGTH_SHORT)
+                .show()
+        }
+    }
 
 	override fun getParentActivityIntent(): Intent? {
 		val manga = viewModel.manga.value ?: return null
@@ -153,6 +163,7 @@ class NovelReaderActivity :
 					if (dx != 0 || dy != 0) {
 						continuousAnchor()?.let { anchor ->
 							if (anchor.first != viewModel.currentChapterIndex.value) {
+                                stopSpeech()
 								viewModel.switchChapter(anchor.first)
 								preloadBoundary(anchor.first)
 							}
@@ -201,12 +212,13 @@ class NovelReaderActivity :
 		viewBinding.root.setBackgroundColor(palette.backgroundColor)
 	}
 
-	private fun loadChapter(index: Int, force: Boolean = false) {
-		if (!force && isScrollMode && continuousAdapter?.getItems()?.any { it.chapterIndex == index } == true) {
-			preloadBoundary(index)
-			return
-		}
-		if (!force && lastLoadedChapterIndex == index) return
+    private fun loadChapter(index: Int, force: Boolean = false) {
+        if (!force && isScrollMode && continuousAdapter?.getItems()?.any { it.chapterIndex == index } == true) {
+            preloadBoundary(index)
+            return
+        }
+        if (!force && lastLoadedChapterIndex == index) return
+        if (lastLoadedChapterIndex >= 0) stopSpeech()
 		translationJob?.cancel()
 		val generation = ++chapterLoadGeneration
 		chapterLoadJob?.cancel()
@@ -390,8 +402,9 @@ class NovelReaderActivity :
 		viewModel.navigateTo(index, 0f)
 	}
 
-	private fun onReverseReadingChanged(reversed: Boolean) {
-		if (reversed == viewModel.isReadingReversed.value) return
+    private fun onReverseReadingChanged(reversed: Boolean) {
+        if (reversed == viewModel.isReadingReversed.value) return
+        stopSpeech()
 		val anchor = continuousAnchor() ?: if (lastLoadedChapterIndex >= 0) {
 			lastLoadedChapterIndex to viewBinding.readerView.getProgressRatio()
 		} else null
@@ -414,6 +427,7 @@ class NovelReaderActivity :
 	} else null
 
 	private fun toggleChapterTranslation() {
+        stopSpeech()
 		if (translationJob?.isActive == true) { translationJob?.cancel(); return }
 		val anchor = visibleAnchor() ?: return
 		if (viewModel.isChapterTranslated(anchor.first)) {
@@ -454,6 +468,45 @@ class NovelReaderActivity :
 		}
 		invalidateOptionsMenu()
 	}
+
+    private fun stopSpeech() {
+        speechJob?.cancel()
+        speechJob = null
+        speechController.stop()
+    }
+
+    private fun toggleSpeech() {
+        if (speechController.isActive || speechJob?.isActive == true) { stopSpeech(); return }
+        val anchor = visibleAnchor() ?: return
+        speechJob = lifecycleScope.launch {
+            try {
+                val text = withContext(Dispatchers.IO) { viewModel.loadChapterText(anchor.first) } ?: return@launch
+                ensureActive()
+                if (visibleAnchor()?.first != anchor.first) return@launch
+                val target = viewModel.manga.value ?: return@launch
+                val translated = viewModel.isChapterTranslated(anchor.first)
+                val locale = if (translated) Locale.forLanguageTag(settings.translateTargetLanguage)
+                else viewModel.readingSource.value?.getLocale()
+                speechController.start(this@NovelReaderActivity, NovelSpeechRequest(
+                    manga = target,
+                    chapters = viewModel.chapters.value.toList(),
+                    firstChapter = anchor.first,
+                    firstText = text,
+                    ratio = anchor.second,
+                    locale = locale,
+                    translated = translated,
+                    cachedTranslations = if (translated) viewModel.speechTranslationsSnapshot() else emptyMap(),
+                ))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                showTranslationError(e)
+            } finally {
+                invalidateOptionsMenu()
+            }
+        }
+        invalidateOptionsMenu()
+    }
 
 	override fun onSettingsChanged(newSettings: NovelReaderSettings) {
 		// The sheet persists the prefs; apply them live (same path as the flow observer) and
@@ -523,6 +576,17 @@ class NovelReaderActivity :
 			}
 
 			override fun onPrepareMenu(menu: android.view.Menu) {
+                menu.findItem(R.id.action_novel_read_aloud)?.apply {
+                    isEnabled = visibleAnchor() != null
+                    setTitle(if (speechController.isActive || speechJob?.isActive == true)
+                        R.string.novel_stop_reading_aloud else R.string.novel_read_aloud)
+                }
+                menu.findItem(R.id.action_novel_speech_pause)?.apply {
+                    isVisible = speechController.isActive
+                    isEnabled = speechController.state.value.status != NovelSpeechStatus.PREPARING
+                    setTitle(if (speechController.state.value.status == NovelSpeechStatus.PAUSED)
+                        R.string.novel_speech_resume else R.string.novel_speech_pause)
+                }
 				menu.findItem(R.id.action_novel_source_settings)?.isEnabled = viewModel.readingSource.value != null
 				menu.findItem(R.id.action_novel_translate)?.apply {
 					isEnabled = visibleAnchor() != null
@@ -536,6 +600,8 @@ class NovelReaderActivity :
 
 			override fun onMenuItemSelected(menuItem: android.view.MenuItem): Boolean {
 				return when (menuItem.itemId) {
+                    R.id.action_novel_read_aloud -> { toggleSpeech(); true }
+                    R.id.action_novel_speech_pause -> { speechController.toggle(); true }
 					R.id.action_novel_translate -> { toggleChapterTranslation(); true }
 					R.id.action_novel_translation_settings -> { router.openReaderSettings(); true }
 					R.id.action_novel_source_settings -> {
@@ -691,8 +757,17 @@ class NovelReaderActivity :
 
 	override fun onStop() {
 		super.onStop()
+        speechJob?.cancel()
+        speechJob = null
+        speechController.detachActivity(this)
 		saveCurrentProgress()
 	}
+
+    override fun onDestroy() {
+        speechController.detachActivity(this)
+        if (isFinishing && speechController.state.value.mangaId == viewModel.manga.value?.id) speechController.stop()
+        super.onDestroy()
+    }
 
 	companion object {
 

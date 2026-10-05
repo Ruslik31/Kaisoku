@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="novel_speech_pause">Приостановить чтение вслух</string>
+    <string name="novel_speech_resume">Продолжить чтение вслух</string>
+    <string name="novel_speech_translation_boundary">Чтение вслух остановлено: перевод следующей главы не сохранён. Сначала переведите её в читалке.</string>
+</resources>

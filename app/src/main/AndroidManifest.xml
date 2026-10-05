@@ -21,6 +21,7 @@
 	<uses-permission android:name="android.permission.WRITE_SYNC_SETTINGS" />
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 	<uses-permission
 		android:name="android.permission.REQUEST_INSTALL_PACKAGES"
 		tools:ignore="RequestInstallPackagesPolicy" />
@@ -39,6 +40,9 @@
 	<uses-feature android:name="android.software.leanback" android:required="false" />
 
 	<queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
 		<intent>
 			<action android:name="android.intent.action.PROCESS_TEXT" />
 			<data android:mimeType="text/plain" />
@@ -502,6 +506,10 @@
 				android:name="android.content.SyncAdapter"
 				android:resource="@xml/sync_history" />
 		</service>
+		<service
+			android:name="org.koitharu.kotatsu.reader.ui.novel.NovelSpeechService"
+			android:exported="false"
+			android:foregroundServiceType="mediaPlayback" />
 		<service
 			android:name="org.koitharu.kotatsu.details.service.MangaPrefetchService"
 			android:exported="false"
