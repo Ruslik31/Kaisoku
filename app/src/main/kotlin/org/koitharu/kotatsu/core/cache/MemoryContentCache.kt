@@ -34,12 +34,12 @@ class MemoryContentCache @Inject constructor(application: Application) : Compone
 		detailsCache[Key(source, url)] = details
 	}
 
-	suspend fun getPages(source: MangaSource, url: String): List<MangaPage>? {
-		return pagesCache[Key(source, url)]?.awaitOrNull()
+	suspend fun getPages(source: MangaSource, url: String, mangaUrl: String? = null): List<MangaPage>? {
+		return pagesCache[Key(source, url, mangaUrl)]?.awaitOrNull()
 	}
 
-	fun putPages(source: MangaSource, url: String, pages: SafeDeferred<List<MangaPage>>) {
-		pagesCache[Key(source, url)] = pages
+	fun putPages(source: MangaSource, url: String, pages: SafeDeferred<List<MangaPage>>, mangaUrl: String? = null) {
+		pagesCache[Key(source, url, mangaUrl)] = pages
 	}
 
 	suspend fun getRelatedManga(source: MangaSource, url: String): List<Manga>? {
@@ -87,5 +87,6 @@ class MemoryContentCache @Inject constructor(application: Application) : Compone
 	data class Key(
 		val source: MangaSource,
 		val url: String,
+        val mangaUrl: String? = null,
 	)
 }

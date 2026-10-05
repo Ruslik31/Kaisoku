@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.parsers.model.MangaState
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.model.RATING_UNKNOWN
 import org.koitharu.kotatsu.parsers.model.SortOrder
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.util.Locale
 
 internal data class OrderedMihonChapter(val chapter: SChapter, val number: Float)
@@ -54,10 +55,13 @@ class MihonMangaRepository(
  	private val appSettings: AppSettings,
 ) : CachingMangaRepository(cache) {
 
+    internal fun usesSource(loaded: MihonExtensionManager.LoadedSource): Boolean = loadedSource === loaded
+
 	override val source: MihonMangaSource
 		get() = loadedSource.wrapper
 
 	private val mihonSource = loadedSource.catalogueSource
+    private val chapterCache = MihonChapterCache()
 	private var mihonFilters = mihonSource.getFilterList()
 	private val defaultFilterState = mihonFilters.stateFingerprint()
 	private var lastOffset = -1
@@ -121,8 +125,16 @@ class MihonMangaRepository(
 	}
 
 	override suspend fun getDetailsImpl(manga: Manga): Manga = withContext(Dispatchers.IO) {
+        val (details, originalChapters) = loadDetailsAndChapters(manga)
+        val chapters = originalChapters.toKaisokuChapterOrder().map { (chapter, number) ->
+            chapter.toKaisokuChapter(number = number)
+        }
+        details.toKaisokuManga(chapters = chapters).copy(id = manga.id)
+    }
+
+    private suspend fun loadDetailsAndChapters(manga: Manga): Pair<SManga, List<SChapter>> {
 		val seed = manga.toSManga()
-		val details = runCatching { mihonSource.getMangaDetails(seed) }.getOrElse { error ->
+		val details = runCatchingCancellable { mihonSource.getMangaDetails(seed) }.getOrElse { error ->
 			when (val mapped = mapHostedFailure(error)) {
 				is AuthRequiredException -> throw mapped
 				else -> seed
@@ -140,20 +152,29 @@ class MihonMangaRepository(
 		if (details.safeThumbnailUrl().isNullOrBlank() && !seedThumbnail.isNullOrBlank()) {
 			details.thumbnail_url = seedThumbnail
 		}
-		val chapters = loadChapters(seed, details).toKaisokuChapterOrder().map { (chapter, number) ->
-			chapter.toKaisokuChapter(number = number)
-		}
-		details.toKaisokuManga(chapters = chapters).copy(id = manga.id)
-	}
+        val originalChapters = loadChapters(seed, details)
+        chapterCache.put(manga.url, originalChapters)
+        return details to originalChapters
+    }
 
 	override suspend fun getPagesImpl(chapter: MangaChapter): List<MangaPage> = withContext(Dispatchers.IO) {
-		val sChapter = chapter.toSChapter()
-		runCatching {
+        fetchPages(chapter.toSChapter())
+    }
+
+    override suspend fun getPagesImpl(manga: Manga, chapter: MangaChapter): List<MangaPage> = withContext(Dispatchers.IO) {
+        val original = chapterCache.get(manga.url, chapter.url) ?: run {
+            // Use the fetched objects directly: another download may evict this title from the bounded cache.
+            loadDetailsAndChapters(manga).second.firstOrNull { it.safeUrl() == chapter.url }
+        }
+        fetchPages(original ?: chapter.toSChapter())
+    }
+
+    private suspend fun fetchPages(sChapter: SChapter): List<MangaPage> =
+		runCatchingCancellable {
 			mihonSource.getPageList(sChapter).mapIndexed { index, page ->
 				page.toKaisokuPage(index)
 			}
 		}.getOrElse { throw mapPageFailure(it) }
-	}
 
 	override suspend fun getPageUrl(page: MangaPage): String = withContext(Dispatchers.IO) {
 		val uri = page.url.toUri()
@@ -392,7 +413,7 @@ class MihonMangaRepository(
 		var hadSuccessfulLoad = false
 		var lastError: Throwable? = null
 		for (candidate in candidates) {
-			val result = runCatching { mihonSource.getChapterList(candidate) }
+			val result = runCatchingCancellable { mihonSource.getChapterList(candidate) }
 			val chapters = result.getOrNull()
 			if (chapters != null) {
 				hadSuccessfulLoad = true

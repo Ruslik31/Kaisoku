@@ -1,32 +1,40 @@
 package org.koitharu.kotatsu.reader.domain
 
-import android.util.LongSparseArray
 import androidx.annotation.CheckResult
+import androidx.collection.LongSparseArray
 import dagger.hilt.android.scopes.ViewModelScoped
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.parsers.model.MangaChapter
+import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaPage
+import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 import javax.inject.Inject
 
 private const val PAGES_TRIM_THRESHOLD = 120
 
 @ViewModelScoped
-class ChaptersLoader @Inject constructor(
-	private val mangaRepositoryFactory: MangaRepository.Factory,
+class ChaptersLoader internal constructor(
+	private val repositoryForSource: (MangaSource) -> MangaRepository,
 ) {
+	@Inject
+	constructor(mangaRepositoryFactory: MangaRepository.Factory) : this(mangaRepositoryFactory::create)
 
 	private val chapters = LongSparseArray<MangaChapter>()
 	private val chapterPages = ChapterPages()
 	private val mutex = Mutex()
+    private lateinit var manga: Manga
 
 	val size: Int
 		get() = chapters.size()
 
 	suspend fun init(manga: MangaDetails) = mutex.withLock {
+        this.manga = manga.toManga()
 		chapters.clear()
 		manga.allChapters.forEach {
 			chapters.put(it.id, it)
@@ -44,8 +52,12 @@ class ChaptersLoader @Inject constructor(
 		val index = if (isNext) chapters.indexOfFirst(predicate) else chapters.indexOfLast(predicate)
 		if (index == -1) return false
 		val newChapter = chapters.getOrNull(if (isNext) index + 1 else index - 1) ?: return false
+		if (mutex.withLock { newChapter.id in chapterPages }) return false
 		val newPages = loadChapter(newChapter.id)
-		mutex.withLock {
+		if (newPages.isEmpty()) return false
+		return mutex.withLock {
+			currentCoroutineContext().ensureActive()
+			if (newChapter.id in chapterPages) return@withLock false
 			if (chapterPages.chaptersSize > 1) {
 				// trim pages
 				if (chapterPages.size > PAGES_TRIM_THRESHOLD) {
@@ -62,7 +74,6 @@ class ChaptersLoader @Inject constructor(
 				chapterPages.addFirst(newChapter.id, newPages)
 			}
 		}
-		return true
 	}
 
 	@CheckResult
@@ -102,8 +113,8 @@ class ChaptersLoader @Inject constructor(
 
 	private suspend fun loadChapter(chapterId: Long): List<ReaderPage> {
 		val chapter = checkNotNull(chapters[chapterId]) { "Requested chapter not found" }
-		val repo = mangaRepositoryFactory.create(chapter.source)
-		return repo.getPages(chapter).mapIndexed { index, page ->
+		val repo = repositoryForSource(chapter.source)
+		return repo.getPages(manga, chapter).mapIndexed { index, page ->
 			ReaderPage(page, index, chapterId)
 		}
 	}

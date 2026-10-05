@@ -26,16 +26,22 @@ abstract class CachingMangaRepository(
 
 	private val detailsMutex = MultiMutex<Long>()
 	private val relatedMangaMutex = MultiMutex<Long>()
-	private val pagesMutex = MultiMutex<Long>()
+	private val pagesMutex = MultiMutex<MemoryContentCache.Key>()
 
 	final override suspend fun getDetails(manga: Manga): Manga = getDetails(manga, CachePolicy.ENABLED)
 
-	final override suspend fun getPages(chapter: MangaChapter): List<MangaPage> = pagesMutex.withLock(chapter.id) {
-		cache.getPages(source, chapter.url)?.let { return it }
+    final override suspend fun getPages(chapter: MangaChapter): List<MangaPage> = getPagesCached(null, chapter)
+
+    final override suspend fun getPages(manga: Manga, chapter: MangaChapter): List<MangaPage> =
+        getPagesCached(manga, chapter)
+
+    private suspend fun getPagesCached(manga: Manga?, chapter: MangaChapter): List<MangaPage> =
+        pagesMutex.withLock(MemoryContentCache.Key(source, chapter.url, manga?.url)) {
+		cache.getPages(source, chapter.url, manga?.url)?.let { return it }
 		val pages = asyncSafe {
-			getPagesImpl(chapter).distinctById()
+			(if (manga == null) getPagesImpl(chapter) else getPagesImpl(manga, chapter)).distinctById()
 		}
-		cache.putPages(source, chapter.url, pages)
+		cache.putPages(source, chapter.url, pages, manga?.url)
 		pages
 	}.await()
 
@@ -74,6 +80,8 @@ abstract class CachingMangaRepository(
 	protected abstract suspend fun getRelatedMangaImpl(seed: Manga): List<Manga>
 
 	protected abstract suspend fun getPagesImpl(chapter: MangaChapter): List<MangaPage>
+
+    protected open suspend fun getPagesImpl(manga: Manga, chapter: MangaChapter): List<MangaPage> = getPagesImpl(chapter)
 
 	private suspend fun <T> asyncSafe(block: suspend CoroutineScope.() -> T): SafeDeferred<T> {
 		var dispatcher = currentCoroutineContext()[CoroutineDispatcher.Key]

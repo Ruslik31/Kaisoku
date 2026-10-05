@@ -230,7 +230,7 @@ class DetailsActivity :
 		viewModel.isStatsAvailable.observe(this, menuInvalidator)
 		viewModel.remoteManga.observe(this, menuInvalidator)
 		viewModel.tags.observe(this, ::onTagsChanged)
-		viewModel.chapters.observe(this, PrefetchObserver(this))
+		viewModel.chapters.observe(this, PrefetchObserver(this) { viewModel.mangaDetails.value?.toManga() })
 		viewModel.onDownloadStarted
 			.filterNot { appRouter.isChapterPagesSheetShown() }
 			.observeEvent(this, DownloadStartedObserver(viewBinding.scrollView))
@@ -827,6 +827,7 @@ class DetailsActivity :
 
 	private class PrefetchObserver(
 		private val context: Context,
+        private val manga: () -> Manga?,
 	) : FlowCollector<List<ChapterListItem>?> {
 
 		private var isCalled = false
@@ -836,9 +837,10 @@ class DetailsActivity :
 				return
 			}
 			if (!isCalled) {
+                val title = manga() ?: return
 				isCalled = true
 				val item = value.find { it.isCurrent } ?: value.first()
-				MangaPrefetchService.prefetchPages(context, item.chapter)
+				MangaPrefetchService.prefetchPages(context, title, item.chapter)
 			}
 		}
 	}

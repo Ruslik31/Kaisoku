@@ -54,7 +54,7 @@ class AutoFixUseCase @Inject constructor(
 		val repo = mangaRepositoryFactory.create(source)
 		val details = if (this.chapters != null) this else repo.getDetails(this)
 		val firstChapter = details.chapters?.firstOrNull() ?: return@runCatchingCancellable false
-		val pageUrl = repo.getPageUrl(repo.getPages(firstChapter).first())
+		val pageUrl = repo.getPageUrl(repo.getPages(details, firstChapter).first())
 		pageUrl.toHttpUrlOrNull() != null
 	}.getOrDefault(false)
 

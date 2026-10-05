@@ -62,7 +62,7 @@ class ProgressUpdateUseCase @Inject constructor(
 			val ratio = org.koitharu.kotatsu.reader.ui.novel.novelProgressRatio(history.scroll.toInt())
 			(readingIndex + ratio) / chaptersCount
 		} else {
-			val pagesCount = chapterRepo.getPages(chapter).size
+			val pagesCount = chapterRepo.getPages(details, chapter).size
 			if (pagesCount == 0) return PROGRESS_NONE
 			calculateReaderPercent(readingIndex, chaptersCount, history.page, pagesCount)
 		}

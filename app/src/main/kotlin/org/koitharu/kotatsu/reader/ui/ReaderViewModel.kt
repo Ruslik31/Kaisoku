@@ -76,6 +76,7 @@ import org.koitharu.kotatsu.reader.domain.ChaptersLoader
 import org.koitharu.kotatsu.reader.domain.DetectReaderModeUseCase
 import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.reader.domain.itemsInReadingOrder
+import org.koitharu.kotatsu.reader.domain.nextChapterPrefetchPages
 import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
 import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
 import org.koitharu.kotatsu.scrobbling.discord.ui.DiscordRpc
@@ -942,7 +943,7 @@ class ReaderViewModel @Inject constructor(
             val prevJob = preloadJob
             preloadJob = launchLoadingJob(Dispatchers.Default + preloadGroup) {
                 prevJob?.join()
-                chaptersLoader.loadPrevNextChapter(
+                val appended = chaptersLoader.loadPrevNextChapter(
                     mangaDetails.requireValue(),
                     currentId,
                     isNext,
@@ -950,7 +951,14 @@ class ReaderViewModel @Inject constructor(
                 )
                 synchronized(contentStateLock) {
                     ensureActive()
-                    replaceContent(ReaderContent(chaptersLoader.snapshot(), null))
+                    if (appended) {
+                        val pages = chaptersLoader.snapshot()
+                        replaceContent(ReaderContent(pages, null))
+                        if (isNext && pageLoader.isPrefetchApplicable()) {
+                            val nextPages = pages.nextChapterPrefetchPages(currentId, PREFETCH_LIMIT)
+                            if (nextPages.isNotEmpty()) pageLoader.prefetch(nextPages)
+                        }
+                    }
                 }
             }
         }

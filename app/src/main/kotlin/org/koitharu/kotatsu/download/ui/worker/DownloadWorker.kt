@@ -263,7 +263,7 @@ class DownloadWorker @AssistedInject constructor(
 							// The text and image entries are already stored; no image pages remain to fetch.
 							emptyList()
 						} else {
-						repo.getPages(chapter.value)
+						repo.getPages(mangaDetails, chapter.value)
 						}
 					} ?: continue
 					val pageCounter = AtomicInteger(0)

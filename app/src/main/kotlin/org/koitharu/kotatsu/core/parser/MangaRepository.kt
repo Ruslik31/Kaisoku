@@ -62,6 +62,9 @@ interface MangaRepository {
 
 	suspend fun getPages(chapter: MangaChapter): List<MangaPage>
 
+    /** Some extension chapter URLs are relative to a title rather than unique within a source. */
+    suspend fun getPages(manga: Manga, chapter: MangaChapter): List<MangaPage> = getPages(chapter)
+
 	suspend fun getPageUrl(page: MangaPage): String
 
 	suspend fun getFilterOptions(): MangaListFilterOptions
@@ -135,6 +138,28 @@ interface MangaRepository {
 				LocalMangaSource -> return localMangaRepository
 				UnknownMangaSource -> return EmptyMangaRepository(source)
 			}
+            if (source is MihonMangaSource) {
+                // Resolve before consulting the repository cache: ignored, removed or replaced
+                // packages must not keep being served by an obsolete extension instance.
+                val loaded = mihonExtensionManager.resolve(source)
+                return synchronized(cache) {
+                    if (loaded == null) {
+                        cache.remove(source)
+                        contentCache.clear(source)
+                        EmptyMangaRepository(source)
+                    } else {
+                        val current = cache[source]?.get() as? MihonMangaRepository
+                        if (current?.usesSource(loaded) == true) {
+                            current
+                        } else {
+                            contentCache.clear(source)
+                            MihonMangaRepository(loaded, contentCache, appSettings).also {
+                                cache[source] = WeakReference(it)
+                            }
+                        }
+                    }
+                }
+            }
 			cache[source]?.get()?.let { return it }
 			return synchronized(cache) {
 				cache[source]?.get()?.let { return it }
