@@ -90,6 +90,7 @@ class DetailsViewModel @Inject constructor(
 
 	private val intent = MangaIntent(savedStateHandle)
 	private var loadingJob: Job
+	private val detailsLoadFinished = MutableStateFlow(false)
 	val mangaId = intent.mangaId
 
 	init {
@@ -152,22 +153,20 @@ class DetailsViewModel @Inject constructor(
 		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
-	val relatedManga: StateFlow<List<MangaListModel>> = manga.mapLatest {
-		if (it != null && settings.isRelatedMangaEnabled) {
-			val related = relatedMangaUseCase(it).orEmpty().let { list ->
-				if (settings.isNsfwContentDisabled) {
-					list.filterNot { manga -> manga.isNsfw() }
-				} else {
-					list
-				}
-			}
-			mangaListMapper.toListModelList(
-				manga = related,
-				mode = ListMode.GRID,
-			)
-		} else {
-			emptyList()
+	private val relatedRequest = combine(
+		mangaDetails,
+		detailsLoadFinished,
+		settings.observe(AppSettings.KEY_RELATED_MANGA, AppSettings.KEY_DISABLE_NSFW).onStart { emit(null) },
+	) { details, finished, _ ->
+		relatedMangaRequest(details, finished, settings.isRelatedMangaEnabled, settings.isNsfwContentDisabled)
+	}.distinctUntilChanged { old, new -> old?.key == new?.key }
+
+	val relatedManga: StateFlow<List<MangaListModel>> = relatedRequest.mapLatest { request ->
+		if (request == null) return@mapLatest emptyList()
+		val related = relatedMangaUseCase(request.manga).orEmpty().let { list ->
+			if (request.hideAdult) list.filterNot { it.isNsfw() } else list
 		}
+		mangaListMapper.toListModelList(manga = related, mode = ListMode.GRID)
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, emptyList())
 
 	val tags = manga.mapLatest {
@@ -246,20 +245,23 @@ class DetailsViewModel @Inject constructor(
 	}
 
 	private fun doLoad(force: Boolean) = launchLoadingJob(Dispatchers.Default) {
-		detailsLoadUseCase.invoke(intent, force)
-			.onEachWhile {
-				if (it.allChapters.isNotEmpty()) {
-					val manga = it.toManga()
-					// find default branch
-					val hist = historyRepository.getOne(manga)
-					selectedBranch.value = manga.getPreferredBranch(hist)
-					true
-				} else {
-					false
+		try {
+			detailsLoadUseCase.invoke(intent, force)
+				.onEachWhile {
+					if (it.allChapters.isNotEmpty()) {
+						val manga = it.toManga()
+						val hist = historyRepository.getOne(manga)
+						selectedBranch.value = manga.getPreferredBranch(hist)
+						true
+					} else {
+						false
+					}
+				}.collect {
+					mangaDetails.value = it
 				}
-			}.collect {
-				mangaDetails.value = it
-			}
+		} finally {
+			detailsLoadFinished.value = true
+		}
 	}
 
 	private fun getScrobbler(index: Int): Scrobbler? {
