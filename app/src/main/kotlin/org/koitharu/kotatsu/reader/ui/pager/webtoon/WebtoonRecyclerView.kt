@@ -10,6 +10,7 @@ import androidx.core.view.ViewCompat.TYPE_TOUCH
 import androidx.core.view.forEach
 import androidx.core.view.isEmpty
 import androidx.core.view.isNotEmpty
+import androidx.core.view.isVisible
 import androidx.core.view.iterator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -175,6 +176,10 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 			return false
 		}
 		val ssiv = child.target
+		if (!ssiv.isVisible) {
+			// Animated page, it is shown in full by a separate view
+			return true
+		}
 		return isPageScrolledToBottom(ssiv.isReady, ssiv.getScroll(), ssiv.getScrollRange())
 	}
 

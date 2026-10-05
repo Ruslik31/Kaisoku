@@ -314,6 +314,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val isReaderOptimizationEnabled: Boolean
 		get() = prefs.getBoolean(KEY_READER_OPTIMIZE, false)
 
+	val isReaderAnimatedPagesEnabled: Boolean
+		get() = prefs.getBoolean(KEY_READER_ANIMATED_PAGES, true)
+
 	var isReaderUpscaleEnabled: Boolean
 		get() = prefs.getBoolean(KEY_READER_UPSCALE, false)
 		set(value) = prefs.edit { putBoolean(KEY_READER_UPSCALE, value) }
@@ -1137,6 +1140,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_SHORTCUTS = "dynamic_shortcuts"
 		const val KEY_READER_TAP_ACTIONS = "reader_tap_actions"
 		const val KEY_READER_OPTIMIZE = "reader_optimize"
+		const val KEY_READER_ANIMATED_PAGES = "reader_animated_pages"
 		const val KEY_UPSCALE_STRENGTH = "reader_upscale_strength"
 		const val KEY_UPSCALE_PASSES = "reader_upscale_passes"
 		const val KEY_UPSCALE_THRESHOLD = "reader_upscale_threshold"
