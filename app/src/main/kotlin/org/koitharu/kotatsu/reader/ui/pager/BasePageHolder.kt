@@ -4,6 +4,7 @@ import android.content.ComponentCallbacks2
 import android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.drawable.Animatable
 import android.os.Build
 import android.os.PowerManager
 import android.view.View
@@ -13,6 +14,9 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.viewbinding.ViewBinding
+import coil3.request.ErrorResult
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import com.davemorrissey.labs.subscaleview.DefaultOnImageEventListener
 import com.davemorrissey.labs.subscaleview.ImageSource
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
@@ -29,15 +33,16 @@ import org.koitharu.kotatsu.core.image.CoilImageView
 import org.koitharu.kotatsu.core.os.NetworkState
 import org.koitharu.kotatsu.core.ui.list.lifecycle.LifecycleAwareViewHolder
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
-import org.koitharu.kotatsu.core.util.ext.isAnimatedImage
 import org.koitharu.kotatsu.core.util.ext.isLowRamDevice
 import org.koitharu.kotatsu.core.util.ext.isSerializable
 import org.koitharu.kotatsu.core.util.ext.observe
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.databinding.LayoutPageInfoBinding
 import org.koitharu.kotatsu.parsers.util.ifZero
 import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.reader.domain.UpscaleEffect
 import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
+import org.koitharu.kotatsu.reader.ui.pager.doublepage.DoublePageHolder
 import org.koitharu.kotatsu.reader.ui.pager.vm.PageState
 import org.koitharu.kotatsu.reader.ui.pager.vm.PageViewModel
 import org.koitharu.kotatsu.reader.ui.pager.webtoon.WebtoonHolder
@@ -66,6 +71,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 		networkState = networkState,
 		exceptionResolver = exceptionResolver,
 		isWebtoon = this is WebtoonHolder,
+		isAnimationSupported = this !is DoublePageHolder,
 	)
 	protected val bindingInfo = LayoutPageInfoBinding.bind(binding.root)
 	protected abstract val ssiv: SubsamplingScaleImageView
@@ -113,6 +119,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 		}
 		bindingInfo.buttonRetry.setOnClickListener(clickListener)
 		bindingInfo.buttonErrorDetails.setOnClickListener(clickListener)
+		animatedView?.addImageRequestListener(AnimatedImageListener())
 	}
 
 	@CallSuper
@@ -124,9 +131,10 @@ abstract class BasePageHolder<B : ViewBinding>(
 			return
 		}
 		settings.applyBackground(itemView)
+		animatedView?.colorFilter = settings.colorFilter?.toColorFilter()
 		if (settings.applyBitmapConfig(ssiv)) {
 			reloadImage()
-		} else if (viewModel.state.value is PageState.Shown) {
+		} else if ((viewModel.state.value as? PageState.Shown)?.isAnimated == false) {
 			onReady()
 		}
 		ssiv.applyDownSampling(isResumed())
@@ -134,7 +142,11 @@ abstract class BasePageHolder<B : ViewBinding>(
 	}
 
 	fun reloadImage(preserveState: Boolean = false) {
-		val source = (viewModel.state.value as? PageState.Shown)?.source ?: return
+		val state = viewModel.state.value as? PageState.Shown ?: return
+		if (state.isAnimated) {
+			return
+		}
+		val source = state.source
 		settings.applyBitmapConfig(ssiv)
 		// On untranslate, keep the current pan/zoom so going back doesn't jump either.
 		val viewState = if (preserveState) ssiv.getState() else null
@@ -230,8 +242,16 @@ abstract class BasePageHolder<B : ViewBinding>(
 		viewModel.settingsProducer.observe(this, ::onConfigChanged)
 	}
 
+	override fun onStart() {
+		super.onStart()
+		// Coil restarts animations of all attached views when the screen becomes visible,
+		// so stop them again on pages that are not current
+		animatedView?.post { syncAnimation() }
+	}
+
 	override fun onResume() {
 		super.onResume()
+		syncAnimation()
 		ssiv.applyDownSampling(isForeground = true)
 		if (viewModel.state.value is PageState.Error && !viewModel.isLoading()) {
 			boundData?.let { viewModel.retry(it.toMangaPage(), isFromUser = false) }
@@ -240,6 +260,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 
 	override fun onPause() {
 		super.onPause()
+		syncAnimation()
 		ssiv.applyDownSampling(isForeground = false)
 	}
 
@@ -291,7 +312,6 @@ abstract class BasePageHolder<B : ViewBinding>(
 			bindingInfo.progressBar.isIndeterminate = true
 			bindingInfo.textViewStatus.setText(R.string.loading_)
 		}
-		val isAnimated = boundData?.url?.isAnimatedImage() == true
 		when (state) {
 			is PageState.Converting -> {
 				bindingInfo.textViewStatus.setText(R.string.processing_)
@@ -311,8 +331,8 @@ abstract class BasePageHolder<B : ViewBinding>(
 			}
 
 			is PageState.Loaded -> {
-				if (isAnimated) {
-					showAnimated(boundData!!, state)
+				if (state.isAnimated && animatedView != null) {
+					showAnimated(state)
 					bindingInfo.layoutProgress.isGone = true
 				} else {
 					bindingInfo.textViewStatus.setText(R.string.preparing_)
@@ -349,6 +369,9 @@ abstract class BasePageHolder<B : ViewBinding>(
 		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !ssiv.isVisible) {
 			return
 		}
+		if ((viewModel.state.value as? PageState.Shown)?.isAnimated == true) {
+			return
+		}
 		val page = boundData ?: return
 		val fitScale = if (ssiv.isReady && ssiv.sWidth > 0) {
 			ssiv.width / ssiv.sWidth.toFloat()
@@ -374,18 +397,55 @@ abstract class BasePageHolder<B : ViewBinding>(
 		boundData?.let { UpscaleEffect.unregisterView(it.id, ssiv) }
 	}
 
-	private fun showAnimated(page: ReaderPage, loadedState: PageState.Loaded) {
-		ssiv.isVisible = false
-		animatedView?.let {
-			it.isVisible = true
-			it.setImageAsync(page)
+	private fun showAnimated(loadedState: PageState.Loaded) {
+		val view = animatedView ?: return
+		val uri = (loadedState.source as? ImageSource.Uri)?.uri
+		if (uri == null) {
+			viewModel.state.value = loadedState.copy(isAnimated = false)
+			return
 		}
+		view.colorFilter = settings.colorFilter?.toColorFilter()
+		view.isVisible = true
+		// The regular page view stays visible until the first frame is ready, so the page keeps its size
+		view.setImageAsync(uri.toString())
 		viewModel.state.update { currentState ->
 			if (currentState is PageState.Loaded) {
-				PageState.Shown(loadedState.source, loadedState.isConverted)
+				PageState.Shown(loadedState.source, loadedState.isConverted, isAnimated = true)
 			} else {
 				currentState
 			}
+		}
+	}
+
+	private fun syncAnimation() {
+		val animatable = animatedView?.drawable as? Animatable ?: return
+		if (isResumed()) {
+			animatable.start()
+		} else {
+			animatable.stop()
+		}
+	}
+
+	protected open fun onAnimatedImageShown(width: Int, height: Int) = Unit
+
+	private inner class AnimatedImageListener : ImageRequest.Listener {
+
+		override fun onSuccess(request: ImageRequest, result: SuccessResult) {
+			ssiv.isVisible = false
+			onAnimatedImageShown(result.image.width, result.image.height)
+			syncAnimation()
+		}
+
+		override fun onError(request: ImageRequest, result: ErrorResult) {
+			result.throwable.printStackTraceDebug()
+			val state = viewModel.state.value as? PageState.Shown ?: return
+			if (!state.isAnimated) {
+				return
+			}
+			// Fall back to the regular page view, it shows the first frame
+			animatedView?.isVisible = false
+			ssiv.isVisible = true
+			viewModel.state.value = PageState.Loaded(state.source, state.isConverted, isAnimated = false)
 		}
 	}
 

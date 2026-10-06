@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import okio.IOException
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
@@ -26,6 +27,7 @@ import org.koitharu.kotatsu.core.os.NetworkState
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.throttle
 import org.koitharu.kotatsu.parsers.model.MangaPage
+import org.koitharu.kotatsu.reader.domain.AnimatedImageDetector
 import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
 
@@ -35,6 +37,7 @@ class PageViewModel(
 	private val networkState: NetworkState,
 	private val exceptionResolver: ExceptionResolver,
 	private val isWebtoon: Boolean,
+	private val isAnimationSupported: Boolean,
 ) : DefaultOnImageEventListener {
 
 	private val scope = loader.loaderScope + Dispatchers.Main.immediate
@@ -146,12 +149,14 @@ class PageViewModel(
 			val uri = task.await()
 			progressObserver.cancelAndJoin()
 			previewJob.cancel()
-			cachedBounds = if (settingsProducer.value.isPagesCropEnabled(isWebtoon)) {
+			val isAnimated = isAnimationSupported && settingsProducer.value.isAnimatedPagesEnabled &&
+				runInterruptible(Dispatchers.IO) { AnimatedImageDetector.isAnimated(uri) }
+			cachedBounds = if (!isAnimated && settingsProducer.value.isPagesCropEnabled(isWebtoon)) {
 				loader.getTrimmedBounds(uri)
 			} else {
 				null
 			}
-			state.value = PageState.Loaded(uri.toImageSource(cachedBounds), isConverted = false)
+			state.value = PageState.Loaded(uri.toImageSource(cachedBounds), isConverted = false, isAnimated = isAnimated)
 		} catch (e: CancellationException) {
 			throw e
 		} catch (e: Throwable) {

@@ -33,6 +33,7 @@ class WsrvNlProxyInterceptor : BaseImageProxyInterceptor() {
 			.host("wsrv.nl")
 			.addQueryParameter("url", sourceUrl.toString())
 			.addQueryParameter("we", null)
+			.addQueryParameter("n", "-1") // keep all frames of animated GIF and WebP pages
 		return request.newBuilder()
 			.url(targetUrl.build())
 			.build()
