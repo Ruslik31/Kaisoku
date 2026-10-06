@@ -1,0 +1,25 @@
+Changes since 9.8.5:
+
+- Improve Mihon extension installation, discovery and diagnostics.
+- Add controls for app-private and Android-installed extensions.
+- Fix source settings crashes and network preference persistence.
+- Fix upscaler settings and prevent background CAPTCHA windows.
+- Improve chapter sorting, reading order and saved positions.
+- Reduce unnecessary reader work.
+- Improve translation layout, concurrency, profiles and error copying.
+- Add novel reading statistics and read-aloud controls.
+- Add tracker libraries and optional AniList matching (Beta).
+- Improve tracker synchronization and offline caching.
+- Improve community caching and rate-limit recovery.
+- Improve Google Drive synchronization, search and recommendations.
+- Repair source catalogs and readers, including InkStory and Lunar Manga.
+- Add Karh, WitchToons, HanamiHeaven and XCOMIC.
+- Add Discord presence status choices and animated pages.
+- Add a one-time Keep Android Open notice.
+- Update the Monet launcher icon.
+
+Matching remains Beta and off by default; check suggested titles and chapter numbers.
+
+**Back up before updating:** this release upgrades the local database; older APKs cannot open it.
+
+Discord presence choices and animated pages contributed by @Ruslik31 (#21, #22).
