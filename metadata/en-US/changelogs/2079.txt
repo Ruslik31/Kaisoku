@@ -1,0 +1,4 @@
+Add beta tracker libraries and automatic matching.
+Improve tracker synchronization and offline caching.
+Support animated reader pages.
+Update the Monet launcher icon.
