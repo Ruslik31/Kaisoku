@@ -740,6 +740,8 @@
     <string name="state_paused">Paused</string>
     <string name="reader_optimize">Reduce memory consumption (beta)</string>
     <string name="reader_optimize_summary">Reduce offscreen pages quality to use less memory</string>
+    <string name="reader_animated_pages">Animated pages</string>
+    <string name="reader_animated_pages_summary">Play GIF and WebP pages. Animation pauses offscreen; translations use a still frame. Large animations use a still frame. Zoom and upscaling are unavailable during playback</string>
     <string name="reader_upscale">GPU image upscaling (beta)</string>
     <string name="reader_upscale_summary">Sharpen low-resolution pages with an Anime4K-style GPU shader. Android 13+</string>
     <string name="reader_upscale_unsupported">Requires Android 13 or newer</string>

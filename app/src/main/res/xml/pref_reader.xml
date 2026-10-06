@@ -1,91 +1,91 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen
-	xmlns:android="http://schemas.android.com/apk/res/android"
-	xmlns:app="http://schemas.android.com/apk/res-auto"
-	android:title="@string/reader_settings">
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:title="@string/reader_settings">
 
-	<ListPreference
-		android:entries="@array/reader_modes"
-		android:key="reader_mode"
-		android:title="@string/default_mode"
-		app:useSimpleSummaryProvider="true" />
+    <ListPreference
+        android:entries="@array/reader_modes"
+        android:key="reader_mode"
+        android:title="@string/default_mode"
+        app:useSimpleSummaryProvider="true" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="true"
-		android:key="reader_mode_detect"
-		android:summary="@string/detect_reader_mode_summary"
-		android:title="@string/detect_reader_mode" />
+    <SwitchPreferenceCompat
+        android:defaultValue="true"
+        android:key="reader_mode_detect"
+        android:summary="@string/detect_reader_mode_summary"
+        android:title="@string/detect_reader_mode" />
 
-	<ListPreference
-		android:entries="@array/zoom_modes"
-		android:key="zoom_mode"
-		android:title="@string/scale_mode"
-		app:allowDividerAbove="true"
-		app:useSimpleSummaryProvider="true" />
+    <ListPreference
+        android:entries="@array/zoom_modes"
+        android:key="zoom_mode"
+        android:title="@string/scale_mode"
+        app:allowDividerAbove="true"
+        app:useSimpleSummaryProvider="true" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="false"
-		android:key="reader_zoom_buttons"
-		android:summary="@string/reader_zoom_buttons_summary"
-		android:title="@string/reader_zoom_buttons" />
+    <SwitchPreferenceCompat
+        android:defaultValue="false"
+        android:key="reader_zoom_buttons"
+        android:summary="@string/reader_zoom_buttons_summary"
+        android:title="@string/reader_zoom_buttons" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="true"
-		android:key="webtoon_zoom"
-		android:summary="@string/webtoon_zoom_summary"
-		android:title="@string/webtoon_zoom" />
+    <SwitchPreferenceCompat
+        android:defaultValue="true"
+        android:key="webtoon_zoom"
+        android:summary="@string/webtoon_zoom_summary"
+        android:title="@string/webtoon_zoom" />
 
-	<org.koitharu.kotatsu.settings.utils.SliderPreference
-		android:dependency="webtoon_zoom"
-		android:key="webtoon_zoom_out"
-		android:stepSize="10"
-		android:title="@string/default_webtoon_zoom_out"
-		android:valueFrom="0"
-		android:valueTo="50"
-		app:defaultValue="0"
-		app:tickVisible="true" />
+    <org.koitharu.kotatsu.settings.utils.SliderPreference
+        android:dependency="webtoon_zoom"
+        android:key="webtoon_zoom_out"
+        android:stepSize="10"
+        android:title="@string/default_webtoon_zoom_out"
+        android:valueFrom="0"
+        android:valueTo="50"
+        app:defaultValue="0"
+        app:tickVisible="true" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="false"
-		android:key="webtoon_gaps"
-		android:summary="@string/webtoon_gaps_summary"
-		android:title="@string/webtoon_gaps" />
+    <SwitchPreferenceCompat
+        android:defaultValue="false"
+        android:key="webtoon_gaps"
+        android:summary="@string/webtoon_gaps_summary"
+        android:title="@string/webtoon_gaps" />
 
-	<MultiSelectListPreference
-		android:entries="@array/reader_controls"
-		android:key="reader_controls"
-		android:title="@string/reader_controls_in_bottom_bar"
-		app:allowDividerAbove="true" />
+    <MultiSelectListPreference
+        android:entries="@array/reader_controls"
+        android:key="reader_controls"
+        android:title="@string/reader_controls_in_bottom_bar"
+        app:allowDividerAbove="true" />
 
-	<Preference
-		android:key="reader_tap_actions"
-		android:persistent="false"
-		android:summary="@string/reader_actions_summary"
-		android:title="@string/reader_actions" />
+    <Preference
+        android:key="reader_tap_actions"
+        android:persistent="false"
+        android:summary="@string/reader_actions_summary"
+        android:title="@string/reader_actions" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="false"
-		android:key="reader_taps_ltr"
-		android:summary="@string/reader_control_ltr_summary"
-		android:title="@string/reader_control_ltr" />
+    <SwitchPreferenceCompat
+        android:defaultValue="false"
+        android:key="reader_taps_ltr"
+        android:summary="@string/reader_control_ltr_summary"
+        android:title="@string/reader_control_ltr" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="false"
-		android:key="reader_volume_buttons"
-		android:summary="@string/switch_pages_volume_buttons_summary"
-		android:title="@string/switch_pages_volume_buttons" />
+    <SwitchPreferenceCompat
+        android:defaultValue="false"
+        android:key="reader_volume_buttons"
+        android:summary="@string/switch_pages_volume_buttons_summary"
+        android:title="@string/switch_pages_volume_buttons" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="false"
-		android:key="reader_navigation_inverted"
-		android:summary="@string/reader_navigation_inverted_summary"
-		android:title="@string/reader_navigation_inverted" />
+    <SwitchPreferenceCompat
+        android:defaultValue="false"
+        android:key="reader_navigation_inverted"
+        android:summary="@string/reader_navigation_inverted_summary"
+        android:title="@string/reader_navigation_inverted" />
 
-	<ListPreference
-		android:entries="@array/reader_animation"
-		android:key="reader_animation2"
-		android:title="@string/pages_animation"
-		app:useSimpleSummaryProvider="true" />
+    <ListPreference
+        android:entries="@array/reader_animation"
+        android:key="reader_animation2"
+        android:title="@string/pages_animation"
+        app:useSimpleSummaryProvider="true" />
 
     <SwitchPreferenceCompat
         android:defaultValue="false"
@@ -93,248 +93,254 @@
         android:summary="@string/enable_pull_gesture_summary"
         android:title="@string/enable_pull_gesture_title" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="false"
-		android:key="enhanced_colors"
-		android:summary="@string/enhanced_colors_summary"
-		android:title="@string/enhanced_colors"
-		app:allowDividerAbove="true" />
+    <SwitchPreferenceCompat
+        android:defaultValue="false"
+        android:key="enhanced_colors"
+        android:summary="@string/enhanced_colors_summary"
+        android:title="@string/enhanced_colors"
+        app:allowDividerAbove="true" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="false"
-		android:key="reader_optimize"
-		android:summary="@string/reader_optimize_summary"
-		android:title="@string/reader_optimize" />
+    <SwitchPreferenceCompat
+        android:defaultValue="false"
+        android:key="reader_optimize"
+        android:summary="@string/reader_optimize_summary"
+        android:title="@string/reader_optimize" />
 
-	<Preference
-		android:persistent="false"
-		android:key="reader_upscale"
-		android:summary="@string/reader_upscale_summary"
-		android:title="@string/reader_upscale" />
+    <SwitchPreferenceCompat
+        android:defaultValue="true"
+        android:key="reader_animated_pages"
+        android:summary="@string/reader_animated_pages_summary"
+        android:title="@string/reader_animated_pages" />
 
-	<MultiSelectListPreference
-		android:entries="@array/reader_crop"
-		android:entryValues="@array/values_reader_crop"
-		android:key="reader_crop"
-		android:title="@string/crop_pages" />
+    <Preference
+        android:persistent="false"
+        android:key="reader_upscale"
+        android:summary="@string/reader_upscale_summary"
+        android:title="@string/reader_upscale" />
 
-	<PreferenceCategory
-		android:title="@string/e_ink"
-		app:allowDividerAbove="true">
+    <MultiSelectListPreference
+        android:entries="@array/reader_crop"
+        android:entryValues="@array/values_reader_crop"
+        android:key="reader_crop"
+        android:title="@string/crop_pages" />
 
-		<SwitchPreferenceCompat
-			android:defaultValue="false"
-			android:key="eink_flash"
-			android:summary="@string/flash_on_page_change_summary"
-			android:title="@string/flash_on_page_change" />
+    <PreferenceCategory
+        android:title="@string/e_ink"
+        app:allowDividerAbove="true">
 
-		<org.koitharu.kotatsu.settings.utils.SliderPreference
-			android:dependency="eink_flash"
-			android:key="eink_flash_duration"
-			android:stepSize="50"
-			android:title="@string/flash_duration"
-			android:valueFrom="100"
-			android:valueTo="1000"
-			app:defaultValue="300" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="eink_flash"
+            android:summary="@string/flash_on_page_change_summary"
+            android:title="@string/flash_on_page_change" />
 
-		<org.koitharu.kotatsu.settings.utils.SliderPreference
-			android:dependency="eink_flash"
-			android:key="eink_flash_every"
-			android:stepSize="1"
-			android:title="@string/flash_every"
-			android:valueFrom="1"
-			android:valueTo="10"
-			app:defaultValue="1"
-			app:tickVisible="true" />
+        <org.koitharu.kotatsu.settings.utils.SliderPreference
+            android:dependency="eink_flash"
+            android:key="eink_flash_duration"
+            android:stepSize="50"
+            android:title="@string/flash_duration"
+            android:valueFrom="100"
+            android:valueTo="1000"
+            app:defaultValue="300" />
 
-		<ListPreference
-			android:dependency="eink_flash"
-			android:key="eink_flash_color"
-			android:title="@string/flash_with"
-			app:useSimpleSummaryProvider="true" />
+        <org.koitharu.kotatsu.settings.utils.SliderPreference
+            android:dependency="eink_flash"
+            android:key="eink_flash_every"
+            android:stepSize="1"
+            android:title="@string/flash_every"
+            android:valueFrom="1"
+            android:valueTo="10"
+            app:defaultValue="1"
+            app:tickVisible="true" />
 
-	</PreferenceCategory>
+        <ListPreference
+            android:dependency="eink_flash"
+            android:key="eink_flash_color"
+            android:title="@string/flash_with"
+            app:useSimpleSummaryProvider="true" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="true"
-		android:key="reader_fullscreen"
-		android:summary="@string/reader_fullscreen_summary"
-		android:title="@string/fullscreen_mode"
-		app:allowDividerAbove="true" />
+    </PreferenceCategory>
 
-	<ListPreference
-		android:entries="@array/screen_orientations"
-		android:key="reader_orientation"
-		android:title="@string/screen_orientation"
-		app:useSimpleSummaryProvider="true" />
+    <SwitchPreferenceCompat
+        android:defaultValue="true"
+        android:key="reader_fullscreen"
+        android:summary="@string/reader_fullscreen_summary"
+        android:title="@string/fullscreen_mode"
+        app:allowDividerAbove="true" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="true"
-		android:key="reader_screen_on"
-		android:summary="@string/keep_screen_on_summary"
-		android:title="@string/keep_screen_on" />
+    <ListPreference
+        android:entries="@array/screen_orientations"
+        android:key="reader_orientation"
+        android:title="@string/screen_orientation"
+        app:useSimpleSummaryProvider="true" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="false"
-		android:key="reader_multitask"
-		android:summary="@string/reader_multitask_summary"
-		android:title="@string/reader_multitask" />
+    <SwitchPreferenceCompat
+        android:defaultValue="true"
+        android:key="reader_screen_on"
+        android:summary="@string/keep_screen_on_summary"
+        android:title="@string/keep_screen_on" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="true"
-		android:key="reader_bar"
-		android:summary="@string/reader_info_bar_summary"
-		android:title="@string/reader_info_bar"
-		app:allowDividerAbove="true" />
+    <SwitchPreferenceCompat
+        android:defaultValue="false"
+        android:key="reader_multitask"
+        android:summary="@string/reader_multitask_summary"
+        android:title="@string/reader_multitask" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="true"
-		android:dependency="reader_bar"
-		android:key="reader_bar_transparent"
-		android:title="@string/reader_info_bar_transparent" />
+    <SwitchPreferenceCompat
+        android:defaultValue="true"
+        android:key="reader_bar"
+        android:summary="@string/reader_info_bar_summary"
+        android:title="@string/reader_info_bar"
+        app:allowDividerAbove="true" />
 
-	<org.koitharu.kotatsu.settings.ReaderPreviewSettingsPreference
-		android:key="reader_bar_preview"
-		android:persistent="false"
-		android:selectable="false" />
+    <SwitchPreferenceCompat
+        android:defaultValue="true"
+        android:dependency="reader_bar"
+        android:key="reader_bar_transparent"
+        android:title="@string/reader_info_bar_transparent" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="true"
-		android:key="reader_float_bar"
-		android:summary="@string/reader_float_bar_summary"
-		android:title="@string/reader_float_bar" />
+    <org.koitharu.kotatsu.settings.ReaderPreviewSettingsPreference
+        android:key="reader_bar_preview"
+        android:persistent="false"
+        android:selectable="false" />
 
-	<org.koitharu.kotatsu.settings.utils.SliderPreference
-		android:key="reader_top_bar_opacity"
-		android:stepSize="5"
-		android:title="@string/reader_top_bar_opacity"
-		android:valueFrom="50"
-		android:valueTo="100"
-		app:defaultValue="50"
-		app:tickVisible="true" />
+    <SwitchPreferenceCompat
+        android:defaultValue="true"
+        android:key="reader_float_bar"
+        android:summary="@string/reader_float_bar_summary"
+        android:title="@string/reader_float_bar" />
 
-	<org.koitharu.kotatsu.settings.utils.SliderPreference
-		android:key="reader_bottom_bar_opacity"
-		android:stepSize="5"
-		android:title="@string/reader_bottom_bar_opacity"
-		android:valueFrom="50"
-		android:valueTo="100"
-		app:defaultValue="50"
-		app:tickVisible="true" />
+    <org.koitharu.kotatsu.settings.utils.SliderPreference
+        android:key="reader_top_bar_opacity"
+        android:stepSize="5"
+        android:title="@string/reader_top_bar_opacity"
+        android:valueFrom="50"
+        android:valueTo="100"
+        app:defaultValue="50"
+        app:tickVisible="true" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="true"
-		android:key="reader_chapter_toast"
-		android:summary="@string/reader_chapter_toast_summary"
-		android:title="@string/reader_chapter_toast" />
+    <org.koitharu.kotatsu.settings.utils.SliderPreference
+        android:key="reader_bottom_bar_opacity"
+        android:stepSize="5"
+        android:title="@string/reader_bottom_bar_opacity"
+        android:valueFrom="50"
+        android:valueTo="100"
+        app:defaultValue="50"
+        app:tickVisible="true" />
 
-	<ListPreference
-		android:entries="@array/reader_backgrounds"
-		android:key="reader_background"
-		android:title="@string/background"
-		app:allowDividerAbove="true"
-		app:useSimpleSummaryProvider="true" />
+    <SwitchPreferenceCompat
+        android:defaultValue="true"
+        android:key="reader_chapter_toast"
+        android:summary="@string/reader_chapter_toast_summary"
+        android:title="@string/reader_chapter_toast" />
 
-	<SwitchPreferenceCompat
-		android:defaultValue="false"
-		android:key="pages_numbers"
-		android:summary="@string/show_pages_numbers_summary"
-		android:title="@string/show_pages_numbers" />
+    <ListPreference
+        android:entries="@array/reader_backgrounds"
+        android:key="reader_background"
+        android:title="@string/background"
+        app:allowDividerAbove="true"
+        app:useSimpleSummaryProvider="true" />
 
-	<ListPreference
-		android:defaultValue="2"
-		android:entries="@array/network_policy"
-		android:entryValues="@array/values_network_policy"
-		android:key="pages_preload"
-		android:title="@string/preload_pages"
-		app:useSimpleSummaryProvider="true" />
+    <SwitchPreferenceCompat
+        android:defaultValue="false"
+        android:key="pages_numbers"
+        android:summary="@string/show_pages_numbers_summary"
+        android:title="@string/show_pages_numbers" />
 
-	<PreferenceCategory
-		android:key="cat_ai_translation"
-		android:title="@string/ai_translation_beta">
+    <ListPreference
+        android:defaultValue="2"
+        android:entries="@array/network_policy"
+        android:entryValues="@array/values_network_policy"
+        android:key="pages_preload"
+        android:title="@string/preload_pages"
+        app:useSimpleSummaryProvider="true" />
 
-		<SwitchPreferenceCompat
-			android:defaultValue="false"
-			android:key="translate_enabled"
-			android:summary="@string/translate_enabled_summary"
-			android:title="@string/translate_enabled" />
+    <PreferenceCategory
+        android:key="cat_ai_translation"
+        android:title="@string/ai_translation_beta">
 
-		<ListPreference
-			android:defaultValue="OPENAI_COMPATIBLE"
-			android:entries="@array/translate_providers"
-			android:entryValues="@array/translate_providers_values"
-			android:key="translate_provider"
-			android:summary="@string/translate_provider_summary"
-			android:title="@string/translate_provider"
-			app:useSimpleSummaryProvider="true" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="translate_enabled"
+            android:summary="@string/translate_enabled_summary"
+            android:title="@string/translate_enabled" />
 
-		<EditTextPreference
-			android:key="translate_endpoint"
-			android:title="@string/translate_endpoint"
-			app:useSimpleSummaryProvider="true" />
+        <ListPreference
+            android:defaultValue="OPENAI_COMPATIBLE"
+            android:entries="@array/translate_providers"
+            android:entryValues="@array/translate_providers_values"
+            android:key="translate_provider"
+            android:summary="@string/translate_provider_summary"
+            android:title="@string/translate_provider"
+            app:useSimpleSummaryProvider="true" />
 
-		<EditTextPreference
-			android:key="translate_api_key"
-			android:title="@string/translate_api_key" />
+        <EditTextPreference
+            android:key="translate_endpoint"
+            android:title="@string/translate_endpoint"
+            app:useSimpleSummaryProvider="true" />
 
-		<EditTextPreference
-			android:key="translate_model"
-			android:title="@string/translate_model"
-			app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            android:key="translate_api_key"
+            android:title="@string/translate_api_key" />
 
-		<EditTextPreference
-			android:key="translate_custom_headers"
-			android:title="@string/translate_custom_headers" />
+        <EditTextPreference
+            android:key="translate_model"
+            android:title="@string/translate_model"
+            app:useSimpleSummaryProvider="true" />
 
-		<ListPreference
-			android:defaultValue="auto"
-			android:entries="@array/translate_languages"
-			android:entryValues="@array/translate_languages_values"
-			android:key="translate_source_lang"
-			android:title="@string/translate_source_lang"
-			app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            android:key="translate_custom_headers"
+            android:title="@string/translate_custom_headers" />
 
-		<ListPreference
-			android:entries="@array/translate_languages"
-			android:entryValues="@array/translate_languages_values"
-			android:key="translate_target_lang"
-			android:title="@string/translate_target_lang"
-			app:useSimpleSummaryProvider="true" />
+        <ListPreference
+            android:defaultValue="auto"
+            android:entries="@array/translate_languages"
+            android:entryValues="@array/translate_languages_values"
+            android:key="translate_source_lang"
+            android:title="@string/translate_source_lang"
+            app:useSimpleSummaryProvider="true" />
 
-		<ListPreference
-			android:defaultValue="MANUAL"
-			android:entries="@array/translate_trigger_modes"
-			android:entryValues="@array/translate_trigger_modes_values"
-			android:key="translate_trigger_mode"
-			android:title="@string/translate_trigger_mode"
-			app:useSimpleSummaryProvider="true" />
+        <ListPreference
+            android:entries="@array/translate_languages"
+            android:entryValues="@array/translate_languages_values"
+            android:key="translate_target_lang"
+            android:title="@string/translate_target_lang"
+            app:useSimpleSummaryProvider="true" />
 
-		<SwitchPreferenceCompat
-			android:defaultValue="true"
-			android:key="translate_overlay_bg"
-			android:summary="@string/translate_overlay_bg_summary"
-			android:title="@string/translate_overlay_bg" />
+        <ListPreference
+            android:defaultValue="MANUAL"
+            android:entries="@array/translate_trigger_modes"
+            android:entryValues="@array/translate_trigger_modes_values"
+            android:key="translate_trigger_mode"
+            android:title="@string/translate_trigger_mode"
+            app:useSimpleSummaryProvider="true" />
 
-		<SeekBarPreference
-			android:defaultValue="1"
-			android:key="translate_concurrency"
-			android:max="4"
-			android:title="@string/translate_concurrency"
-			app:min="1"
-			app:showSeekBarValue="true" />
+        <SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="translate_overlay_bg"
+            android:summary="@string/translate_overlay_bg_summary"
+            android:title="@string/translate_overlay_bg" />
 
-		<SeekBarPreference
-			android:defaultValue="10"
-			android:key="translate_rpm"
-			android:max="60"
-			android:title="@string/translate_rpm"
-			app:min="1"
-			app:showSeekBarValue="true" />
+        <SeekBarPreference
+            android:defaultValue="1"
+            android:key="translate_concurrency"
+            android:max="4"
+            android:title="@string/translate_concurrency"
+            app:min="1"
+            app:showSeekBarValue="true" />
 
-		<Preference
-			android:key="translate_clear_cache"
-			android:title="@string/translate_clear_cache" />
+        <SeekBarPreference
+            android:defaultValue="10"
+            android:key="translate_rpm"
+            android:max="60"
+            android:title="@string/translate_rpm"
+            app:min="1"
+            app:showSeekBarValue="true" />
 
-	</PreferenceCategory>
+        <Preference
+            android:key="translate_clear_cache"
+            android:title="@string/translate_clear_cache" />
+
+    </PreferenceCategory>
 
 </PreferenceScreen>

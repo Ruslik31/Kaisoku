@@ -30,118 +30,121 @@ import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import org.koitharu.kotatsu.reader.domain.ReaderColorFilter
 
 data class ReaderSettings(
-	val zoomMode: ZoomMode,
-	val background: ReaderBackground,
-	val colorFilter: ReaderColorFilter?,
-	val isReaderOptimizationEnabled: Boolean,
-	val isUpscaleEnabled: Boolean,
-	val upscaleConfig: org.koitharu.kotatsu.reader.domain.UpscaleConfig,
-	val bitmapConfig: Bitmap.Config,
-	val isPagesNumbersEnabled: Boolean,
-	val isPagesCropEnabledStandard: Boolean,
-	val isPagesCropEnabledWebtoon: Boolean,
+    val zoomMode: ZoomMode,
+    val background: ReaderBackground,
+    val colorFilter: ReaderColorFilter?,
+    val isReaderOptimizationEnabled: Boolean,
+    val isAnimatedPagesEnabled: Boolean,
+    val isUpscaleEnabled: Boolean,
+    val upscaleConfig: org.koitharu.kotatsu.reader.domain.UpscaleConfig,
+    val bitmapConfig: Bitmap.Config,
+    val isPagesNumbersEnabled: Boolean,
+    val isPagesCropEnabledStandard: Boolean,
+    val isPagesCropEnabledWebtoon: Boolean,
 ) {
 
-	private constructor(settings: AppSettings, colorFilterOverride: ReaderColorFilter?) : this(
-		zoomMode = settings.zoomMode,
-		background = settings.readerBackground,
-		colorFilter = colorFilterOverride?.takeUnless { it.isEmpty } ?: settings.readerColorFilter,
-		isReaderOptimizationEnabled = settings.isReaderOptimizationEnabled,
-		isUpscaleEnabled = settings.isReaderUpscaleEnabled,
-		upscaleConfig = settings.readerUpscaleConfig,
-		bitmapConfig = if (settings.is32BitColorsEnabled) {
-			Bitmap.Config.ARGB_8888
-		} else {
-			Bitmap.Config.RGB_565
-		},
-		isPagesNumbersEnabled = settings.isPagesNumbersEnabled,
-		isPagesCropEnabledStandard = settings.isPagesCropEnabled(ReaderMode.STANDARD),
-		isPagesCropEnabledWebtoon = settings.isPagesCropEnabled(ReaderMode.WEBTOON),
-	)
+    private constructor(settings: AppSettings, colorFilterOverride: ReaderColorFilter?) : this(
+        zoomMode = settings.zoomMode,
+        background = settings.readerBackground,
+        colorFilter = colorFilterOverride?.takeUnless { it.isEmpty } ?: settings.readerColorFilter,
+        isReaderOptimizationEnabled = settings.isReaderOptimizationEnabled,
+        isAnimatedPagesEnabled = settings.isReaderAnimatedPagesEnabled,
+        isUpscaleEnabled = settings.isReaderUpscaleEnabled,
+        upscaleConfig = settings.readerUpscaleConfig,
+        bitmapConfig = if (settings.is32BitColorsEnabled) {
+            Bitmap.Config.ARGB_8888
+        } else {
+            Bitmap.Config.RGB_565
+        },
+        isPagesNumbersEnabled = settings.isPagesNumbersEnabled,
+        isPagesCropEnabledStandard = settings.isPagesCropEnabled(ReaderMode.STANDARD),
+        isPagesCropEnabledWebtoon = settings.isPagesCropEnabled(ReaderMode.WEBTOON),
+    )
 
-	fun applyBackground(view: View) {
-		view.background = background.resolve(view.context)
-		view.backgroundTintList = if (background.isLight(view.context)) {
-			colorFilter?.getBackgroundTint()
-		} else {
-			null
-		}
-	}
+    fun applyBackground(view: View) {
+        view.background = background.resolve(view.context)
+        view.backgroundTintList = if (background.isLight(view.context)) {
+            colorFilter?.getBackgroundTint()
+        } else {
+            null
+        }
+    }
 
-	fun isPagesCropEnabled(isWebtoon: Boolean) = if (isWebtoon) {
-		isPagesCropEnabledWebtoon
-	} else {
-		isPagesCropEnabledStandard
-	}
+    fun isPagesCropEnabled(isWebtoon: Boolean) = if (isWebtoon) {
+        isPagesCropEnabledWebtoon
+    } else {
+        isPagesCropEnabledStandard
+    }
 
-	@CheckResult
-	fun applyBitmapConfig(ssiv: SubsamplingScaleImageView): Boolean {
-		val config = bitmapConfig
-		return if (ssiv.regionDecoderFactory.bitmapConfig != config) {
-			ssiv.regionDecoderFactory = if (ssiv.context.isLowRamDevice()) {
-				SkiaImageRegionDecoder.Factory(config)
-			} else {
-				SkiaPooledImageRegionDecoder.Factory(config)
-			}
-			ssiv.bitmapDecoderFactory = SkiaImageDecoder.Factory(config)
-			true
-		} else {
-			false
-		}
-	}
+    @CheckResult
+    fun applyBitmapConfig(ssiv: SubsamplingScaleImageView): Boolean {
+        val config = bitmapConfig
+        return if (ssiv.regionDecoderFactory.bitmapConfig != config) {
+            ssiv.regionDecoderFactory = if (ssiv.context.isLowRamDevice()) {
+                SkiaImageRegionDecoder.Factory(config)
+            } else {
+                SkiaPooledImageRegionDecoder.Factory(config)
+            }
+            ssiv.bitmapDecoderFactory = SkiaImageDecoder.Factory(config)
+            true
+        } else {
+            false
+        }
+    }
 
-	class Producer @AssistedInject constructor(
-		@Assisted private val mangaId: Flow<Long>,
-		private val settings: AppSettings,
-		private val mangaDataRepository: MangaDataRepository,
-	) : MediatorStateFlow<ReaderSettings>(ReaderSettings(settings, null)) {
+    class Producer @AssistedInject constructor(
+        @Assisted private val mangaId: Flow<Long>,
+        private val settings: AppSettings,
+        private val mangaDataRepository: MangaDataRepository,
+    ) : MediatorStateFlow<ReaderSettings>(ReaderSettings(settings, null)) {
 
-		private val settingsKeys = scatterSetOf(
-			AppSettings.KEY_ZOOM_MODE,
-			AppSettings.KEY_PAGES_NUMBERS,
-			AppSettings.KEY_READER_BACKGROUND,
-			AppSettings.KEY_32BIT_COLOR,
-			AppSettings.KEY_READER_OPTIMIZE,
-			AppSettings.KEY_READER_UPSCALE,
-			AppSettings.KEY_UPSCALE_STRENGTH,
-			AppSettings.KEY_UPSCALE_PASSES,
-			AppSettings.KEY_UPSCALE_THRESHOLD,
-			AppSettings.KEY_CF_CONTRAST,
-			AppSettings.KEY_CF_BRIGHTNESS,
-			AppSettings.KEY_CF_INVERTED,
-			AppSettings.KEY_CF_GRAYSCALE,
-			AppSettings.KEY_READER_CROP,
-		)
-		private var job: Job? = null
+        private val settingsKeys = scatterSetOf(
+            AppSettings.KEY_ZOOM_MODE,
+            AppSettings.KEY_PAGES_NUMBERS,
+            AppSettings.KEY_READER_BACKGROUND,
+            AppSettings.KEY_32BIT_COLOR,
+            AppSettings.KEY_READER_OPTIMIZE,
+            AppSettings.KEY_READER_ANIMATED_PAGES,
+            AppSettings.KEY_READER_UPSCALE,
+            AppSettings.KEY_UPSCALE_STRENGTH,
+            AppSettings.KEY_UPSCALE_PASSES,
+            AppSettings.KEY_UPSCALE_THRESHOLD,
+            AppSettings.KEY_CF_CONTRAST,
+            AppSettings.KEY_CF_BRIGHTNESS,
+            AppSettings.KEY_CF_INVERTED,
+            AppSettings.KEY_CF_GRAYSCALE,
+            AppSettings.KEY_READER_CROP,
+        )
+        private var job: Job? = null
 
-		override fun onActive() {
-			assert(job?.isActive != true)
-			job?.cancel()
-			job = processLifecycleScope.launch(Dispatchers.Default) {
-				observeImpl()
-			}
-		}
+        override fun onActive() {
+            assert(job?.isActive != true)
+            job?.cancel()
+            job = processLifecycleScope.launch(Dispatchers.Default) {
+                observeImpl()
+            }
+        }
 
-		override fun onInactive() {
-			job?.cancel()
-			job = null
-		}
+        override fun onInactive() {
+            job?.cancel()
+            job = null
+        }
 
-		private suspend fun observeImpl() {
-			combine(
-				mangaId.flatMapLatest { mangaDataRepository.observeColorFilter(it) },
-				settings.observeChanges().filter { x -> x == null || x in settingsKeys }.onStart { emit(null) },
-			) { mangaCf, settingsKey ->
-				ReaderSettings(settings, mangaCf)
-			}.collect {
-				publishValue(it)
-			}
-		}
+        private suspend fun observeImpl() {
+            combine(
+                mangaId.flatMapLatest { mangaDataRepository.observeColorFilter(it) },
+                settings.observeChanges().filter { x -> x == null || x in settingsKeys }.onStart { emit(null) },
+            ) { mangaCf, settingsKey ->
+                ReaderSettings(settings, mangaCf)
+            }.collect {
+                publishValue(it)
+            }
+        }
 
-		@AssistedFactory
-		interface Factory {
+        @AssistedFactory
+        interface Factory {
 
-			fun create(mangaId: Flow<Long>): Producer
-		}
-	}
+            fun create(mangaId: Flow<Long>): Producer
+        }
+    }
 }

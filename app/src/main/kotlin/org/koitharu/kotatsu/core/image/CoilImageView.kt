@@ -8,6 +8,7 @@ import androidx.annotation.AttrRes
 import androidx.annotation.DrawableRes
 import androidx.core.content.withStyledAttributes
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.lifecycle.lifecycleScope
@@ -50,273 +51,298 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 open class CoilImageView @JvmOverloads constructor(
-	context: Context,
-	attrs: AttributeSet? = null,
-	@AttrRes defStyleAttr: Int = 0,
+    context: Context,
+    attrs: AttributeSet? = null,
+    @AttrRes defStyleAttr: Int = 0,
 ) : ShapeableImageView(context, attrs, defStyleAttr), ImageRequest.Listener {
 
-	@Inject
-	lateinit var coil: ImageLoader
+    @Inject
+    lateinit var coil: ImageLoader
 
-	@Inject
-	lateinit var networkState: NetworkState
+    @Inject
+    lateinit var networkState: NetworkState
 
-	var allowRgb565: Boolean = false
-	var useExistingDrawable: Boolean = false
-	var decodeRegion: Boolean = false
-	var exactImageSize: Size? = null
-	var crossfadeDurationFactor: Float = 1f
+    var allowRgb565: Boolean = false
+    var useExistingDrawable: Boolean = false
+    var decodeRegion: Boolean = false
+    var exactImageSize: Size? = null
+    var crossfadeDurationFactor: Float = 1f
+    var imageRequestLifecycle: Lifecycle? = null
+    var isAnimationPlaybackAllowed: Boolean = true
+        set(value) {
+            field = value
+            (drawable as? Animatable)?.let {
+                if (value && isAttachedToWindow) it.start() else it.stop()
+            }
+        }
 
-	var placeholderDrawable: Drawable? = null
-	var errorDrawable: Drawable? = null
-	var fallbackDrawable: Drawable? = null
+    var placeholderDrawable: Drawable? = null
+    var errorDrawable: Drawable? = null
+    var fallbackDrawable: Drawable? = null
 
-	private var currentRequest: Disposable? = null
-	private var currentImageData: Any = NullRequestData
-	private var networkWaitingJob: Job? = null
-	private val weakRequestListener = WeakImageRequestListener(this)
+    private var currentRequest: Disposable? = null
+    private var currentImageData: Any = NullRequestData
+    private var networkWaitingJob: Job? = null
+    private val weakRequestListener = WeakImageRequestListener(this)
 
-	private var listeners: MutableList<ImageRequest.Listener>? = null
+    private var listeners: MutableList<ImageRequest.Listener>? = null
 
-	val isFailed: Boolean
-		get() = CoilUtils.result(this) is ErrorResult
+    val isFailed: Boolean
+        get() = CoilUtils.result(this) is ErrorResult
 
-	override fun onDetachedFromWindow() {
-		super.onDetachedFromWindow()
-		currentRequest?.job?.cancel()
-		networkWaitingJob?.cancel()
-		networkWaitingJob = null
-	}
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        currentRequest?.job?.cancel()
+        networkWaitingJob?.cancel()
+        networkWaitingJob = null
+    }
 
-	init {
-		context.withStyledAttributes(attrs, R.styleable.CoilImageView, defStyleAttr) {
-			allowRgb565 = getBoolean(R.styleable.CoilImageView_allowRgb565, allowRgb565)
-			useExistingDrawable = getBoolean(R.styleable.CoilImageView_useExistingDrawable, useExistingDrawable)
-			decodeRegion = getBoolean(R.styleable.CoilImageView_decodeRegion, decodeRegion)
-			placeholderDrawable = getDrawable(R.styleable.CoilImageView_placeholderDrawable)
-			errorDrawable = getDrawable(R.styleable.CoilImageView_errorDrawable)
-			fallbackDrawable = getDrawable(R.styleable.CoilImageView_fallbackDrawable)
-			crossfadeDurationFactor = if (getBoolean(R.styleable.CoilImageView_crossfadeEnabled, true)) {
-				crossfadeDurationFactor
-			} else {
-				0f
-			}
-		}
-	}
+    init {
+        context.withStyledAttributes(attrs, R.styleable.CoilImageView, defStyleAttr) {
+            allowRgb565 = getBoolean(R.styleable.CoilImageView_allowRgb565, allowRgb565)
+            useExistingDrawable = getBoolean(R.styleable.CoilImageView_useExistingDrawable, useExistingDrawable)
+            decodeRegion = getBoolean(R.styleable.CoilImageView_decodeRegion, decodeRegion)
+            placeholderDrawable = getDrawable(R.styleable.CoilImageView_placeholderDrawable)
+            errorDrawable = getDrawable(R.styleable.CoilImageView_errorDrawable)
+            fallbackDrawable = getDrawable(R.styleable.CoilImageView_fallbackDrawable)
+            crossfadeDurationFactor = if (getBoolean(R.styleable.CoilImageView_crossfadeEnabled, true)) {
+                crossfadeDurationFactor
+            } else {
+                0f
+            }
+        }
+    }
 
-	override fun onCancel(request: ImageRequest) {
-		super.onCancel(request)
-		listeners?.forEach { it.onCancel(request) }
-	}
+    override fun onCancel(request: ImageRequest) {
+        super.onCancel(request)
+        listeners?.toList()?.forEach { it.onCancel(request) }
+    }
 
-	override fun onError(request: ImageRequest, result: ErrorResult) {
-		super.onError(request, result)
-		listeners?.forEach { it.onError(request, result) }
-		if (result.throwable.isNetworkError()) {
-			waitForNetwork()
-		}
-	}
+    override fun onError(request: ImageRequest, result: ErrorResult) {
+        super.onError(request, result)
+        listeners?.toList()?.forEach { it.onError(request, result) }
+        if (result.throwable.isNetworkError()) {
+            waitForNetwork()
+        }
+    }
 
-	override fun onStart(request: ImageRequest) {
-		super.onStart(request)
-		listeners?.forEach { it.onStart(request) }
-	}
+    override fun onStart(request: ImageRequest) {
+        super.onStart(request)
+        listeners?.toList()?.forEach { it.onStart(request) }
+    }
 
-	override fun onSuccess(request: ImageRequest, result: SuccessResult) {
-		super.onSuccess(request, result)
-		listeners?.forEach { it.onSuccess(request, result) }
-	}
+    override fun onSuccess(request: ImageRequest, result: SuccessResult) {
+        super.onSuccess(request, result)
+        listeners?.toList()?.forEach { it.onSuccess(request, result) }
+    }
 
-	fun addImageRequestListener(listener: ImageRequest.Listener) {
-		val list = listeners ?: LinkedList<ImageRequest.Listener>().also { listeners = it }
-		list.add(listener)
-	}
+    fun addImageRequestListener(listener: ImageRequest.Listener) {
+        val list = listeners ?: LinkedList<ImageRequest.Listener>().also { listeners = it }
+        list.add(listener)
+    }
 
-	fun removeImageRequestListener(listener: ImageRequest.Listener) {
-		listeners?.remove(listener)
-	}
+    fun removeImageRequestListener(listener: ImageRequest.Listener) {
+        listeners?.remove(listener)
+    }
 
-	fun setImageAsync(@DrawableRes resourceId: Int) = enqueueRequest(
-		newRequestBuilder()
-			.data(resourceId)
-			.build(),
-	)
+    fun setImageAsync(@DrawableRes resourceId: Int) = enqueueRequest(
+        newRequestBuilder()
+            .data(resourceId)
+            .build(),
+    )
 
-	fun setImageAsync(url: String?) = enqueueRequest(
-		newRequestBuilder()
-			.data(url)
-			.build(),
-	)
+    fun setImageAsync(url: String?) = enqueueRequest(
+        newRequestBuilder()
+            .data(url)
+            .build(),
+    )
 
-	open fun setImageAsync(page: ReaderPage) = enqueueRequest(
-		newRequestBuilder()
-			.data(page.toMangaPage())
-			.mangaSourceExtra(page.source)
-			.build(),
-	)
+    fun setImageAsync(url: String, listener: ImageRequest.Listener) = enqueueRequest(
+        newRequestBuilder()
+            .data(url)
+            .listener(WeakImageRequestListener(this, listener))
+            .build(),
+    )
 
-	fun disposeImage() {
-		networkWaitingJob?.cancel()
-		networkWaitingJob = null
-		currentRequest?.dispose()
-		CoilUtils.dispose(this)
-		currentRequest = null
-		currentImageData = NullRequestData
-		setImageDrawable(null)
-	}
+    open fun setImageAsync(page: ReaderPage) = enqueueRequest(
+        newRequestBuilder()
+            .data(page.toMangaPage())
+            .mangaSourceExtra(page.source)
+            .build(),
+    )
 
-	fun reload() {
-		CoilUtils.result(this)?.let { result ->
-			enqueueRequest(result.request, force = true)
-		}
-	}
+    fun disposeImage() {
+        networkWaitingJob?.cancel()
+        networkWaitingJob = null
+        currentRequest?.dispose()
+        CoilUtils.dispose(this)
+        currentRequest = null
+        currentImageData = NullRequestData
+        setImageDrawable(null)
+    }
 
-	protected fun enqueueRequest(request: ImageRequest, force: Boolean = false): Disposable {
-		val previous = currentRequest
-		if (!force && currentImageData == request.data && previous?.job?.isCancelled == false && !isFailed) {
-			return previous
-		}
-		networkWaitingJob?.cancel()
-		networkWaitingJob = null
-		previous?.dispose()
-		currentImageData = request.data
-		return coil.enqueue(request).also { currentRequest = it }
-	}
+    fun reload() {
+        CoilUtils.result(this)?.let { result ->
+            enqueueRequest(result.request, force = true)
+        }
+    }
 
-	protected open val imageRequestContext: Context
-		get() = context.applicationContext
+    protected fun enqueueRequest(request: ImageRequest, force: Boolean = false): Disposable {
+        val previous = currentRequest
+        if (!force && currentImageData == request.data && previous?.job?.isCancelled == false && !isFailed) {
+            return previous
+        }
+        networkWaitingJob?.cancel()
+        networkWaitingJob = null
+        previous?.dispose()
+        currentImageData = request.data
+        return coil.enqueue(request).also { currentRequest = it }
+    }
 
-	protected open fun newRequestBuilder() = ImageRequest.Builder(imageRequestContext).apply {
-		(findViewTreeLifecycleOwner() ?: (context.findActivity() as? LifecycleOwner))?.let(::lifecycle)
-		val crossfadeDuration = if (context.isAnimationsEnabled) {
-			(context.getAnimationDuration(R.integer.config_defaultAnimTime) * crossfadeDurationFactor).toInt()
-		} else {
-			0
-		}
-		crossfade(crossfadeDuration)
-		if (useExistingDrawable) {
-			val previousDrawable = this@CoilImageView.drawable?.asImage()
-			if (previousDrawable != null) {
-				fallback(previousDrawable)
-				placeholder(previousDrawable)
-				error(previousDrawable)
-			} else {
-				setupPlaceholders()
-			}
-		} else {
-			setupPlaceholders()
-		}
-		if (decodeRegion) {
-			decodeRegion(0)
-		}
-		size(
-			exactImageSize?.let {
-				SizeResolver(it)
-			} ?: WeakViewSizeResolver(this@CoilImageView),
-		)
-		scale(scaleType.toCoilScale())
-		listener(weakRequestListener)
-		allowRgb565(allowRgb565)
-		target(WeakImageViewTarget(this@CoilImageView))
-	}
+    protected open val imageRequestContext: Context
+        get() = context.applicationContext
 
-	private fun ImageRequest.Builder.setupPlaceholders() {
-		placeholder(placeholderDrawable?.asImage())
-		error(errorDrawable?.asImage())
-		fallback(fallbackDrawable?.asImage())
-	}
+    protected open fun newRequestBuilder() = ImageRequest.Builder(imageRequestContext).apply {
+        val ownerLifecycle = imageRequestLifecycle
+            ?: findViewTreeLifecycleOwner()?.lifecycle
+            ?: (context.findActivity() as? LifecycleOwner)?.lifecycle
+        ownerLifecycle?.let(::lifecycle)
+        val crossfadeDuration = if (context.isAnimationsEnabled) {
+            (context.getAnimationDuration(R.integer.config_defaultAnimTime) * crossfadeDurationFactor).toInt()
+        } else {
+            0
+        }
+        crossfade(crossfadeDuration)
+        if (useExistingDrawable) {
+            val previousDrawable = this@CoilImageView.drawable?.asImage()
+            if (previousDrawable != null) {
+                fallback(previousDrawable)
+                placeholder(previousDrawable)
+                error(previousDrawable)
+            } else {
+                setupPlaceholders()
+            }
+        } else {
+            setupPlaceholders()
+        }
+        if (decodeRegion) {
+            decodeRegion(0)
+        }
+        size(
+            exactImageSize?.let {
+                SizeResolver(it)
+            } ?: WeakViewSizeResolver(this@CoilImageView),
+        )
+        scale(scaleType.toCoilScale())
+        listener(weakRequestListener)
+        allowRgb565(allowRgb565)
+        target(WeakImageViewTarget(this@CoilImageView))
+    }
 
-	private fun ScaleType.toCoilScale(): Scale = if (this == ScaleType.CENTER_CROP) {
-		Scale.FILL
-	} else {
-		Scale.FIT
-	}
+    private fun ImageRequest.Builder.setupPlaceholders() {
+        placeholder(placeholderDrawable?.asImage())
+        error(errorDrawable?.asImage())
+        fallback(fallbackDrawable?.asImage())
+    }
 
-	private fun waitForNetwork() {
-		if (networkWaitingJob?.isActive == true || networkState.isOnline()) {
-			return
-		}
-		networkWaitingJob?.cancel()
-		networkWaitingJob = findViewTreeLifecycleOwner()?.lifecycleScope?.launch {
-			networkState.awaitForConnection()
-			if (isFailed) {
-				reload()
-			}
-		}
-	}
+    private fun ScaleType.toCoilScale(): Scale = if (this == ScaleType.CENTER_CROP) {
+        Scale.FILL
+    } else {
+        Scale.FIT
+    }
 
-	private class WeakImageRequestListener(
-		view: CoilImageView,
-	) : ImageRequest.Listener {
+    private fun waitForNetwork() {
+        if (networkWaitingJob?.isActive == true || networkState.isOnline()) {
+            return
+        }
+        networkWaitingJob?.cancel()
+        networkWaitingJob = findViewTreeLifecycleOwner()?.lifecycleScope?.launch {
+            networkState.awaitForConnection()
+            if (isFailed) {
+                reload()
+            }
+        }
+    }
 
-		private val viewRef = WeakReference(view)
+    private class WeakImageRequestListener(
+        view: CoilImageView,
+        listener: ImageRequest.Listener? = null,
+    ) : ImageRequest.Listener {
 
-		override fun onCancel(request: ImageRequest) {
-			viewRef.get()?.onCancel(request)
-		}
+        private val viewRef = WeakReference(view)
+        private val listenerRef = WeakReference(listener)
 
-		override fun onError(request: ImageRequest, result: ErrorResult) {
-			viewRef.get()?.onError(request, result)
-		}
+        override fun onCancel(request: ImageRequest) {
+            viewRef.get()?.onCancel(request)
+            listenerRef.get()?.onCancel(request)
+        }
 
-		override fun onStart(request: ImageRequest) {
-			viewRef.get()?.onStart(request)
-		}
+        override fun onError(request: ImageRequest, result: ErrorResult) {
+            viewRef.get()?.onError(request, result)
+            listenerRef.get()?.onError(request, result)
+        }
 
-		override fun onSuccess(request: ImageRequest, result: SuccessResult) {
-			viewRef.get()?.onSuccess(request, result)
-		}
-	}
+        override fun onStart(request: ImageRequest) {
+            viewRef.get()?.onStart(request)
+            listenerRef.get()?.onStart(request)
+        }
 
-	/**
-	 * Coil owns a request target until every child of a cancelled request finishes. Keeping the
-	 * target's view weak prevents a slow fetch cancellation from retaining a detached view and its
-	 * destroyed activity. This still implements [ViewTarget] and [TransitionTarget], so Coil keeps
-	 * its normal attach/restart, result lookup, and crossfade behaviour while the view is alive.
-	 */
-	private class WeakImageViewTarget(
-		view: CoilImageView,
-	) : ViewTarget<CoilImageView>, TransitionTarget, DefaultLifecycleObserver {
+        override fun onSuccess(request: ImageRequest, result: SuccessResult) {
+            viewRef.get()?.onSuccess(request, result)
+            listenerRef.get()?.onSuccess(request, result)
+        }
+    }
 
-		private val viewRef = WeakReference(view)
-		private var isStarted = view.isAttachedToWindow
+    /**
+     * Coil owns a request target until every child of a cancelled request finishes. Keeping the
+     * target's view weak prevents a slow fetch cancellation from retaining a detached view and its
+     * destroyed activity. This still implements [ViewTarget] and [TransitionTarget], so Coil keeps
+     * its normal attach/restart, result lookup, and crossfade behaviour while the view is alive.
+     */
+    private class WeakImageViewTarget(
+        view: CoilImageView,
+    ) : ViewTarget<CoilImageView>, TransitionTarget, DefaultLifecycleObserver {
 
-		override val view: CoilImageView
-			get() = viewRef.get() ?: throw CancellationException("Image view was released")
+        private val viewRef = WeakReference(view)
+        private var isStarted = view.isAttachedToWindow
 
-		override val drawable: Drawable?
-			get() = viewRef.get()?.drawable
+        override val view: CoilImageView
+            get() = viewRef.get() ?: throw CancellationException("Image view was released")
 
-		override fun onStart(placeholder: Image?) = updateImage(placeholder)
+        override val drawable: Drawable?
+            get() = viewRef.get()?.drawable
 
-		override fun onError(error: Image?) = updateImage(error)
+        override fun onStart(placeholder: Image?) = updateImage(placeholder)
 
-		override fun onSuccess(result: Image) = updateImage(result)
+        override fun onError(error: Image?) = updateImage(error)
 
-		override fun onStart(owner: LifecycleOwner) {
-			isStarted = true
-			updateAnimation()
-		}
+        override fun onSuccess(result: Image) = updateImage(result)
 
-		override fun onStop(owner: LifecycleOwner) {
-			isStarted = false
-			updateAnimation()
-		}
+        override fun onStart(owner: LifecycleOwner) {
+            isStarted = true
+            updateAnimation()
+        }
 
-		private fun updateImage(image: Image?) {
-			val target = viewRef.get() ?: return
-			(target.drawable as? Animatable)?.stop()
-			target.setImageDrawable(image?.asDrawable(target.resources))
-			updateAnimation()
-		}
+        override fun onStop(owner: LifecycleOwner) {
+            isStarted = false
+            updateAnimation()
+        }
 
-		private fun updateAnimation() {
-			val animation = viewRef.get()?.drawable as? Animatable ?: return
-			if (isStarted) {
-				animation.start()
-			} else {
-				animation.stop()
-			}
-		}
-	}
+        private fun updateImage(image: Image?) {
+            val target = viewRef.get() ?: return
+            (target.drawable as? Animatable)?.stop()
+            target.setImageDrawable(image?.asDrawable(target.resources))
+            updateAnimation()
+        }
+
+        private fun updateAnimation() {
+            val target = viewRef.get() ?: return
+            val animation = target.drawable as? Animatable ?: return
+            if (isStarted && target.isAnimationPlaybackAllowed && target.isAttachedToWindow) {
+                animation.start()
+            } else {
+                animation.stop()
+            }
+        }
+    }
 }
