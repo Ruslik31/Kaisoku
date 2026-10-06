@@ -16,8 +16,20 @@ import org.koitharu.kotatsu.parsers.util.json.mapJSON
 import org.koitharu.kotatsu.parsers.util.parseJson
 import org.koitharu.kotatsu.parsers.util.parseJsonArray
 import org.koitharu.kotatsu.parsers.util.toAbsoluteUrl
+import org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerLibraryEntry
+import org.koitharu.kotatsu.scrobbling.common.domain.model.trackerStatus
+import org.koitharu.kotatsu.scrobbling.common.domain.model.trackerTimestamp
+import org.koitharu.kotatsu.scrobbling.common.domain.model.strings
+import org.koitharu.kotatsu.scrobbling.common.data.collectTrackerLibraryPages
+import org.koitharu.kotatsu.scrobbling.common.data.shikimoriLibraryPage
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerRepository
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblerStorage
+import org.koitharu.kotatsu.scrobbling.common.data.saveLinked
+import org.koitharu.kotatsu.scrobbling.common.data.TrackerRemoteEntryMissing
+import org.koitharu.kotatsu.scrobbling.common.data.nextTrackerProgress
+import org.koitharu.kotatsu.scrobbling.common.data.requestSession
+import org.koitharu.kotatsu.scrobbling.common.data.trackerCall
+import org.koitharu.kotatsu.scrobbling.common.data.withSession
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerManga
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaInfo
@@ -34,215 +46,238 @@ private const val MANGA_PAGE_SIZE = 10
 
 @Singleton
 class ShikimoriRepository @Inject constructor(
-	@ApplicationContext context: Context,
-	@ScrobblerType(ScrobblerService.SHIKIMORI) private val okHttp: OkHttpClient,
-	@ScrobblerType(ScrobblerService.SHIKIMORI) private val storage: ScrobblerStorage,
-	private val db: MangaDatabase,
+    @ApplicationContext context: Context,
+    @ScrobblerType(ScrobblerService.SHIKIMORI) private val okHttp: OkHttpClient,
+    @ScrobblerType(ScrobblerService.SHIKIMORI) override val storage: ScrobblerStorage,
+    private val db: MangaDatabase,
 ) : ScrobblerRepository {
 
-	private val clientId = context.getString(R.string.shikimori_clientId)
-	private val clientSecret = context.getString(R.string.shikimori_clientSecret)
+    private val clientId = context.getString(R.string.shikimori_clientId)
+    private val clientSecret = context.getString(R.string.shikimori_clientSecret)
 
-	override val oauthUrl: String
-		get() = "${BASE_URL}oauth/authorize?client_id=$clientId&" +
-			"redirect_uri=$REDIRECT_URI&response_type=code&scope="
+    override val oauthUrl: String
+        get() = "${BASE_URL}oauth/authorize?client_id=$clientId&" +
+            "redirect_uri=$REDIRECT_URI&response_type=code&scope="
 
-	override val isAuthorized: Boolean
-		get() = storage.accessToken != null
+    override val isAuthorized: Boolean
+        get() = storage.accessToken != null
 
-	override suspend fun authorize(code: String?) {
-		val body = FormBody.Builder()
-		body.add("client_id", clientId)
-		body.add("client_secret", clientSecret)
-		if (code != null) {
-			body.add("grant_type", "authorization_code")
-			body.add("redirect_uri", REDIRECT_URI)
-			body.add("code", code)
-		} else {
-			body.add("grant_type", "refresh_token")
-			body.add("refresh_token", checkNotNull(storage.refreshToken))
-		}
-		val request = Request.Builder()
-			.post(body.build())
-			.url("${BASE_URL}oauth/token")
-		val response = okHttp.newCall(request.build()).await().parseJson()
-		storage.accessToken = response.getString("access_token")
-		storage.refreshToken = response.getString("refresh_token")
-	}
+    override suspend fun authorize(code: String?) {
+        if (code != null) storage.beginAuthorization()
+        val authVersion = storage.sessionVersion
+        val body = FormBody.Builder()
+        body.add("client_id", clientId)
+        body.add("client_secret", clientSecret)
+        if (code != null) {
+            body.add("grant_type", "authorization_code")
+            body.add("redirect_uri", REDIRECT_URI)
+            body.add("code", code)
+        } else {
+            body.add("grant_type", "refresh_token")
+            body.add("refresh_token", checkNotNull(storage.refreshToken))
+        }
+        val request = Request.Builder()
+            .post(body.build())
+            .url("${BASE_URL}oauth/token")
+        val response = okHttp.trackerCall(request.build(), storage).parseJson()
+        storage.saveTokens(authVersion, response.getString("access_token"), response.getStringOrNull("refresh_token"))
+    }
 
-	override suspend fun loadUser(): ScrobblerUser {
-		val request = Request.Builder()
-			.get()
-			.url("${BASE_URL}api/users/whoami")
-		val response = okHttp.newCall(request.build()).await().parseJson()
-		return ShikimoriUser(response).also { storage.user = it }
-	}
+    override suspend fun loadUser(): ScrobblerUser {
+        val session = storage.requestSession()
+        val request = Request.Builder()
+            .get()
+            .url("${BASE_URL}api/users/whoami")
+        val response = okHttp.trackerCall(request.build(), storage).parseJson()
+        return ShikimoriUser(response).also { storage.saveUser(session, it) }
+    }
 
-	override val cachedUser: ScrobblerUser?
-		get() {
-			return storage.user
-		}
+    override val cachedUser: ScrobblerUser?
+        get() {
+            return storage.user
+        }
 
-	override suspend fun unregister(mangaId: Long) {
-		return db.getScrobblingDao().delete(ScrobblerService.SHIKIMORI.id, mangaId)
-	}
+    override suspend fun unregister(mangaId: Long) {
+        return db.getScrobblingDao().delete(ScrobblerService.SHIKIMORI.id, mangaId, storage.requestSession().accountId)
+    }
 
-	override fun logout() {
-		storage.clear()
-	}
+    override fun logout() {
+        storage.clear()
+    }
 
-	override suspend fun findManga(query: String, offset: Int): List<ScrobblerManga> {
-		val page = offset / MANGA_PAGE_SIZE
-		val pageOffset = offset % MANGA_PAGE_SIZE
-		val url = BASE_URL.toHttpUrl().newBuilder()
-			.addPathSegment("api")
-			.addPathSegment("mangas")
-			.addEncodedQueryParameter("page", (page + 1).toString())
-			.addEncodedQueryParameter("limit", MANGA_PAGE_SIZE.toString())
-			.addEncodedQueryParameter("censored", false.toString())
-			.addQueryParameter("search", query)
-			.build()
-		val request = Request.Builder().url(url).get().build()
-		val response = okHttp.newCall(request).await().parseJsonArray()
-		val list = response.mapJSON { ScrobblerManga(it, query) }
-		return if (pageOffset != 0) list.drop(pageOffset) else list
-	}
+    override suspend fun fetchLibrary(): List<TrackerLibraryEntry> {
+        val owner = requireNotNull(storage.requestSession().accountId)
+        return collectTrackerLibraryPages { page, _ ->
+            val url = "${BASE_URL}api/users/$owner/manga_rates".toHttpUrl().newBuilder()
+                .addQueryParameter("page", page.toString()).addQueryParameter("limit", "100")
+                .addQueryParameter("censored", "false").build()
+            shikimoriLibraryPage(okHttp.trackerCall(Request.Builder().url(url).get().build(), storage).parseJsonArray())
+        }
+    }
 
-	override suspend fun createRate(mangaId: Long, scrobblerMangaId: Long): Boolean {
-		val user = cachedUser ?: loadUser()
-		findExistingRate(user.id, scrobblerMangaId)?.let {
-			saveRate(it, mangaId)
-			return true
-		}
-		val payload = JSONObject()
-		payload.put(
-			"user_rate",
-			JSONObject().apply {
-				put("target_id", scrobblerMangaId)
-				put("target_type", "Manga")
-				put("user_id", user.id)
-			},
-		)
-		val url = BASE_URL.toHttpUrl().newBuilder()
-			.addPathSegment("api")
-			.addPathSegment("v2")
-			.addPathSegment("user_rates")
-			.build()
-		val request = Request.Builder().url(url).post(payload.toRequestBody()).build()
-		val response = okHttp.newCall(request).await().parseJson()
-		saveRate(response, mangaId)
-		return false
-	}
+    override suspend fun findManga(query: String, offset: Int): List<ScrobblerManga> {
+        val page = offset / MANGA_PAGE_SIZE
+        val pageOffset = offset % MANGA_PAGE_SIZE
+        val url = BASE_URL.toHttpUrl().newBuilder()
+            .addPathSegment("api")
+            .addPathSegment("mangas")
+            .addEncodedQueryParameter("page", (page + 1).toString())
+            .addEncodedQueryParameter("limit", MANGA_PAGE_SIZE.toString())
+            .addEncodedQueryParameter("censored", false.toString())
+            .addQueryParameter("search", query)
+            .build()
+        val request = Request.Builder().url(url).get().build()
+        val response = okHttp.trackerCall(request, storage).parseJsonArray()
+        val list = response.mapJSON { ScrobblerManga(it, query) }
+        return if (pageOffset != 0) list.drop(pageOffset) else list
+    }
 
-	private suspend fun findExistingRate(userId: Long, scrobblerMangaId: Long): JSONObject? {
-		val url = BASE_URL.toHttpUrl().newBuilder()
-			.addPathSegment("api")
-			.addPathSegment("v2")
-			.addPathSegment("user_rates")
-			.addQueryParameter("user_id", userId.toString())
-			.addQueryParameter("target_id", scrobblerMangaId.toString())
-			.addQueryParameter("target_type", "Manga")
-			.build()
-		val response = okHttp.newCall(Request.Builder().url(url).get().build()).await().parseJsonArray()
-		return response.optJSONObject(0)
-	}
+    override suspend fun createRate(mangaId: Long, scrobblerMangaId: Long, allowCreate: Boolean): Boolean {
+        val user = cachedUser ?: loadUser()
+        findExistingRate(user.id, scrobblerMangaId)?.let {
+            saveRate(it, mangaId)
+            return true
+        }
+        if (!allowCreate) throw org.koitharu.kotatsu.scrobbling.common.data.TrackerEntryCreationRequired()
+        val payload = JSONObject()
+        payload.put(
+            "user_rate",
+            JSONObject().apply {
+                put("target_id", scrobblerMangaId)
+                put("target_type", "Manga")
+                put("user_id", user.id)
+            },
+        )
+        val url = BASE_URL.toHttpUrl().newBuilder()
+            .addPathSegment("api")
+            .addPathSegment("v2")
+            .addPathSegment("user_rates")
+            .build()
+        val request = Request.Builder().url(url).post(payload.toRequestBody()).build()
+        val response = okHttp.trackerCall(request, storage).parseJson()
+        saveRate(response, mangaId)
+        return false
+    }
 
-	override suspend fun updateRate(rateId: Int, mangaId: Long, chapter: Int) {
-		val payload = JSONObject()
-		payload.put(
-			"user_rate",
-			JSONObject().apply {
-				put("chapters", chapter)
-			},
-		)
-		val url = BASE_URL.toHttpUrl().newBuilder()
-			.addPathSegment("api")
-			.addPathSegment("v2")
-			.addPathSegment("user_rates")
-			.addPathSegment(rateId.toString())
-			.build()
-		val request = Request.Builder().url(url).patch(payload.toRequestBody()).build()
-		val response = okHttp.newCall(request).await().parseJson()
-		saveRate(response, mangaId)
-	}
+    private suspend fun findExistingRate(userId: Long, scrobblerMangaId: Long): JSONObject? {
+        val url = BASE_URL.toHttpUrl().newBuilder()
+            .addPathSegment("api")
+            .addPathSegment("v2")
+            .addPathSegment("user_rates")
+            .addQueryParameter("user_id", userId.toString())
+            .addQueryParameter("target_id", scrobblerMangaId.toString())
+            .addQueryParameter("target_type", "Manga")
+            .build()
+        val response = okHttp.trackerCall(Request.Builder().url(url).get().build(), storage).parseJsonArray()
+        return response.optJSONObject(0)
+    }
 
-	override suspend fun updateRate(
-		rateId: Int,
-		mangaId: Long,
-		rating: Float,
-		status: String?,
-		comment: String?,
-		setStartDate: Boolean,
-	) {
-		val payload = JSONObject()
-		payload.put(
-			"user_rate",
-			JSONObject().apply {
-				put("score", rating.toString())
-				if (comment != null) {
-					put("text", comment)
-				}
-				if (status != null) {
-					put("status", status)
-				}
-			},
-		)
-		val url = BASE_URL.toHttpUrl().newBuilder()
-			.addPathSegment("api")
-			.addPathSegment("v2")
-			.addPathSegment("user_rates")
-			.addPathSegment(rateId.toString())
-			.build()
-		val request = Request.Builder().url(url).patch(payload.toRequestBody()).build()
-		val response = okHttp.newCall(request).await().parseJson()
-		saveRate(response, mangaId)
-	}
+    override suspend fun updateRate(rateId: Int, mangaId: Long, chapter: Int) {
+        val current = okHttp.trackerCall(Request.Builder().url("${BASE_URL}api/v2/user_rates/$rateId").get().build(), storage).parseJson()
+        val linked = db.getScrobblingDao().find(ScrobblerService.SHIKIMORI.id, mangaId, storage.requestSession().accountId)
+        check(current.getLong("target_id") == linked?.targetId) { "Tracker link changed" }
+        if (nextTrackerProgress(chapter, current.optInt("chapters")) == null) {
+            saveRate(current, mangaId)
+            return
+        }
+        val payload = JSONObject()
+        payload.put(
+            "user_rate",
+            JSONObject().apply {
+                put("chapters", chapter)
+            },
+        )
+        val url = BASE_URL.toHttpUrl().newBuilder()
+            .addPathSegment("api")
+            .addPathSegment("v2")
+            .addPathSegment("user_rates")
+            .addPathSegment(rateId.toString())
+            .build()
+        val request = Request.Builder().url(url).patch(payload.toRequestBody()).build()
+        val response = okHttp.trackerCall(request, storage).parseJson()
+        saveRate(response, mangaId)
+    }
 
-	override suspend fun getMangaInfo(id: Long): ScrobblerMangaInfo {
-		val request = Request.Builder()
-			.get()
-			.url("${BASE_URL}api/mangas/$id")
-		val response = okHttp.newCall(request.build()).await().parseJson()
-		return ScrobblerMangaInfo(response)
-	}
+    override suspend fun updateRate(
+        rateId: Int,
+        mangaId: Long,
+        rating: Float,
+        status: String?,
+        comment: String?,
+        setStartDate: Boolean,
+    ) {
+        val payload = JSONObject()
+        payload.put(
+            "user_rate",
+            JSONObject().apply {
+                put("score", rating.toString())
+                if (comment != null) {
+                    put("text", comment)
+                }
+                if (status != null) {
+                    put("status", status)
+                }
+            },
+        )
+        val url = BASE_URL.toHttpUrl().newBuilder()
+            .addPathSegment("api")
+            .addPathSegment("v2")
+            .addPathSegment("user_rates")
+            .addPathSegment(rateId.toString())
+            .build()
+        val request = Request.Builder().url(url).patch(payload.toRequestBody()).build()
+        val response = okHttp.trackerCall(request, storage).parseJson()
+        saveRate(response, mangaId)
+    }
 
-	private suspend fun saveRate(json: JSONObject, mangaId: Long) {
-		val entity = ScrobblingEntity(
-			scrobbler = ScrobblerService.SHIKIMORI.id,
-			id = json.getInt("id"),
-			mangaId = mangaId,
-			targetId = json.getLong("target_id"),
-			status = json.getString("status"),
-			chapter = json.getInt("chapters"),
-			comment = json.getString("text"),
-			rating = (json.getDouble("score").toFloat() / 10f).coerceIn(0f, 1f),
-		)
-		db.getScrobblingDao().upsert(entity)
-	}
+    override suspend fun getMangaInfo(id: Long): ScrobblerMangaInfo {
+        val request = Request.Builder()
+            .get()
+            .url("${BASE_URL}api/mangas/$id")
+        val response = okHttp.trackerCall(request.build(), storage).parseJson()
+        return ScrobblerMangaInfo(response)
+    }
 
-	private fun ScrobblerManga(json: JSONObject, sourceTitle: String) = ScrobblerManga(
-		id = json.getLong("id"),
-		name = json.getString("name"),
-		altName = json.getStringOrNull("russian"),
-		cover = json.getJSONObject("image").getString("preview").toAbsoluteUrl(DOMAIN),
-		url = json.getString("url").toAbsoluteUrl(DOMAIN),
-		isBestMatch = sourceTitle.equals(json.getString("name"), ignoreCase = true)
-			|| json.getStringOrNull("russian")?.equals(sourceTitle, ignoreCase = true) == true
-	)
+    private suspend fun saveRate(json: JSONObject, mangaId: Long) {
+        val session = storage.requestSession()
+        requireNotNull(session.accountId) { "Tracker account unavailable" }
+        val entity = ScrobblingEntity(
+            accountId = session.accountId,
+            scrobbler = ScrobblerService.SHIKIMORI.id,
+            id = json.getInt("id"),
+            mangaId = mangaId,
+            targetId = json.getLong("target_id"),
+            status = json.getString("status"),
+            chapter = json.getInt("chapters"),
+            comment = json.getString("text"),
+            rating = (json.getDouble("score").toFloat() / 10f).coerceIn(0f, 1f),
+        )
+        db.getScrobblingDao().saveLinked(entity)
+    }
 
-	private fun ScrobblerMangaInfo(json: JSONObject) = ScrobblerMangaInfo(
-		id = json.getLong("id"),
-		name = json.getString("name"),
-		cover = json.getJSONObject("image").getString("preview").toAbsoluteUrl(DOMAIN),
-		url = json.getString("url").toAbsoluteUrl(DOMAIN),
-		descriptionHtml = json.getString("description_html"),
-	)
+    private fun ScrobblerManga(json: JSONObject, sourceTitle: String) = ScrobblerManga(
+        id = json.getLong("id"),
+        name = json.getString("name"),
+        altName = json.getStringOrNull("russian"),
+        cover = json.getJSONObject("image").getString("preview").toAbsoluteUrl(DOMAIN),
+        url = json.getString("url").toAbsoluteUrl(DOMAIN),
+        isBestMatch = sourceTitle.equals(json.getString("name"), ignoreCase = true)
+            || json.getStringOrNull("russian")?.equals(sourceTitle, ignoreCase = true) == true
+    )
 
-	@Suppress("FunctionName")
-	private fun ShikimoriUser(json: JSONObject) = ScrobblerUser(
-		id = json.getLong("id"),
-		nickname = json.getString("nickname"),
-		avatar = json.getStringOrNull("avatar"),
-		service = ScrobblerService.SHIKIMORI,
-	)
+    private fun ScrobblerMangaInfo(json: JSONObject) = ScrobblerMangaInfo(
+        id = json.getLong("id"),
+        name = json.getString("name"),
+        cover = json.getJSONObject("image").getString("preview").toAbsoluteUrl(DOMAIN),
+        url = json.getString("url").toAbsoluteUrl(DOMAIN),
+        descriptionHtml = json.getString("description_html"),
+    )
+
+    @Suppress("FunctionName")
+    private fun ShikimoriUser(json: JSONObject) = ScrobblerUser(
+        id = json.getLong("id"),
+        nickname = json.getString("nickname"),
+        avatar = json.getStringOrNull("avatar"),
+        service = ScrobblerService.SHIKIMORI,
+    )
 }

@@ -62,385 +62,386 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 abstract class MangaListFragment :
-	BaseFragment<FragmentListBinding>(),
-	PaginationScrollListener.Callback,
-	MangaListListener,
-	RecyclerViewOwner,
-	SwipeRefreshLayout.OnRefreshListener,
-	ListSelectionController.Callback,
-	FastScroller.FastScrollListener {
+    BaseFragment<FragmentListBinding>(),
+    PaginationScrollListener.Callback,
+    MangaListListener,
+    RecyclerViewOwner,
+    SwipeRefreshLayout.OnRefreshListener,
+    ListSelectionController.Callback,
+    FastScroller.FastScrollListener {
 
-	@Inject
-	lateinit var coil: ImageLoader
+    @Inject
+    lateinit var coil: ImageLoader
 
-	@Inject
-	lateinit var settings: AppSettings
+    @Inject
+    lateinit var settings: AppSettings
 
-	private var listAdapter: MangaListAdapter? = null
-	private var paginationListener: PaginationScrollListener? = null
-	private var selectionController: ListSelectionController? = null
-	private var spanResolver: GridSpanResolver? = null
-	private var currentListMode: ListMode? = null
-	private var checkpoint: ListCheckpoint? = null
-	private val spanSizeLookup = SpanSizeLookup()
-	open val isSwipeRefreshEnabled = true
+    private var listAdapter: MangaListAdapter? = null
+    private var paginationListener: PaginationScrollListener? = null
+    private var selectionController: ListSelectionController? = null
+    private var spanResolver: GridSpanResolver? = null
+    private var currentListMode: ListMode? = null
+    private var checkpoint: ListCheckpoint? = null
+    private val spanSizeLookup = SpanSizeLookup()
+    open val isSwipeRefreshEnabled = true
 
-	/**
-	 * Identifies this list for the "where you left off" pill, or `null` to opt out of it.
-	 * Must be stable across recreations — it keys the stored position.
-	 */
-	protected open val checkpointScope: String?
-		get() = null
+    /**
+     * Identifies this list for the "where you left off" pill, or `null` to opt out of it.
+     * Must be stable across recreations — it keys the stored position.
+     */
+    protected open val checkpointScope: String?
+        get() = null
 
-	protected abstract val viewModel: MangaListViewModel
+    protected abstract val viewModel: MangaListViewModel
 
-	protected val selectedItemsIds: Set<Long>
-		get() = selectionController?.snapshot().orEmpty()
+    protected val selectedItemsIds: Set<Long>
+        get() = selectionController?.snapshot().orEmpty()
 
-	protected val selectedItems: Set<Manga>
-		get() = collectSelectedItems()
+    protected val selectedItems: Set<Manga>
+        get() = collectSelectedItems()
 
-	override val recyclerView: RecyclerView?
-		get() = viewBinding?.recyclerView
+    override val recyclerView: RecyclerView?
+        get() = viewBinding?.recyclerView
 
-	override fun onCreateViewBinding(
-		inflater: LayoutInflater,
-		container: ViewGroup?,
-	) = FragmentListBinding.inflate(inflater, container, false)
+    override fun onCreateViewBinding(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+    ) = FragmentListBinding.inflate(inflater, container, false)
 
-	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
-		super.onViewBindingCreated(binding, savedInstanceState)
-		listAdapter = onCreateAdapter()
-		spanResolver = GridSpanResolver(binding.root.resources)
-		selectionController = ListSelectionController(
-			appCompatDelegate = checkNotNull(findAppCompatDelegate()),
-			decoration = MangaSelectionDecoration(binding.root.context),
-			registryOwner = this,
-			callback = this,
-		)
-		paginationListener = PaginationScrollListener(4, this)
-		with(binding.recyclerView) {
-			setHasFixedSize(true)
-			adapter = listAdapter
-			checkNotNull(selectionController).attachToRecyclerView(this)
-			addItemDecoration(TypedListSpacingDecoration(context, false))
-			addOnScrollListener(checkNotNull(paginationListener))
-			fastScroller.setFastScrollListener(this@MangaListFragment)
-		}
-		with(binding.swipeRefreshLayout) {
-			setOnRefreshListener(this@MangaListFragment)
-			isEnabled = isSwipeRefreshEnabled
-		}
-		addMenuProvider(MangaListMenuProvider(this))
-		checkpointScope?.let { scope ->
-			checkpoint = ListCheckpoint(scope, settings).also {
-				it.attach(
-					recyclerView = binding.recyclerView,
-					button = (activity as? ListCheckpointOwner)?.listCheckpointButton,
-					onLoadMore = ::onScrolledToEnd,
-					onDisableRequested = ::confirmDisableCheckpoint,
-				)
-			}
-		}
+    override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
+        super.onViewBindingCreated(binding, savedInstanceState)
+        listAdapter = onCreateAdapter()
+        spanResolver = GridSpanResolver(binding.root.resources)
+        selectionController = ListSelectionController(
+            appCompatDelegate = checkNotNull(findAppCompatDelegate()),
+            decoration = MangaSelectionDecoration(binding.root.context),
+            registryOwner = this,
+            callback = this,
+        )
+        paginationListener = PaginationScrollListener(4, this)
+        with(binding.recyclerView) {
+            setHasFixedSize(true)
+            adapter = listAdapter
+            checkNotNull(selectionController).attachToRecyclerView(this)
+            addItemDecoration(TypedListSpacingDecoration(context, false))
+            addOnScrollListener(checkNotNull(paginationListener))
+            fastScroller.setFastScrollListener(this@MangaListFragment)
+        }
+        with(binding.swipeRefreshLayout) {
+            setOnRefreshListener(this@MangaListFragment)
+            isEnabled = isSwipeRefreshEnabled
+        }
+        addMenuProvider(MangaListMenuProvider(this))
+        checkpointScope?.let { scope ->
+            checkpoint = ListCheckpoint(scope, settings).also {
+                it.attach(
+                    recyclerView = binding.recyclerView,
+                    button = (activity as? ListCheckpointOwner)?.listCheckpointButton,
+                    onLoadMore = ::onScrolledToEnd,
+                    onDisableRequested = ::confirmDisableCheckpoint,
+                )
+            }
+        }
 
-		viewModel.listMode.observe(viewLifecycleOwner, Lifecycle.State.STARTED, ::onListModeChanged)
-		viewModel.gridScale.observe(viewLifecycleOwner, Lifecycle.State.STARTED, ::onGridScaleChanged)
-		viewModel.isLoading.observe(viewLifecycleOwner, Lifecycle.State.STARTED, ::onLoadingStateChanged)
-		viewModel.content.observe(viewLifecycleOwner, Lifecycle.State.STARTED, ::onListChanged)
-		viewModel.onError.observeEvent(viewLifecycleOwner, SnackbarErrorObserver(binding.recyclerView, this))
-		viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.recyclerView))
-	}
+        viewModel.listMode.observe(viewLifecycleOwner, Lifecycle.State.STARTED, ::onListModeChanged)
+        viewModel.gridScale.observe(viewLifecycleOwner, Lifecycle.State.STARTED, ::onGridScaleChanged)
+        viewModel.isLoading.observe(viewLifecycleOwner, Lifecycle.State.STARTED, ::onLoadingStateChanged)
+        viewModel.content.observe(viewLifecycleOwner, Lifecycle.State.STARTED, ::onListChanged)
+        viewModel.onError.observeEvent(viewLifecycleOwner, SnackbarErrorObserver(binding.recyclerView, this))
+        viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.recyclerView))
+    }
 
-	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
-		val typeMask = WindowInsetsCompat.Type.systemBars()
-		val barsInsets = insets.getInsets(typeMask)
-		val basePadding = v.resources.getDimensionPixelOffset(R.dimen.list_spacing_normal)
-		viewBinding?.recyclerView?.setPadding(
-			left = barsInsets.left + basePadding,
-			top = basePadding,
-			right = barsInsets.right + basePadding,
-			bottom = barsInsets.bottom + basePadding,
-		)
-		return insets.consumeAll(typeMask)
-	}
+    override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
+        val typeMask = WindowInsetsCompat.Type.systemBars()
+        val barsInsets = insets.getInsets(typeMask)
+        val basePadding = v.resources.getDimensionPixelOffset(R.dimen.list_spacing_normal)
+        viewBinding?.recyclerView?.setPadding(
+            left = barsInsets.left + basePadding,
+            top = basePadding,
+            right = barsInsets.right + basePadding,
+            bottom = barsInsets.bottom + basePadding,
+        )
+        return insets.consumeAll(typeMask)
+    }
 
-	override fun onDestroyView() {
-		checkpoint?.detach()
-		checkpoint = null
-		viewBinding?.recyclerView?.fastScroller?.setFastScrollListener(null)
-		viewBinding?.recyclerView?.fastScroller?.setSectionIndexer(null)
-		viewBinding?.recyclerView?.adapter = null
-		listAdapter = null
-		paginationListener = null
-		selectionController = null
-		spanResolver = null
-		currentListMode = null
-		spanSizeLookup.invalidateCache()
-		super.onDestroyView()
-	}
+    override fun onDestroyView() {
+        checkpoint?.detach()
+        checkpoint = null
+        viewBinding?.recyclerView?.fastScroller?.setFastScrollListener(null)
+        viewBinding?.recyclerView?.fastScroller?.setSectionIndexer(null)
+        viewBinding?.recyclerView?.adapter = null
+        listAdapter = null
+        paginationListener = null
+        selectionController = null
+        spanResolver = null
+        currentListMode = null
+        spanSizeLookup.invalidateCache()
+        super.onDestroyView()
+    }
 
-	override fun onItemClick(item: MangaListModel, view: View) {
-		if (selectionController?.onItemClick(item.id) != true) {
-			val manga = item.toMangaWithOverride()
-			if ((activity as? MangaListActivity)?.showPreview(manga) != true) {
-				router.openDetails(manga)
-			}
-		}
-	}
+    override fun onItemClick(item: MangaListModel, view: View) {
+        if (selectionController?.onItemClick(item.id) != true) {
+            val manga = item.toMangaWithOverride()
+            if ((activity as? MangaListActivity)?.pickForTracker(manga) == true) return
+            if ((activity as? MangaListActivity)?.showPreview(manga) != true) {
+                router.openDetails(manga)
+            }
+        }
+    }
 
-	override fun onItemLongClick(item: MangaListModel, view: View): Boolean {
-		return selectionController?.onItemLongClick(view, item.id) == true
-	}
+    override fun onItemLongClick(item: MangaListModel, view: View): Boolean {
+        return selectionController?.onItemLongClick(view, item.id) == true
+    }
 
-	override fun onItemContextClick(item: MangaListModel, view: View): Boolean {
-		return selectionController?.onItemContextClick(view, item.id) == true
-	}
+    override fun onItemContextClick(item: MangaListModel, view: View): Boolean {
+        return selectionController?.onItemContextClick(view, item.id) == true
+    }
 
-	override fun onReadClick(manga: Manga, view: View) {
-		if (selectionController?.onItemClick(manga.id) != true) {
-			router.openReader(manga)
-		}
-	}
+    override fun onReadClick(manga: Manga, view: View) {
+        if (selectionController?.onItemClick(manga.id) != true) {
+            router.openReader(manga)
+        }
+    }
 
-	override fun onTagClick(manga: Manga, tag: MangaTag, view: View) {
-		if (selectionController?.onItemClick(manga.id) != true) {
-			router.showTagDialog(tag)
-		}
-	}
+    override fun onTagClick(manga: Manga, tag: MangaTag, view: View) {
+        if (selectionController?.onItemClick(manga.id) != true) {
+            router.showTagDialog(tag)
+        }
+    }
 
-	@CallSuper
-	override fun onRefresh() {
-		requireViewBinding().swipeRefreshLayout.isRefreshing = true
-		viewModel.onRefresh()
-	}
+    @CallSuper
+    override fun onRefresh() {
+        requireViewBinding().swipeRefreshLayout.isRefreshing = true
+        viewModel.onRefresh()
+    }
 
-	override fun onResume() {
-		super.onResume()
-		checkpoint?.onResume()
-	}
+    override fun onResume() {
+        super.onResume()
+        checkpoint?.onResume()
+    }
 
-	override fun onPause() {
-		checkpoint?.onPause()
-		super.onPause()
-	}
+    override fun onPause() {
+        checkpoint?.onPause()
+        super.onPause()
+    }
 
-	private suspend fun onListChanged(list: List<ListModel>) {
-		listAdapter?.emit(list)
-		spanSizeLookup.invalidateCache()
-		viewBinding?.recyclerView?.let {
-			paginationListener?.postInvalidate(it)
-		}
-		checkpoint?.onContentChanged()
-	}
+    private suspend fun onListChanged(list: List<ListModel>) {
+        listAdapter?.emit(list)
+        spanSizeLookup.invalidateCache()
+        viewBinding?.recyclerView?.let {
+            paginationListener?.postInvalidate(it)
+        }
+        checkpoint?.onContentChanged()
+    }
 
-	private fun confirmDisableCheckpoint() {
-		checkpoint?.hide()
-		buildAlertDialog(context ?: return, isCentered = true) {
-			setIcon(R.drawable.ic_jump_back)
-			setTitle(R.string.list_checkpoint)
-			setMessage(R.string.list_checkpoint_disable_prompt)
-			setNegativeButton(android.R.string.cancel, null)
-			setPositiveButton(R.string.disable) { _, _ ->
-				settings.isListCheckpointEnabled = false
-			}
-		}.show()
-	}
+    private fun confirmDisableCheckpoint() {
+        checkpoint?.hide()
+        buildAlertDialog(context ?: return, isCentered = true) {
+            setIcon(R.drawable.ic_jump_back)
+            setTitle(R.string.list_checkpoint)
+            setMessage(R.string.list_checkpoint_disable_prompt)
+            setNegativeButton(android.R.string.cancel, null)
+            setPositiveButton(R.string.disable) { _, _ ->
+                settings.isListCheckpointEnabled = false
+            }
+        }.show()
+    }
 
-	private fun resolveException(e: Throwable) {
-		if (ExceptionResolver.canResolve(e)) {
-			viewLifecycleScope.launch {
-				if (exceptionResolver.resolve(e, tryAutoResolve = false)) {
-					viewModel.onRetry()
-				}
-			}
-		} else {
-			viewModel.onRetry()
-		}
-	}
+    private fun resolveException(e: Throwable) {
+        if (ExceptionResolver.canResolve(e)) {
+            viewLifecycleScope.launch {
+                if (exceptionResolver.resolve(e, tryAutoResolve = false)) {
+                    viewModel.onRetry()
+                }
+            }
+        } else {
+            viewModel.onRetry()
+        }
+    }
 
-	@CallSuper
-	protected open fun onLoadingStateChanged(isLoading: Boolean) {
-		requireViewBinding().swipeRefreshLayout.isEnabled = requireViewBinding().swipeRefreshLayout.isRefreshing ||
-			isSwipeRefreshEnabled && !isLoading
-		if (!isLoading) {
-			requireViewBinding().swipeRefreshLayout.isRefreshing = false
-		}
-	}
+    @CallSuper
+    protected open fun onLoadingStateChanged(isLoading: Boolean) {
+        requireViewBinding().swipeRefreshLayout.isEnabled = requireViewBinding().swipeRefreshLayout.isRefreshing ||
+            isSwipeRefreshEnabled && !isLoading
+        if (!isLoading) {
+            requireViewBinding().swipeRefreshLayout.isRefreshing = false
+        }
+    }
 
-	protected open fun onCreateAdapter(): MangaListAdapter {
-		return MangaListAdapter(
-			listener = this,
-			sizeResolver = DynamicItemSizeResolver(resources, viewLifecycleOwner, settings, adjustWidth = false),
-		)
-	}
+    protected open fun onCreateAdapter(): MangaListAdapter {
+        return MangaListAdapter(
+            listener = this,
+            sizeResolver = DynamicItemSizeResolver(resources, viewLifecycleOwner, settings, adjustWidth = false),
+        )
+    }
 
-	override fun onFilterOptionClick(view: View, option: ListFilterOption) {
-		selectionController?.clear()
-		if (option is ListFilterOption.State) {
-			showStateFilterPopupMenu(view, option) { selectedState ->
-				(viewModel as? QuickFilterListener)?.setFilterOption(
-					ListFilterOption.State(selectedState),
-					isApplied = selectedState != null,
-				)
-			}
-		} else {
-			(viewModel as? QuickFilterListener)?.toggleFilterOption(option)
-		}
-	}
+    override fun onFilterOptionClick(view: View, option: ListFilterOption) {
+        selectionController?.clear()
+        if (option is ListFilterOption.State) {
+            showStateFilterPopupMenu(view, option) { selectedState ->
+                (viewModel as? QuickFilterListener)?.setFilterOption(
+                    ListFilterOption.State(selectedState),
+                    isApplied = selectedState != null,
+                )
+            }
+        } else {
+            (viewModel as? QuickFilterListener)?.toggleFilterOption(option)
+        }
+    }
 
-	override fun onFilterClick(view: View?) = Unit
+    override fun onFilterClick(view: View?) = Unit
 
-	override fun onEmptyActionClick() = Unit
+    override fun onEmptyActionClick() = Unit
 
-	override fun onListHeaderClick(item: ListHeader, view: View) = Unit
+    override fun onListHeaderClick(item: ListHeader, view: View) = Unit
 
-	override fun onPrimaryButtonClick(tipView: TipView) = Unit
+    override fun onPrimaryButtonClick(tipView: TipView) = Unit
 
-	override fun onSecondaryButtonClick(tipView: TipView) = Unit
+    override fun onSecondaryButtonClick(tipView: TipView) = Unit
 
-	override fun onRetryClick(error: Throwable) {
-		resolveException(error)
-	}
+    override fun onRetryClick(error: Throwable) {
+        resolveException(error)
+    }
 
-	private fun onGridScaleChanged(scale: Float) {
-		spanSizeLookup.invalidateCache()
-		spanResolver?.setGridSize(scale, requireViewBinding().recyclerView)
-	}
+    private fun onGridScaleChanged(scale: Float) {
+        spanSizeLookup.invalidateCache()
+        spanResolver?.setGridSize(scale, requireViewBinding().recyclerView)
+    }
 
-	private fun onListModeChanged(mode: ListMode) {
-		val recycler = requireViewBinding().recyclerView
-		if (currentListMode == mode && recycler.layoutManager != null) {
-			return
-		}
-		currentListMode = mode
-		spanSizeLookup.invalidateCache()
-		with(recycler) {
-			removeOnLayoutChangeListener(spanResolver)
-			when (mode) {
-				ListMode.LIST -> {
-					layoutManager = FitHeightLinearLayoutManager(context)
-				}
+    private fun onListModeChanged(mode: ListMode) {
+        val recycler = requireViewBinding().recyclerView
+        if (currentListMode == mode && recycler.layoutManager != null) {
+            return
+        }
+        currentListMode = mode
+        spanSizeLookup.invalidateCache()
+        with(recycler) {
+            removeOnLayoutChangeListener(spanResolver)
+            when (mode) {
+                ListMode.LIST -> {
+                    layoutManager = FitHeightLinearLayoutManager(context)
+                }
 
-				ListMode.DETAILED_LIST -> {
-					layoutManager = FitHeightLinearLayoutManager(context)
-				}
+                ListMode.DETAILED_LIST -> {
+                    layoutManager = FitHeightLinearLayoutManager(context)
+                }
 
-				ListMode.GRID,
-				ListMode.COVER_ONLY -> {
-					layoutManager = FitHeightGridLayoutManager(context, checkNotNull(spanResolver).spanCount).also {
-						it.spanSizeLookup = spanSizeLookup
-					}
-					addOnLayoutChangeListener(spanResolver)
-				}
-			}
-		}
-	}
+                ListMode.GRID,
+                ListMode.COVER_ONLY -> {
+                    layoutManager = FitHeightGridLayoutManager(context, checkNotNull(spanResolver).spanCount).also {
+                        it.spanSizeLookup = spanSizeLookup
+                    }
+                    addOnLayoutChangeListener(spanResolver)
+                }
+            }
+        }
+    }
 
-	@CallSuper
-	override fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode?, menu: Menu): Boolean {
-		val hasNoLocal = selectedItems.none { it.isLocal }
-		val isSingleSelection = controller.count == 1
-		menu.findItem(R.id.action_save)?.isVisible = hasNoLocal
-		menu.findItem(R.id.action_fix)?.isVisible = hasNoLocal
-		menu.findItem(R.id.action_edit_override)?.isVisible = isSingleSelection
-		return super.onPrepareActionMode(controller, mode, menu)
-	}
+    @CallSuper
+    override fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode?, menu: Menu): Boolean {
+        val hasNoLocal = selectedItems.none { it.isLocal }
+        val isSingleSelection = controller.count == 1
+        menu.findItem(R.id.action_save)?.isVisible = hasNoLocal
+        menu.findItem(R.id.action_fix)?.isVisible = hasNoLocal
+        menu.findItem(R.id.action_edit_override)?.isVisible = isSingleSelection
+        return super.onPrepareActionMode(controller, mode, menu)
+    }
 
-	override fun onCreateActionMode(
-		controller: ListSelectionController,
-		menuInflater: MenuInflater,
-		menu: Menu
-	): Boolean {
-		return menu.hasVisibleItems()
-	}
+    override fun onCreateActionMode(
+        controller: ListSelectionController,
+        menuInflater: MenuInflater,
+        menu: Menu
+    ): Boolean {
+        return menu.hasVisibleItems()
+    }
 
-	override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode?, item: MenuItem): Boolean {
-		return when (item.itemId) {
-			R.id.action_select_all -> {
-				val ids = listAdapter?.items?.mapNotNull {
-					(it as? MangaListModel)?.id
-				} ?: return false
-				selectionController?.addAll(ids)
-				true
-			}
+    override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode?, item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_select_all -> {
+                val ids = listAdapter?.items?.mapNotNull {
+                    (it as? MangaListModel)?.id
+                } ?: return false
+                selectionController?.addAll(ids)
+                true
+            }
 
-			R.id.action_share -> {
-				ShareHelper(requireContext()).shareMangaLinks(selectedItems)
-				mode?.finish()
-				true
-			}
+            R.id.action_share -> {
+                ShareHelper(requireContext()).shareMangaLinks(selectedItems)
+                mode?.finish()
+                true
+            }
 
-			R.id.action_favourite -> {
-				router.showFavoriteDialog(selectedItems)
-				mode?.finish()
-				true
-			}
+            R.id.action_favourite -> {
+                router.showFavoriteDialog(selectedItems)
+                mode?.finish()
+                true
+            }
 
-			R.id.action_save -> {
-				router.showDownloadDialog(selectedItems, viewBinding?.recyclerView)
-				mode?.finish()
-				true
-			}
+            R.id.action_save -> {
+                router.showDownloadDialog(selectedItems, viewBinding?.recyclerView)
+                mode?.finish()
+                true
+            }
 
-			R.id.action_edit_override -> {
-				router.openMangaOverrideConfig(selectedItems.singleOrNull() ?: return false)
-				mode?.finish()
-				true
-			}
+            R.id.action_edit_override -> {
+                router.openMangaOverrideConfig(selectedItems.singleOrNull() ?: return false)
+                mode?.finish()
+                true
+            }
 
-			R.id.action_fix -> {
-				router.openSourceReplacement(selectedItemsIds)
-				mode?.finish()
-				true
-			}
+            R.id.action_fix -> {
+                router.openSourceReplacement(selectedItemsIds)
+                mode?.finish()
+                true
+            }
 
-			else -> false
-		}
-	}
+            else -> false
+        }
+    }
 
-	override fun onSelectionChanged(controller: ListSelectionController, count: Int) {
-		viewBinding?.recyclerView?.invalidateItemDecorations()
-	}
+    override fun onSelectionChanged(controller: ListSelectionController, count: Int) {
+        viewBinding?.recyclerView?.invalidateItemDecorations()
+    }
 
-	override fun onFastScrollStart(fastScroller: FastScroller) {
-		(activity as? AppBarOwner)?.appBar?.setExpanded(false, true)
-		requireViewBinding().swipeRefreshLayout.isEnabled = false
-	}
+    override fun onFastScrollStart(fastScroller: FastScroller) {
+        (activity as? AppBarOwner)?.appBar?.setExpanded(false, true)
+        requireViewBinding().swipeRefreshLayout.isEnabled = false
+    }
 
-	override fun onFastScrollStop(fastScroller: FastScroller) {
-		requireViewBinding().swipeRefreshLayout.isEnabled = isSwipeRefreshEnabled
-	}
+    override fun onFastScrollStop(fastScroller: FastScroller) {
+        requireViewBinding().swipeRefreshLayout.isEnabled = isSwipeRefreshEnabled
+    }
 
-	private fun collectSelectedItems(): Set<Manga> {
-		val checkedIds = selectionController?.peekCheckedIds() ?: return emptySet()
-		val items = listAdapter?.items ?: return emptySet()
-		val result = LinkedHashSet<Manga>(checkedIds.size)
-		for (item in items) {
-			if (item is MangaListModel && item.id in checkedIds) {
-				result.add(item.manga)
-			}
-		}
-		return result
-	}
+    private fun collectSelectedItems(): Set<Manga> {
+        val checkedIds = selectionController?.peekCheckedIds() ?: return emptySet()
+        val items = listAdapter?.items ?: return emptySet()
+        val result = LinkedHashSet<Manga>(checkedIds.size)
+        for (item in items) {
+            if (item is MangaListModel && item.id in checkedIds) {
+                result.add(item.manga)
+            }
+        }
+        return result
+    }
 
-	private inner class SpanSizeLookup : GridLayoutManager.SpanSizeLookup() {
+    private inner class SpanSizeLookup : GridLayoutManager.SpanSizeLookup() {
 
-		init {
-			isSpanIndexCacheEnabled = true
-			isSpanGroupIndexCacheEnabled = true
-		}
+        init {
+            isSpanIndexCacheEnabled = true
+            isSpanGroupIndexCacheEnabled = true
+        }
 
-		override fun getSpanSize(position: Int): Int {
-			val total = (viewBinding?.recyclerView?.layoutManager as? GridLayoutManager)?.spanCount ?: return 1
-			return when (listAdapter?.getItemViewType(position)) {
-				ListItemType.MANGA_GRID.ordinal -> 1
-				else -> total
-			}
-		}
+        override fun getSpanSize(position: Int): Int {
+            val total = (viewBinding?.recyclerView?.layoutManager as? GridLayoutManager)?.spanCount ?: return 1
+            return when (listAdapter?.getItemViewType(position)) {
+                ListItemType.MANGA_GRID.ordinal -> 1
+                else -> total
+            }
+        }
 
-		fun invalidateCache() {
-			invalidateSpanGroupIndexCache()
-			invalidateSpanIndexCache()
-		}
-	}
+        fun invalidateCache() {
+            invalidateSpanGroupIndexCache()
+            invalidateSpanIndexCache()
+        }
+    }
 }

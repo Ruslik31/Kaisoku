@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.scrobbling.mal.data
 
+import org.koitharu.kotatsu.scrobbling.common.data.TrackerSession
 import okhttp3.Interceptor
 import okhttp3.Response
 import okhttp3.internal.closeQuietly
@@ -15,31 +16,31 @@ private const val JSON = "application/json"
 private const val HTML = "text/html"
 
 class MALInterceptor(
-	private val accessTokenProvider: () -> String?,
+    private val accessTokenProvider: () -> String?,
 ) : Interceptor {
 
-	override fun intercept(chain: Interceptor.Chain): Response {
-		val sourceRequest = chain.request()
-		val request = sourceRequest.newBuilder()
-		request.header(CommonHeaders.CONTENT_TYPE, JSON)
-		request.header(CommonHeaders.ACCEPT, JSON)
-		val isAuthRequest = sourceRequest.url.pathSegments.contains("oauth")
-		if (!isAuthRequest) {
-			accessTokenProvider()?.let {
-				request.header(CommonHeaders.AUTHORIZATION, "Bearer $it")
-			}
-		}
-		val response = chain.proceed(request.build())
-		if (!isAuthRequest && response.code == HttpURLConnection.HTTP_UNAUTHORIZED) {
-			response.closeQuietly()
-			throw ScrobblerAuthRequiredException(ScrobblerService.MAL)
-		}
-		if (response.mimeType == HTML) {
-			val message = response.parseHtml().title()
-			response.closeQuietly()
-			throw IOException(message)
-		}
-		return response
-	}
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val sourceRequest = chain.request()
+        val request = sourceRequest.newBuilder()
+        request.header(CommonHeaders.CONTENT_TYPE, JSON)
+        request.header(CommonHeaders.ACCEPT, JSON)
+        val isAuthRequest = sourceRequest.url.pathSegments.contains("oauth")
+        if (!isAuthRequest) {
+            (sourceRequest.tag(TrackerSession::class.java)?.token ?: accessTokenProvider())?.let {
+                request.header(CommonHeaders.AUTHORIZATION, "Bearer $it")
+            }
+        }
+        val response = chain.proceed(request.build())
+        if (!isAuthRequest && response.code == HttpURLConnection.HTTP_UNAUTHORIZED) {
+            response.closeQuietly()
+            throw ScrobblerAuthRequiredException(ScrobblerService.MAL)
+        }
+        if (response.mimeType == HTML) {
+            val message = response.parseHtml().title()
+            response.closeQuietly()
+            throw IOException(message)
+        }
+        return response
+    }
 
 }

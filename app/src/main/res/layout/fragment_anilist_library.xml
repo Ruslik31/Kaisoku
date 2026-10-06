@@ -7,19 +7,23 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical">
-        <HorizontalScrollView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:scrollbars="none">
-            <com.google.android.material.chip.ChipGroup
-                xmlns:app="http://schemas.android.com/apk/res-auto"
-                android:id="@+id/chipGroupStatuses"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:paddingHorizontal="12dp"
-                android:paddingVertical="8dp"
-                app:singleSelection="true" />
-        </HorizontalScrollView>
+        <TextView
+            android:id="@+id/textBeta"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp" android:paddingVertical="6dp"
+            android:text="@string/tracker_beta_short"
+            android:clickable="true" android:focusable="true" android:background="?attr/selectableItemBackground"
+            android:minHeight="48dp" android:textAppearance="?attr/textAppearanceBodySmall" />
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tabsServices"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            xmlns:app="http://schemas.android.com/apk/res-auto" app:tabMode="scrollable" />
+        <TextView android:id="@+id/textAccount" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp" android:paddingVertical="4dp" android:textAppearance="?attr/textAppearanceTitleSmall" />
+        <com.google.android.material.tabs.TabLayout
+            xmlns:app="http://schemas.android.com/apk/res-auto"
+            android:id="@+id/tabsStatuses" android:layout_width="match_parent" android:layout_height="wrap_content"
+            app:tabMode="scrollable" />
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -50,6 +54,8 @@
             android:layout_gravity="center_horizontal"
             android:text="@string/connect_anilist"
             android:visibility="gone" />
+        <TextView android:id="@+id/textSync" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp" android:paddingVertical="6dp" android:visibility="gone" />
         <TextView
             android:id="@+id/textError"
             android:layout_width="match_parent"
@@ -58,6 +64,8 @@
             android:paddingVertical="8dp"
             android:textColor="?attr/colorError"
             android:visibility="gone" />
+        <TextView android:id="@+id/textEmpty" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:padding="24dp" android:gravity="center" android:text="@string/nothing_found" android:visibility="gone" />
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recyclerView"
             android:layout_width="match_parent"

@@ -1,5 +1,9 @@
 package org.koitharu.kotatsu.reader.ui
 
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+
 import android.app.assist.AssistContent
 import android.content.DialogInterface
 import android.content.BroadcastReceiver
@@ -105,6 +109,9 @@ class ReaderActivity :
     ScrollTimerControlView.OnVisibilityChangeListener {
 
     @Inject
+    lateinit var trackerMatching: org.koitharu.kotatsu.scrobbling.common.data.TrackerMatchingCoordinator
+
+    @Inject
     lateinit var settings: AppSettings
 
     @Inject
@@ -121,9 +128,9 @@ class ReaderActivity :
 
     private val idlingDetector = IdlingDetector(TimeUnit.SECONDS.toMillis(10), this)
 
-	private val viewModel: ReaderViewModel by viewModels()
+    private val viewModel: ReaderViewModel by viewModels()
 
-	fun showTranslatedText(pageId: Long, number: Int) = viewModel.showTranslatedText(pageId, number)
+    fun showTranslatedText(pageId: Long, number: Int) = viewModel.showTranslatedText(pageId, number)
 
     override val readerMode: ReaderMode?
         get() = readerManager.currentMode
@@ -158,12 +165,12 @@ class ReaderActivity :
         }
     }
 
-	private val powerSaveReceiver = object : BroadcastReceiver() {
-		override fun onReceive(context: Context?, intent: Intent?) {
-			val powerSave = getSystemService(PowerManager::class.java)?.isPowerSaveMode == true
-			UpscaleEffect.refreshPowerSaveState(powerSave)
-		}
-	}
+    private val powerSaveReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val powerSave = getSystemService(PowerManager::class.java)?.isPowerSaveMode == true
+            UpscaleEffect.refreshPowerSaveState(powerSave)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -188,6 +195,28 @@ class ReaderActivity :
         screenOrientationHelper.applySettings()
         applyReaderBarsAppearance()
         settings.subscribe(readerBarsPrefListener)
+        lifecycleScope.launch {
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+                kotlinx.coroutines.flow.combine(viewModel.mangaDetails, viewModel.isIncognitoMode) { details, incognito ->
+                    details?.toManga() to (incognito != false)
+                }.distinctUntilChangedBy { it.first?.id to it.second }.collectLatest { (manga, incognito) ->
+                    if (manga != null && !incognito) kotlinx.coroutines.withContext(Dispatchers.IO) {
+                        trackerMatching.match(manga, incognito)
+                    }
+                }
+            }
+        }
+        trackerMatching.suggestions.observe(this) { suggestion ->
+            if (suggestion != null && viewModel.getMangaOrNull()?.id == suggestion.manga.id &&
+                viewModel.isIncognitoMode.value == false && trackerMatching.claimNotice(suggestion)) {
+                com.google.android.material.snackbar.Snackbar.make(viewBinding.container,
+                    R.string.tracker_match_review, com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
+                    .setAction(R.string.tracker_match_review_action) {
+                        if (trackerMatching.isCurrent(suggestion)) router.showScrobblingSelectorSheet(suggestion.manga,
+                            org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService.ANILIST, suggestion.targetId)
+                    }.show()
+            }
+        }
         viewModel.isBookmarkAdded.observe(this) { viewBinding.actionsView.isBookmarkAdded = it }
         scrollTimer.isActive.observe(this) {
             updateScrollTimerButton()
@@ -323,7 +352,7 @@ class ReaderActivity :
         viewModel.isZoomControlsEnabled.observe(this) {
             viewBinding.zoomControl.isVisible = it
         }
-		addMenuProvider(ReaderMenuProvider())
+        addMenuProvider(ReaderMenuProvider())
 
         observeWindowLayout()
 

@@ -15,39 +15,41 @@ import org.koitharu.kotatsu.reader.ui.ReaderState
 import javax.inject.Inject
 
 class HistoryUpdateUseCase @Inject constructor(
-	private val historyRepository: HistoryRepository,
+    private val historyRepository: HistoryRepository,
 ) {
-	private var lastAsyncUpdate: Job? = null
+    private var lastAsyncUpdate: Job? = null
 
-	suspend operator fun invoke(manga: Manga, readerState: ReaderState, percent: Float) {
-		historyRepository.addOrUpdate(
-			manga = manga,
-			chapterId = readerState.chapterId,
-			page = readerState.page,
-			scroll = readerState.scroll,
-			percent = percent,
-			force = false,
-		)
-	}
+    suspend operator fun invoke(manga: Manga, readerState: ReaderState, percent: Float, chapterCompleted: Boolean = false) {
+        historyRepository.addOrUpdate(
+            manga = manga,
+            chapterId = readerState.chapterId,
+            page = readerState.page,
+            scroll = readerState.scroll,
+            percent = percent,
+            force = false,
+            chapterCompleted = chapterCompleted,
+        )
+    }
 
-	@Synchronized
-	fun invokeAsync(
-		manga: Manga,
-		readerState: ReaderState,
-		percent: Float
-	): Job {
-		val previousUpdate = lastAsyncUpdate
-		return processLifecycleScope.launch(Dispatchers.Default, CoroutineStart.ATOMIC) {
-			// Pause, stop, and idle can save in quick succession. Preserve their call order so an
-			// older database transaction cannot finish after and overwrite a newer reading position.
-			previousUpdate?.join()
-			runCatchingCancellable {
-				withContext(NonCancellable) {
-					invoke(manga, readerState, percent)
-				}
-			}.onFailure {
-				it.printStackTraceDebug()
-			}
-		}.also { lastAsyncUpdate = it }
-	}
+    @Synchronized
+    fun invokeAsync(
+        manga: Manga,
+        readerState: ReaderState,
+        percent: Float,
+        chapterCompleted: Boolean = false,
+    ): Job {
+        val previousUpdate = lastAsyncUpdate
+        return processLifecycleScope.launch(Dispatchers.Default, CoroutineStart.ATOMIC) {
+            // Pause, stop, and idle can save in quick succession. Preserve their call order so an
+            // older database transaction cannot finish after and overwrite a newer reading position.
+            previousUpdate?.join()
+            runCatchingCancellable {
+                withContext(NonCancellable) {
+                    invoke(manga, readerState, percent, chapterCompleted)
+                }
+            }.onFailure {
+                it.printStackTraceDebug()
+            }
+        }.also { lastAsyncUpdate = it }
+    }
 }

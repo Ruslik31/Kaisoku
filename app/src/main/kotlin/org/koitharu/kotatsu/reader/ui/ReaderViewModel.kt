@@ -107,8 +107,8 @@ internal fun calculateReaderPercent(
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
-	@ApplicationContext private val context: Context,
-	private val savedStateHandle: SavedStateHandle,
+    @ApplicationContext private val context: Context,
+    private val savedStateHandle: SavedStateHandle,
     private val dataRepository: MangaDataRepository,
     private val historyRepository: HistoryRepository,
     private val bookmarksRepository: BookmarksRepository,
@@ -118,6 +118,7 @@ class ReaderViewModel @Inject constructor(
     private val appShortcutManager: AppShortcutManager,
     private val detailsLoadUseCase: DetailsLoadUseCase,
     private val historyUpdateUseCase: HistoryUpdateUseCase,
+    private val trackerSync: org.koitharu.kotatsu.scrobbling.common.data.TrackerSyncCoordinator,
     private val detectReaderModeUseCase: DetectReaderModeUseCase,
     private val statsCollector: StatsCollector,
     private val discordRpc: DiscordRpc,
@@ -128,8 +129,8 @@ class ReaderViewModel @Inject constructor(
     downloadScheduler: DownloadWorker.Scheduler,
     readerSettingsProducerFactory: ReaderSettings.Producer.Factory,
 ) : ChaptersPagesViewModel(
-	appContext = context,
-	settings = settings,
+    appContext = context,
+    settings = settings,
     interactor = interactor,
     bookmarksRepository = bookmarksRepository,
     historyRepository = historyRepository,
@@ -780,6 +781,25 @@ class ReaderViewModel @Inject constructor(
                 return@launchJob
             }
             notifyStateChanged()
+            if (isIncognitoMode.value == false) {
+                val current = readingState.value
+                val manga = getMangaOrNull()
+                if (current != null && manga != null) {
+                    if (readerMode.value == ReaderMode.WEBTOON) {
+                        if (org.koitharu.kotatsu.scrobbling.common.domain.isMangaChapterCompleted(current.page,
+                            chaptersLoader.getPagesCount(current.chapterId), current.scroll, webtoon = true)) {
+                            trackerSync.onChapterCompleted(manga, current.chapterId)
+                        }
+                    } else {
+                        // A spread can display the final page as its second page. Both are real UI positions.
+                        val firstVisible = minOf(lowerPos, upperPos).coerceIn(0, pages.size)
+                        val endVisible = (maxOf(lowerPos, upperPos).toLong() + 1).coerceIn(0, pages.size.toLong()).toInt()
+                        pages.subList(firstVisible, endVisible)
+                            .filter { it.index == chaptersLoader.getPagesCount(it.chapterId) - 1 }
+                            .forEach { trackerSync.onChapterCompleted(manga, it.chapterId) }
+                    }
+                }
+            }
             if (pages.isEmpty() || loadingJob?.isActive == true) {
                 return@launchJob
             }

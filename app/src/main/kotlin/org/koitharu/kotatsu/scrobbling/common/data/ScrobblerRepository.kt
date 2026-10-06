@@ -6,35 +6,39 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerUser
 
 interface ScrobblerRepository {
 
-	val oauthUrl: String
+    suspend fun fetchLibrary(): List<org.koitharu.kotatsu.scrobbling.common.domain.model.TrackerLibraryEntry>
 
-	val isAuthorized: Boolean
+    val storage: ScrobblerStorage
 
-	val cachedUser: ScrobblerUser?
+    val oauthUrl: String
 
-	suspend fun authorize(code: String?)
+    val isAuthorized: Boolean
 
-	suspend fun loadUser(): ScrobblerUser
+    val cachedUser: ScrobblerUser?
 
-	fun logout()
+    suspend fun authorize(code: String?)
 
-	suspend fun unregister(mangaId: Long)
+    suspend fun loadUser(): ScrobblerUser
 
-	suspend fun findManga(query: String, offset: Int): List<ScrobblerManga>
+    fun logout()
 
-	suspend fun getMangaInfo(id: Long): ScrobblerMangaInfo
+    suspend fun unregister(mangaId: Long)
 
-	/** @return true when an existing remote entry was adopted without overwriting it. */
-	suspend fun createRate(mangaId: Long, scrobblerMangaId: Long): Boolean
+    suspend fun findManga(query: String, offset: Int): List<ScrobblerManga>
 
-	suspend fun updateRate(rateId: Int, mangaId: Long, chapter: Int)
+    suspend fun getMangaInfo(id: Long): ScrobblerMangaInfo
 
-	suspend fun updateRate(
-		rateId: Int,
-		mangaId: Long,
-		rating: Float,
-		status: String?,
-		comment: String?,
-		setStartDate: Boolean,
-	)
+    /** @return true when an existing remote entry was adopted without overwriting it. */
+    suspend fun createRate(mangaId: Long, scrobblerMangaId: Long, allowCreate: Boolean = false): Boolean
+
+    suspend fun updateRate(rateId: Int, mangaId: Long, chapter: Int)
+
+    suspend fun updateRate(
+        rateId: Int,
+        mangaId: Long,
+        rating: Float,
+        status: String?,
+        comment: String?,
+        setStartDate: Boolean,
+    )
 }

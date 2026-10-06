@@ -208,13 +208,13 @@ class AppRouter private constructor(
         )
     }
 
-	fun openSourceReplacement(mangaIds: Collection<Long>) {
-		if (mangaIds.isEmpty()) return
-		startActivity(
-			Intent(contextOrNull() ?: return, SourceReplacementActivity::class.java)
-				.putExtra(KEY_MANGA_IDS, mangaIds.toLongArray()),
-		)
-	}
+    fun openSourceReplacement(mangaIds: Collection<Long>) {
+        if (mangaIds.isEmpty()) return
+        startActivity(
+            Intent(contextOrNull() ?: return, SourceReplacementActivity::class.java)
+                .putExtra(KEY_MANGA_IDS, mangaIds.toLongArray()),
+        )
+    }
 
     fun openRelated(manga: Manga) {
         startActivity(
@@ -592,9 +592,10 @@ class AppRouter private constructor(
         }.showDistinct()
     }
 
-    fun showScrobblingSelectorSheet(manga: Manga, scrobblerService: ScrobblerService?) {
+    fun showScrobblingSelectorSheet(manga: Manga, scrobblerService: ScrobblerService?, targetId: Long? = null) {
         ScrobblingSelectorSheet().withArgs(2) {
             putParcelable(KEY_MANGA, ParcelableManga(manga))
+            targetId?.let { putLong(KEY_TRACKER_TARGET_ID, it) }
             if (scrobblerService != null) {
                 putInt(KEY_ID, scrobblerService.id)
             }
@@ -888,11 +889,11 @@ class AppRouter private constructor(
             else -> true
         }
 
-	        fun shortMangaUrl(mangaId: Long): Uri = Uri.Builder()
-	            .scheme("kaisoku")
-	            .path("manga")
-	            .appendQueryParameter("id", mangaId.toString())
-	            .build()
+            fun shortMangaUrl(mangaId: Long): Uri = Uri.Builder()
+                .scheme("kaisoku")
+                .path("manga")
+                .appendQueryParameter("id", mangaId.toString())
+                .build()
 
         const val KEY_DATA = "data"
         const val KEY_ENTRIES = "entries"
@@ -907,11 +908,13 @@ class AppRouter private constructor(
         const val KEY_LIST_SECTION = "list_section"
         const val KEY_MANGA = "manga"
         const val KEY_MANGA_LIST = "manga_list"
-		const val KEY_MANGA_IDS = "manga_ids"
+        const val KEY_MANGA_IDS = "manga_ids"
         const val KEY_PAGES = "pages"
         const val KEY_PICK_MODE = "pick_mode"
         const val KEY_PREVIEW = "preview"
         const val KEY_QUERY = "query"
+        const val KEY_TRACKER_TARGET_ID = "tracker_target_id"
+        const val KEY_TRACKER_TITLE = "tracker_title"
         const val KEY_READER_MODE = "reader_mode"
         const val KEY_SORT_ORDER = "sort_order"
         const val KEY_SOURCE = "source"

@@ -49,1243 +49,1247 @@ import javax.inject.Singleton
 @Singleton
 class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
-	private val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-	private val connectivityManager = context.connectivityManager
-	private val mangaListBadgesDefault = ArraySet(context.resources.getStringArray(R.array.values_list_badges))
-
-	init {
-		migrateLegacyTranslationConfig()
-	}
-
-	var isFirstLaunch: Boolean
-		get() = prefs.getBoolean(KEY_FIRST_LAUNCH, true)
-		set(value) = prefs.edit { putBoolean(KEY_FIRST_LAUNCH, value) }
-
-	var translateProvider: org.koitharu.kotatsu.reader.translate.TranslateProvider
-		get() = prefs.getEnumValue(KEY_TRANSLATE_PROVIDER, org.koitharu.kotatsu.reader.translate.TranslateProvider.OPENAI_COMPATIBLE)
-		set(value) = prefs.edit { putEnumValue(KEY_TRANSLATE_PROVIDER, value) }
-
-	var translateEndpoint: String
-		get() = prefs.getString(translationConfigKey(KEY_TRANSLATE_ENDPOINT), null).orEmpty()
-		set(value) = prefs.edit { putString(translationConfigKey(KEY_TRANSLATE_ENDPOINT), value) }
-
-	var translateApiKey: String
-		get() = prefs.getString(translationConfigKey(KEY_TRANSLATE_API_KEY), null).orEmpty()
-		set(value) = prefs.edit { putString(translationConfigKey(KEY_TRANSLATE_API_KEY), value) }
-
-	var translateModel: String
-		get() = prefs.getString(translationConfigKey(KEY_TRANSLATE_MODEL), null).orEmpty()
-		set(value) = prefs.edit { putString(translationConfigKey(KEY_TRANSLATE_MODEL), value) }
-
-	var translateCustomHeaders: String
-		get() = prefs.getString(translationConfigKey(KEY_TRANSLATE_CUSTOM_HEADERS), null).orEmpty()
-		set(value) = prefs.edit { putString(translationConfigKey(KEY_TRANSLATE_CUSTOM_HEADERS), value) }
-
-	var translateSourceLanguage: String
-		get() = prefs.getString(KEY_TRANSLATE_SOURCE_LANG, null) ?: "auto"
-		set(value) = prefs.edit { putString(KEY_TRANSLATE_SOURCE_LANG, value) }
-
-	var translateTargetLanguage: String
-		get() = prefs.getString(KEY_TRANSLATE_TARGET_LANG, null)
-			?: java.util.Locale.getDefault().language
-		set(value) = prefs.edit { putString(KEY_TRANSLATE_TARGET_LANG, value) }
-
-	var translateTriggerMode: org.koitharu.kotatsu.reader.translate.TranslateTriggerMode
-		get() = prefs.getEnumValue(KEY_TRANSLATE_TRIGGER_MODE, org.koitharu.kotatsu.reader.translate.TranslateTriggerMode.MANUAL)
-		set(value) = prefs.edit { putEnumValue(KEY_TRANSLATE_TRIGGER_MODE, value) }
-
-	var translateOverlayBackground: Boolean
-		get() = prefs.getBoolean(KEY_TRANSLATE_OVERLAY_BG, true)
-		set(value) = prefs.edit { putBoolean(KEY_TRANSLATE_OVERLAY_BG, value) }
-
-	var translateConcurrency: Int
-		get() = prefs.getInt(KEY_TRANSLATE_CONCURRENCY, 1).coerceIn(1, 4)
-		set(value) = prefs.edit { putInt(KEY_TRANSLATE_CONCURRENCY, value.coerceIn(1, 4)) }
-
-	var translateRpm: Int
-		get() = prefs.getInt(KEY_TRANSLATE_RPM, 10).coerceIn(1, 60)
-		set(value) = prefs.edit { putInt(KEY_TRANSLATE_RPM, value.coerceIn(1, 60)) }
-
-	var isPageTranslationEnabled: Boolean
-		get() = prefs.getBoolean(KEY_TRANSLATE_ENABLED, false)
-		set(value) = prefs.edit { putBoolean(KEY_TRANSLATE_ENABLED, value) }
-
-	var isCommunityEnabled: Boolean
-		get() = prefs.getBoolean(KEY_COMMUNITY_ENABLED, false)
-		set(value) = prefs.edit { putBoolean(KEY_COMMUNITY_ENABLED, value) }
-
-	var isCommunityTelemetryEnabled: Boolean
-		get() = prefs.getBoolean(KEY_COMMUNITY_TELEMETRY, false)
-		set(value) = prefs.edit { putBoolean(KEY_COMMUNITY_TELEMETRY, value) }
-
-	/** Whether the selected provider has everything it needs to run (Google Lens needs no key). */
-	val isPageTranslationConfigured: Boolean
-		get() = translateProvider == org.koitharu.kotatsu.reader.translate.TranslateProvider.GOOGLE_LENS ||
-			(translateApiKey.isNotBlank() && translateEndpoint.isNotBlank())
-
-	private fun translationConfigKey(key: String): String = "${key}_${translationConfigSuffix(translateProvider)}"
-
-	private fun translationConfigSuffix(provider: org.koitharu.kotatsu.reader.translate.TranslateProvider): String =
-		if (provider == org.koitharu.kotatsu.reader.translate.TranslateProvider.GEMINI) "gemini" else "openai"
-
-	private fun migrateLegacyTranslationConfig() {
-		if (prefs.getBoolean(KEY_TRANSLATE_PROFILES_MIGRATED, false)) return
-		val legacyKeys = arrayOf(
-			KEY_TRANSLATE_ENDPOINT,
-			KEY_TRANSLATE_API_KEY,
-			KEY_TRANSLATE_MODEL,
-			KEY_TRANSLATE_CUSTOM_HEADERS,
-		)
-		val legacyEndpoint = prefs.getString(KEY_TRANSLATE_ENDPOINT, null).orEmpty()
-		val legacyModel = prefs.getString(KEY_TRANSLATE_MODEL, null).orEmpty()
-		val selectedProvider = translateProvider
-		val legacyProvider = when {
-			selectedProvider != org.koitharu.kotatsu.reader.translate.TranslateProvider.GOOGLE_LENS -> selectedProvider
-			legacyEndpoint.contains("generateContent", ignoreCase = true) ||
-				legacyEndpoint.contains("googleapis.com", ignoreCase = true) ||
-				legacyModel.startsWith("gemini", ignoreCase = true) ->
-				org.koitharu.kotatsu.reader.translate.TranslateProvider.GEMINI
-			else -> org.koitharu.kotatsu.reader.translate.TranslateProvider.OPENAI_COMPATIBLE
-		}
-		val legacyValues = legacyKeys.mapNotNull { key -> prefs.getString(key, null)?.let { key to it } }
-		prefs.edit {
-			for ((key, value) in legacyValues) {
-				val profileKey = "${key}_${translationConfigSuffix(legacyProvider)}"
-				if (!prefs.contains(profileKey)) putString(profileKey, value)
-			}
-			putBoolean(KEY_TRANSLATE_PROFILES_MIGRATED, true)
-		}
-	}
-
-	var listMode: ListMode
-		get() = prefs.getEnumValue(KEY_LIST_MODE, ListMode.GRID)
-		set(value) = prefs.edit { putEnumValue(KEY_LIST_MODE, value) }
-
-	val theme: Int
-		get() = prefs.getString(KEY_THEME, null)?.toIntOrNull()
-			?: AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
-
-	val colorScheme: ColorScheme
-		get() = prefs.getEnumValue(KEY_COLOR_THEME, ColorScheme.default)
-
-	val isAmoledTheme: Boolean
-		get() = prefs.getBoolean(KEY_THEME_AMOLED, false)
-
-	val isAmoledNavBarEnabled: Boolean
-		get() = prefs.getBoolean(KEY_THEME_AMOLED_NAVBAR, true)
-
-	var mainNavItems: List<NavItem>
-		get() {
-			val raw = prefs.getString(KEY_NAV_MAIN, null)?.split(',')
-			return if (raw.isNullOrEmpty()) {
-				listOf(NavItem.HISTORY, NavItem.FAVORITES, NavItem.EXPLORE, NavItem.FEED)
-			} else {
-				raw.mapNotNull { x -> NavItem.entries.find(x) }.ifEmpty { listOf(NavItem.EXPLORE) }
-			}
-		}
-
-		set(value) {
-			prefs.edit {
-				putString(KEY_NAV_MAIN, value.joinToString(",") { it.name })
-			}
-		}
-
-	var useAndroidInstalledExtensions: Boolean
-		get() = prefs.getBoolean(KEY_USE_ANDROID_EXTENSIONS, true)
-		set(value) = prefs.edit { putBoolean(KEY_USE_ANDROID_EXTENSIONS, value) }
-
-	var isPluginApkHandlerEnabled: Boolean
-		get() = prefs.getBoolean(KEY_SHOW_PLUGIN_APK_HANDLER, true)
-		set(value) = prefs.edit { putBoolean(KEY_SHOW_PLUGIN_APK_HANDLER, value) }
-
-	val isNavLabelsVisible: Boolean
-		get() = prefs.getBoolean(KEY_NAV_LABELS, true)
-
-	val isNavBarPinned: Boolean
-		get() = prefs.getBoolean(KEY_NAV_PINNED, false)
-
-	val isNavBarFloating: Boolean
-		get() = prefs.getBoolean(KEY_NAV_FLOATING, false)
-
-	/** Corner radius of the floating navigation bar, in dp. */
-	val navBarCornerRadius: Int
-		get() = prefs.getInt(KEY_NAV_CORNER_RADIUS, 36)
-
-	val isMainFabEnabled: Boolean
-		get() = prefs.getBoolean(KEY_MAIN_FAB, true)
-
-	var gridSize: Int
-		get() = prefs.getInt(KEY_GRID_SIZE, 100)
-		set(value) = prefs.edit { putInt(KEY_GRID_SIZE, value) }
-
-	var gridSizePages: Int
-		get() = prefs.getInt(KEY_GRID_SIZE_PAGES, 100)
-		set(value) = prefs.edit { putInt(KEY_GRID_SIZE_PAGES, value) }
-
-	val isQuickFilterEnabled: Boolean
-		get() = prefs.getBoolean(KEY_QUICK_FILTER, true)
-
-	var isListCheckpointEnabled: Boolean
-		get() = prefs.getBoolean(KEY_LIST_CHECKPOINT, true)
-		set(value) = prefs.edit { putBoolean(KEY_LIST_CHECKPOINT, value) }
-
-	/** Opaque record of where the user was in the list identified by [scope]. */
-	fun getListCheckpoint(scope: String): String? {
-		val key = KEY_LIST_CHECKPOINT + '_' + scope
-		return try {
-			prefs.getString(key, null)
-		} catch (e: ClassCastException) {
-			// An earlier build stored a bare manga id under this key - drop it and start over.
-			prefs.edit { remove(key) }
-			null
-		}
-	}
-
-	fun setListCheckpoint(scope: String, value: String) {
-		prefs.edit { putString(KEY_LIST_CHECKPOINT + '_' + scope, value) }
-	}
-
-	val isDescriptionExpanded: Boolean
-		get() = !prefs.getBoolean(KEY_COLLAPSE_DESCRIPTION, true)
-
-	var historyListMode: ListMode
-		get() = prefs.getEnumValue(KEY_LIST_MODE_HISTORY, listMode)
-		set(value) = prefs.edit { putEnumValue(KEY_LIST_MODE_HISTORY, value) }
-
-	var suggestionsListMode: ListMode
-		get() = prefs.getEnumValue(KEY_LIST_MODE_SUGGESTIONS, listMode)
-		set(value) = prefs.edit { putEnumValue(KEY_LIST_MODE_SUGGESTIONS, value) }
-
-	var favoritesListMode: ListMode
-		get() = prefs.getEnumValue(KEY_LIST_MODE_FAVORITES, listMode)
-		set(value) = prefs.edit { putEnumValue(KEY_LIST_MODE_FAVORITES, value) }
-
-
-	var isNsfwContentDisabled: Boolean
-		get() = prefs.getBoolean(KEY_DISABLE_NSFW, true)
-		set(value) = prefs.edit { putBoolean(KEY_DISABLE_NSFW, value) }
-
-	var appLocales: LocaleListCompat
-		get() {
-			val raw = prefs.getString(KEY_APP_LOCALE, null)
-			return LocaleListCompat.forLanguageTags(raw)
-		}
-		set(value) {
-			prefs.edit {
-				putString(KEY_APP_LOCALE, value.toLanguageTags())
-			}
-		}
-
-	var isReaderDoubleOnLandscape: Boolean
-		get() = prefs.getBoolean(KEY_READER_DOUBLE_PAGES, false)
-		set(value) = prefs.edit { putBoolean(KEY_READER_DOUBLE_PAGES, value) }
-
-	var isReaderDoubleOnFoldable: Boolean
-		get() = prefs.getBoolean(KEY_READER_DOUBLE_FOLDABLE, false)
-		set(value) = prefs.edit { putBoolean(KEY_READER_DOUBLE_FOLDABLE, value) }
-
-	var isReaderDoubleCoverPage: Boolean
-		get() = prefs.getBoolean(KEY_READER_DOUBLE_COVER_PAGE, false)
-		set(value) = prefs.edit { putBoolean(KEY_READER_DOUBLE_COVER_PAGE, value) }
-
-	@get:FloatRange(0.0, 1.0)
-	var readerDoublePagesSensitivity: Float
-		get() = prefs.getFloatCompat(KEY_READER_DOUBLE_PAGES_SENSITIVITY, 0.5f, 0f, 1f)
-		set(@FloatRange(0.0, 1.0) value) = prefs.edit { putFloat(KEY_READER_DOUBLE_PAGES_SENSITIVITY, value) }
+    private val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+    private val connectivityManager = context.connectivityManager
+    private val mangaListBadgesDefault = ArraySet(context.resources.getStringArray(R.array.values_list_badges))
+
+    init {
+        migrateLegacyTranslationConfig()
+    }
+
+    val isTrackerAutoMatchEnabled: Boolean
+        get() = prefs.getBoolean(KEY_TRACKER_AUTO_MATCH, false)
+
+    var isFirstLaunch: Boolean
+        get() = prefs.getBoolean(KEY_FIRST_LAUNCH, true)
+        set(value) = prefs.edit { putBoolean(KEY_FIRST_LAUNCH, value) }
+
+    var translateProvider: org.koitharu.kotatsu.reader.translate.TranslateProvider
+        get() = prefs.getEnumValue(KEY_TRANSLATE_PROVIDER, org.koitharu.kotatsu.reader.translate.TranslateProvider.OPENAI_COMPATIBLE)
+        set(value) = prefs.edit { putEnumValue(KEY_TRANSLATE_PROVIDER, value) }
+
+    var translateEndpoint: String
+        get() = prefs.getString(translationConfigKey(KEY_TRANSLATE_ENDPOINT), null).orEmpty()
+        set(value) = prefs.edit { putString(translationConfigKey(KEY_TRANSLATE_ENDPOINT), value) }
+
+    var translateApiKey: String
+        get() = prefs.getString(translationConfigKey(KEY_TRANSLATE_API_KEY), null).orEmpty()
+        set(value) = prefs.edit { putString(translationConfigKey(KEY_TRANSLATE_API_KEY), value) }
+
+    var translateModel: String
+        get() = prefs.getString(translationConfigKey(KEY_TRANSLATE_MODEL), null).orEmpty()
+        set(value) = prefs.edit { putString(translationConfigKey(KEY_TRANSLATE_MODEL), value) }
+
+    var translateCustomHeaders: String
+        get() = prefs.getString(translationConfigKey(KEY_TRANSLATE_CUSTOM_HEADERS), null).orEmpty()
+        set(value) = prefs.edit { putString(translationConfigKey(KEY_TRANSLATE_CUSTOM_HEADERS), value) }
+
+    var translateSourceLanguage: String
+        get() = prefs.getString(KEY_TRANSLATE_SOURCE_LANG, null) ?: "auto"
+        set(value) = prefs.edit { putString(KEY_TRANSLATE_SOURCE_LANG, value) }
+
+    var translateTargetLanguage: String
+        get() = prefs.getString(KEY_TRANSLATE_TARGET_LANG, null)
+            ?: java.util.Locale.getDefault().language
+        set(value) = prefs.edit { putString(KEY_TRANSLATE_TARGET_LANG, value) }
+
+    var translateTriggerMode: org.koitharu.kotatsu.reader.translate.TranslateTriggerMode
+        get() = prefs.getEnumValue(KEY_TRANSLATE_TRIGGER_MODE, org.koitharu.kotatsu.reader.translate.TranslateTriggerMode.MANUAL)
+        set(value) = prefs.edit { putEnumValue(KEY_TRANSLATE_TRIGGER_MODE, value) }
+
+    var translateOverlayBackground: Boolean
+        get() = prefs.getBoolean(KEY_TRANSLATE_OVERLAY_BG, true)
+        set(value) = prefs.edit { putBoolean(KEY_TRANSLATE_OVERLAY_BG, value) }
+
+    var translateConcurrency: Int
+        get() = prefs.getInt(KEY_TRANSLATE_CONCURRENCY, 1).coerceIn(1, 4)
+        set(value) = prefs.edit { putInt(KEY_TRANSLATE_CONCURRENCY, value.coerceIn(1, 4)) }
+
+    var translateRpm: Int
+        get() = prefs.getInt(KEY_TRANSLATE_RPM, 10).coerceIn(1, 60)
+        set(value) = prefs.edit { putInt(KEY_TRANSLATE_RPM, value.coerceIn(1, 60)) }
+
+    var isPageTranslationEnabled: Boolean
+        get() = prefs.getBoolean(KEY_TRANSLATE_ENABLED, false)
+        set(value) = prefs.edit { putBoolean(KEY_TRANSLATE_ENABLED, value) }
+
+    var isCommunityEnabled: Boolean
+        get() = prefs.getBoolean(KEY_COMMUNITY_ENABLED, false)
+        set(value) = prefs.edit { putBoolean(KEY_COMMUNITY_ENABLED, value) }
+
+    var isCommunityTelemetryEnabled: Boolean
+        get() = prefs.getBoolean(KEY_COMMUNITY_TELEMETRY, false)
+        set(value) = prefs.edit { putBoolean(KEY_COMMUNITY_TELEMETRY, value) }
+
+    /** Whether the selected provider has everything it needs to run (Google Lens needs no key). */
+    val isPageTranslationConfigured: Boolean
+        get() = translateProvider == org.koitharu.kotatsu.reader.translate.TranslateProvider.GOOGLE_LENS ||
+            (translateApiKey.isNotBlank() && translateEndpoint.isNotBlank())
+
+    private fun translationConfigKey(key: String): String = "${key}_${translationConfigSuffix(translateProvider)}"
+
+    private fun translationConfigSuffix(provider: org.koitharu.kotatsu.reader.translate.TranslateProvider): String =
+        if (provider == org.koitharu.kotatsu.reader.translate.TranslateProvider.GEMINI) "gemini" else "openai"
+
+    private fun migrateLegacyTranslationConfig() {
+        if (prefs.getBoolean(KEY_TRANSLATE_PROFILES_MIGRATED, false)) return
+        val legacyKeys = arrayOf(
+            KEY_TRANSLATE_ENDPOINT,
+            KEY_TRANSLATE_API_KEY,
+            KEY_TRANSLATE_MODEL,
+            KEY_TRANSLATE_CUSTOM_HEADERS,
+        )
+        val legacyEndpoint = prefs.getString(KEY_TRANSLATE_ENDPOINT, null).orEmpty()
+        val legacyModel = prefs.getString(KEY_TRANSLATE_MODEL, null).orEmpty()
+        val selectedProvider = translateProvider
+        val legacyProvider = when {
+            selectedProvider != org.koitharu.kotatsu.reader.translate.TranslateProvider.GOOGLE_LENS -> selectedProvider
+            legacyEndpoint.contains("generateContent", ignoreCase = true) ||
+                legacyEndpoint.contains("googleapis.com", ignoreCase = true) ||
+                legacyModel.startsWith("gemini", ignoreCase = true) ->
+                org.koitharu.kotatsu.reader.translate.TranslateProvider.GEMINI
+            else -> org.koitharu.kotatsu.reader.translate.TranslateProvider.OPENAI_COMPATIBLE
+        }
+        val legacyValues = legacyKeys.mapNotNull { key -> prefs.getString(key, null)?.let { key to it } }
+        prefs.edit {
+            for ((key, value) in legacyValues) {
+                val profileKey = "${key}_${translationConfigSuffix(legacyProvider)}"
+                if (!prefs.contains(profileKey)) putString(profileKey, value)
+            }
+            putBoolean(KEY_TRANSLATE_PROFILES_MIGRATED, true)
+        }
+    }
+
+    var listMode: ListMode
+        get() = prefs.getEnumValue(KEY_LIST_MODE, ListMode.GRID)
+        set(value) = prefs.edit { putEnumValue(KEY_LIST_MODE, value) }
+
+    val theme: Int
+        get() = prefs.getString(KEY_THEME, null)?.toIntOrNull()
+            ?: AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+
+    val colorScheme: ColorScheme
+        get() = prefs.getEnumValue(KEY_COLOR_THEME, ColorScheme.default)
+
+    val isAmoledTheme: Boolean
+        get() = prefs.getBoolean(KEY_THEME_AMOLED, false)
+
+    val isAmoledNavBarEnabled: Boolean
+        get() = prefs.getBoolean(KEY_THEME_AMOLED_NAVBAR, true)
+
+    var mainNavItems: List<NavItem>
+        get() {
+            val raw = prefs.getString(KEY_NAV_MAIN, null)?.split(',')
+            return if (raw.isNullOrEmpty()) {
+                listOf(NavItem.HISTORY, NavItem.FAVORITES, NavItem.EXPLORE, NavItem.FEED)
+            } else {
+                raw.mapNotNull { x -> NavItem.entries.find(x) }.ifEmpty { listOf(NavItem.EXPLORE) }
+            }
+        }
+
+        set(value) {
+            prefs.edit {
+                putString(KEY_NAV_MAIN, value.joinToString(",") { it.name })
+            }
+        }
+
+    var useAndroidInstalledExtensions: Boolean
+        get() = prefs.getBoolean(KEY_USE_ANDROID_EXTENSIONS, true)
+        set(value) = prefs.edit { putBoolean(KEY_USE_ANDROID_EXTENSIONS, value) }
+
+    var isPluginApkHandlerEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_PLUGIN_APK_HANDLER, true)
+        set(value) = prefs.edit { putBoolean(KEY_SHOW_PLUGIN_APK_HANDLER, value) }
+
+    val isNavLabelsVisible: Boolean
+        get() = prefs.getBoolean(KEY_NAV_LABELS, true)
+
+    val isNavBarPinned: Boolean
+        get() = prefs.getBoolean(KEY_NAV_PINNED, false)
+
+    val isNavBarFloating: Boolean
+        get() = prefs.getBoolean(KEY_NAV_FLOATING, false)
+
+    /** Corner radius of the floating navigation bar, in dp. */
+    val navBarCornerRadius: Int
+        get() = prefs.getInt(KEY_NAV_CORNER_RADIUS, 36)
+
+    val isMainFabEnabled: Boolean
+        get() = prefs.getBoolean(KEY_MAIN_FAB, true)
+
+    var gridSize: Int
+        get() = prefs.getInt(KEY_GRID_SIZE, 100)
+        set(value) = prefs.edit { putInt(KEY_GRID_SIZE, value) }
+
+    var gridSizePages: Int
+        get() = prefs.getInt(KEY_GRID_SIZE_PAGES, 100)
+        set(value) = prefs.edit { putInt(KEY_GRID_SIZE_PAGES, value) }
+
+    val isQuickFilterEnabled: Boolean
+        get() = prefs.getBoolean(KEY_QUICK_FILTER, true)
+
+    var isListCheckpointEnabled: Boolean
+        get() = prefs.getBoolean(KEY_LIST_CHECKPOINT, true)
+        set(value) = prefs.edit { putBoolean(KEY_LIST_CHECKPOINT, value) }
+
+    /** Opaque record of where the user was in the list identified by [scope]. */
+    fun getListCheckpoint(scope: String): String? {
+        val key = KEY_LIST_CHECKPOINT + '_' + scope
+        return try {
+            prefs.getString(key, null)
+        } catch (e: ClassCastException) {
+            // An earlier build stored a bare manga id under this key - drop it and start over.
+            prefs.edit { remove(key) }
+            null
+        }
+    }
+
+    fun setListCheckpoint(scope: String, value: String) {
+        prefs.edit { putString(KEY_LIST_CHECKPOINT + '_' + scope, value) }
+    }
+
+    val isDescriptionExpanded: Boolean
+        get() = !prefs.getBoolean(KEY_COLLAPSE_DESCRIPTION, true)
+
+    var historyListMode: ListMode
+        get() = prefs.getEnumValue(KEY_LIST_MODE_HISTORY, listMode)
+        set(value) = prefs.edit { putEnumValue(KEY_LIST_MODE_HISTORY, value) }
+
+    var suggestionsListMode: ListMode
+        get() = prefs.getEnumValue(KEY_LIST_MODE_SUGGESTIONS, listMode)
+        set(value) = prefs.edit { putEnumValue(KEY_LIST_MODE_SUGGESTIONS, value) }
+
+    var favoritesListMode: ListMode
+        get() = prefs.getEnumValue(KEY_LIST_MODE_FAVORITES, listMode)
+        set(value) = prefs.edit { putEnumValue(KEY_LIST_MODE_FAVORITES, value) }
+
+
+    var isNsfwContentDisabled: Boolean
+        get() = prefs.getBoolean(KEY_DISABLE_NSFW, true)
+        set(value) = prefs.edit { putBoolean(KEY_DISABLE_NSFW, value) }
+
+    var appLocales: LocaleListCompat
+        get() {
+            val raw = prefs.getString(KEY_APP_LOCALE, null)
+            return LocaleListCompat.forLanguageTags(raw)
+        }
+        set(value) {
+            prefs.edit {
+                putString(KEY_APP_LOCALE, value.toLanguageTags())
+            }
+        }
+
+    var isReaderDoubleOnLandscape: Boolean
+        get() = prefs.getBoolean(KEY_READER_DOUBLE_PAGES, false)
+        set(value) = prefs.edit { putBoolean(KEY_READER_DOUBLE_PAGES, value) }
+
+    var isReaderDoubleOnFoldable: Boolean
+        get() = prefs.getBoolean(KEY_READER_DOUBLE_FOLDABLE, false)
+        set(value) = prefs.edit { putBoolean(KEY_READER_DOUBLE_FOLDABLE, value) }
+
+    var isReaderDoubleCoverPage: Boolean
+        get() = prefs.getBoolean(KEY_READER_DOUBLE_COVER_PAGE, false)
+        set(value) = prefs.edit { putBoolean(KEY_READER_DOUBLE_COVER_PAGE, value) }
+
+    @get:FloatRange(0.0, 1.0)
+    var readerDoublePagesSensitivity: Float
+        get() = prefs.getFloatCompat(KEY_READER_DOUBLE_PAGES_SENSITIVITY, 0.5f, 0f, 1f)
+        set(@FloatRange(0.0, 1.0) value) = prefs.edit { putFloat(KEY_READER_DOUBLE_PAGES_SENSITIVITY, value) }
+
+    val readerScreenOrientation: Int
+        get() = prefs.getString(KEY_READER_ORIENTATION, null)?.toIntOrNull()
+            ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+
+    val isReaderVolumeButtonsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_READER_VOLUME_BUTTONS, false)
+
+    val isReaderZoomButtonsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_READER_ZOOM_BUTTONS, false)
+
+    val isReaderControlAlwaysLTR: Boolean
+        get() = prefs.getBoolean(KEY_READER_CONTROL_LTR, false)
+
+    val isReaderNavigationInverted: Boolean
+        get() = prefs.getBoolean(KEY_READER_NAVIGATION_INVERTED, false)
+
+    val isReaderFullscreenEnabled: Boolean
+        get() = prefs.getBoolean(KEY_READER_FULLSCREEN, true)
+
+    val isReaderOptimizationEnabled: Boolean
+        get() = prefs.getBoolean(KEY_READER_OPTIMIZE, false)
 
-	val readerScreenOrientation: Int
-		get() = prefs.getString(KEY_READER_ORIENTATION, null)?.toIntOrNull()
-			?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    var isReaderUpscaleEnabled: Boolean
+        get() = prefs.getBoolean(KEY_READER_UPSCALE, false)
+        set(value) = prefs.edit { putBoolean(KEY_READER_UPSCALE, value) }
 
-	val isReaderVolumeButtonsEnabled: Boolean
-		get() = prefs.getBoolean(KEY_READER_VOLUME_BUTTONS, false)
-
-	val isReaderZoomButtonsEnabled: Boolean
-		get() = prefs.getBoolean(KEY_READER_ZOOM_BUTTONS, false)
-
-	val isReaderControlAlwaysLTR: Boolean
-		get() = prefs.getBoolean(KEY_READER_CONTROL_LTR, false)
+    var readerUpscaleStrength: Int
+        get() = prefs.getInt(KEY_UPSCALE_STRENGTH, 75).coerceIn(0, 100)
+        set(value) = prefs.edit { putInt(KEY_UPSCALE_STRENGTH, value.coerceIn(0, 100)) }
 
-	val isReaderNavigationInverted: Boolean
-		get() = prefs.getBoolean(KEY_READER_NAVIGATION_INVERTED, false)
+    var readerUpscalePasses: Int
+        get() = prefs.getInt(KEY_UPSCALE_PASSES, 0).coerceIn(0, 4)
+        set(value) = prefs.edit { putInt(KEY_UPSCALE_PASSES, value.coerceIn(0, 4)) }
 
-	val isReaderFullscreenEnabled: Boolean
-		get() = prefs.getBoolean(KEY_READER_FULLSCREEN, true)
+    var readerUpscaleThreshold: Float
+        get() = prefs.getFloatCompat(KEY_UPSCALE_THRESHOLD, 1.5f, 1f, 3f)
+            .takeIf { it in setOf(1f, 1.5f, 2f, 3f) } ?: 1.5f
+        set(value) = prefs.edit { putFloat(KEY_UPSCALE_THRESHOLD, value) }
 
-	val isReaderOptimizationEnabled: Boolean
-		get() = prefs.getBoolean(KEY_READER_OPTIMIZE, false)
+    val readerUpscaleConfig: org.koitharu.kotatsu.reader.domain.UpscaleConfig
+        get() = org.koitharu.kotatsu.reader.domain.UpscaleConfig(readerUpscaleStrength, readerUpscalePasses, readerUpscaleThreshold)
 
-	var isReaderUpscaleEnabled: Boolean
-		get() = prefs.getBoolean(KEY_READER_UPSCALE, false)
-		set(value) = prefs.edit { putBoolean(KEY_READER_UPSCALE, value) }
+    val isEInkFlashEnabled: Boolean
+        get() = prefs.getBoolean(KEY_EINK_FLASH, false)
 
-	var readerUpscaleStrength: Int
-		get() = prefs.getInt(KEY_UPSCALE_STRENGTH, 75).coerceIn(0, 100)
-		set(value) = prefs.edit { putInt(KEY_UPSCALE_STRENGTH, value.coerceIn(0, 100)) }
+    val eInkFlashDuration: Int
+        get() = prefs.getInt(KEY_EINK_FLASH_DURATION, 300).coerceIn(100, 1000)
 
-	var readerUpscalePasses: Int
-		get() = prefs.getInt(KEY_UPSCALE_PASSES, 0).coerceIn(0, 4)
-		set(value) = prefs.edit { putInt(KEY_UPSCALE_PASSES, value.coerceIn(0, 4)) }
+    val eInkFlashEvery: Int
+        get() = prefs.getInt(KEY_EINK_FLASH_EVERY, 1).coerceAtLeast(1)
 
-	var readerUpscaleThreshold: Float
-		get() = prefs.getFloatCompat(KEY_UPSCALE_THRESHOLD, 1.5f, 1f, 3f)
-			.takeIf { it in setOf(1f, 1.5f, 2f, 3f) } ?: 1.5f
-		set(value) = prefs.edit { putFloat(KEY_UPSCALE_THRESHOLD, value) }
+    val eInkFlashColor: EInkFlashColor
+        get() = prefs.getEnumValue(KEY_EINK_FLASH_COLOR, EInkFlashColor.WHITE)
 
-	val readerUpscaleConfig: org.koitharu.kotatsu.reader.domain.UpscaleConfig
-		get() = org.koitharu.kotatsu.reader.domain.UpscaleConfig(readerUpscaleStrength, readerUpscalePasses, readerUpscaleThreshold)
+    val readerControls: Set<ReaderControl>
+        get() = prefs.getStringSet(KEY_READER_CONTROLS, null)?.mapNotNullTo(EnumSet.noneOf(ReaderControl::class.java)) {
+            ReaderControl.entries.find(it)
+        } ?: ReaderControl.DEFAULT
 
-	val isEInkFlashEnabled: Boolean
-		get() = prefs.getBoolean(KEY_EINK_FLASH, false)
+    val isOfflineCheckDisabled: Boolean
+        get() = prefs.getBoolean(KEY_OFFLINE_DISABLED, false)
 
-	val eInkFlashDuration: Int
-		get() = prefs.getInt(KEY_EINK_FLASH_DURATION, 300).coerceIn(100, 1000)
+    var isAllFavouritesVisible: Boolean
+        get() = prefs.getBoolean(KEY_ALL_FAVOURITES_VISIBLE, true)
+        set(value) = prefs.edit { putBoolean(KEY_ALL_FAVOURITES_VISIBLE, value) }
 
-	val eInkFlashEvery: Int
-		get() = prefs.getInt(KEY_EINK_FLASH_EVERY, 1).coerceAtLeast(1)
+    var lastFavoritesCategoryId: Long
+        get() = prefs.getLongCompat(KEY_FAVORITES_LAST_CATEGORY, 0L)
+        set(value) = prefs.edit { putLong(KEY_FAVORITES_LAST_CATEGORY, value) }
 
-	val eInkFlashColor: EInkFlashColor
-		get() = prefs.getEnumValue(KEY_EINK_FLASH_COLOR, EInkFlashColor.WHITE)
+    val isTrackerEnabled: Boolean
+        get() = prefs.getBoolean(KEY_TRACKER_ENABLED, true)
 
-	val readerControls: Set<ReaderControl>
-		get() = prefs.getStringSet(KEY_READER_CONTROLS, null)?.mapNotNullTo(EnumSet.noneOf(ReaderControl::class.java)) {
-			ReaderControl.entries.find(it)
-		} ?: ReaderControl.DEFAULT
+    val isTrackerWifiOnly: Boolean
+        get() = prefs.getBoolean(KEY_TRACKER_WIFI_ONLY, false)
 
-	val isOfflineCheckDisabled: Boolean
-		get() = prefs.getBoolean(KEY_OFFLINE_DISABLED, false)
+    val trackerFrequencyFactor: Float
+        get() = prefs.getString(KEY_TRACKER_FREQUENCY, null)?.toFloatOrNull() ?: 1f
 
-	var isAllFavouritesVisible: Boolean
-		get() = prefs.getBoolean(KEY_ALL_FAVOURITES_VISIBLE, true)
-		set(value) = prefs.edit { putBoolean(KEY_ALL_FAVOURITES_VISIBLE, value) }
+    val isTrackerNotificationsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_TRACKER_NOTIFICATIONS, true)
 
-	var lastFavoritesCategoryId: Long
-		get() = prefs.getLongCompat(KEY_FAVORITES_LAST_CATEGORY, 0L)
-		set(value) = prefs.edit { putLong(KEY_FAVORITES_LAST_CATEGORY, value) }
+    val isTrackerNsfwDisabled: Boolean
+        get() = prefs.getBoolean(KEY_TRACKER_NO_NSFW, false)
 
-	val isTrackerEnabled: Boolean
-		get() = prefs.getBoolean(KEY_TRACKER_ENABLED, true)
+    val trackerDownloadStrategy: TrackerDownloadStrategy
+        get() = prefs.getEnumValue(KEY_TRACKER_DOWNLOAD, TrackerDownloadStrategy.DISABLED)
 
-	val isTrackerWifiOnly: Boolean
-		get() = prefs.getBoolean(KEY_TRACKER_WIFI_ONLY, false)
+    var isTrackerUnstuckMigrationDone: Boolean
+        get() = prefs.getBoolean(KEY_TRACKER_UNSTUCK_MIGRATION_DONE, false)
+        set(value) = prefs.edit { putBoolean(KEY_TRACKER_UNSTUCK_MIGRATION_DONE, value) }
 
-	val trackerFrequencyFactor: Float
-		get() = prefs.getString(KEY_TRACKER_FREQUENCY, null)?.toFloatOrNull() ?: 1f
+    var isTrackerProgressRefreshDone: Boolean
+        get() = prefs.getBoolean(KEY_TRACKER_PROGRESS_REFRESH_DONE, false)
+        set(value) = prefs.edit { putBoolean(KEY_TRACKER_PROGRESS_REFRESH_DONE, value) }
 
-	val isTrackerNotificationsEnabled: Boolean
-		get() = prefs.getBoolean(KEY_TRACKER_NOTIFICATIONS, true)
+    val isAutoPluginsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_PLUGINS, false)
 
-	val isTrackerNsfwDisabled: Boolean
-		get() = prefs.getBoolean(KEY_TRACKER_NO_NSFW, false)
+    var lastAutoPlugins: Long
+        get() = prefs.getLong(KEY_LAST_AUTO_PLUGINS, 0L)
+        set(value) = prefs.edit { putLong(KEY_LAST_AUTO_PLUGINS, value) }
 
-	val trackerDownloadStrategy: TrackerDownloadStrategy
-		get() = prefs.getEnumValue(KEY_TRACKER_DOWNLOAD, TrackerDownloadStrategy.DISABLED)
+    var notificationSound: Uri
+        get() = prefs.getString(KEY_NOTIFICATIONS_SOUND, null)?.toUriOrNull()
+            ?: Settings.System.DEFAULT_NOTIFICATION_URI
+        set(value) = prefs.edit { putString(KEY_NOTIFICATIONS_SOUND, value.toString()) }
 
-	var isTrackerUnstuckMigrationDone: Boolean
-		get() = prefs.getBoolean(KEY_TRACKER_UNSTUCK_MIGRATION_DONE, false)
-		set(value) = prefs.edit { putBoolean(KEY_TRACKER_UNSTUCK_MIGRATION_DONE, value) }
-
-	var isTrackerProgressRefreshDone: Boolean
-		get() = prefs.getBoolean(KEY_TRACKER_PROGRESS_REFRESH_DONE, false)
-		set(value) = prefs.edit { putBoolean(KEY_TRACKER_PROGRESS_REFRESH_DONE, value) }
-
-	val isAutoPluginsEnabled: Boolean
-		get() = prefs.getBoolean(KEY_AUTO_PLUGINS, false)
-
-	var lastAutoPlugins: Long
-		get() = prefs.getLong(KEY_LAST_AUTO_PLUGINS, 0L)
-		set(value) = prefs.edit { putLong(KEY_LAST_AUTO_PLUGINS, value) }
-
-	var notificationSound: Uri
-		get() = prefs.getString(KEY_NOTIFICATIONS_SOUND, null)?.toUriOrNull()
-			?: Settings.System.DEFAULT_NOTIFICATION_URI
-		set(value) = prefs.edit { putString(KEY_NOTIFICATIONS_SOUND, value.toString()) }
-
-	val notificationVibrate: Boolean
-		get() = prefs.getBoolean(KEY_NOTIFICATIONS_VIBRATE, false)
-
-	val notificationLight: Boolean
-		get() = prefs.getBoolean(KEY_NOTIFICATIONS_LIGHT, true)
-
-	val readerAnimation: ReaderAnimation
-		get() = prefs.getEnumValue(KEY_READER_ANIMATION, ReaderAnimation.DEFAULT)
-
-	val readerBackground: ReaderBackground
-		get() = prefs.getEnumValue(KEY_READER_BACKGROUND, ReaderBackground.DEFAULT)
-
-	val defaultReaderMode: ReaderMode
-		get() = prefs.getEnumValue(KEY_READER_MODE, ReaderMode.STANDARD)
-
-	val isReaderModeDetectionEnabled: Boolean
-		get() = prefs.getBoolean(KEY_READER_MODE_DETECT, true)
-
-	var isHistoryGroupingEnabled: Boolean
-		get() = prefs.getBoolean(KEY_HISTORY_GROUPING, true)
-		set(value) = prefs.edit { putBoolean(KEY_HISTORY_GROUPING, value) }
-
-	var isUpdatedGroupingEnabled: Boolean
-		get() = prefs.getBoolean(KEY_UPDATED_GROUPING, true)
-		set(value) = prefs.edit { putBoolean(KEY_UPDATED_GROUPING, value) }
-
-	var isFeedHeaderVisible: Boolean
-		get() = prefs.getBoolean(KEY_FEED_HEADER, true)
-		set(value) = prefs.edit { putBoolean(KEY_FEED_HEADER, value) }
-
-	val progressIndicatorMode: ProgressIndicatorMode
-		get() = prefs.getEnumValue(KEY_PROGRESS_INDICATORS, ProgressIndicatorMode.PERCENT_READ)
-
-	var incognitoModeForNsfw: TriStateOption
-		get() = prefs.getEnumValue(KEY_INCOGNITO_NSFW, TriStateOption.ASK)
-		set(value) = prefs.edit { putEnumValue(KEY_INCOGNITO_NSFW, value) }
-
-	var isIncognitoModeEnabled: Boolean
-		get() = prefs.getBoolean(KEY_INCOGNITO_MODE, false)
-		set(value) = prefs.edit { putBoolean(KEY_INCOGNITO_MODE, value) }
-
-	val isReaderMultiTaskEnabled: Boolean
-		get() = prefs.getBoolean(KEY_READER_MULTITASK, false)
-
-	var isChaptersReverse: Boolean
-		get() = prefs.getBoolean(KEY_REVERSE_CHAPTERS, false)
-		set(value) = prefs.edit { putBoolean(KEY_REVERSE_CHAPTERS, value) }
-
-	var isChaptersGridView: Boolean
-		get() = prefs.getBoolean(KEY_GRID_VIEW_CHAPTERS, false)
-		set(value) = prefs.edit { putBoolean(KEY_GRID_VIEW_CHAPTERS, value) }
-
-	val zoomMode: ZoomMode
-		get() = prefs.getEnumValue(KEY_ZOOM_MODE, ZoomMode.FIT_CENTER)
-
-	val trackSources: Set<String>
-		get() = prefs.getStringSet(KEY_TRACK_SOURCES, null) ?: setOf(TRACK_FAVOURITES)
-
-	var appPassword: String?
-		get() = prefs.getString(KEY_APP_PASSWORD, null)
-		set(value) = prefs.edit {
-			if (value != null) putString(KEY_APP_PASSWORD, value) else remove(KEY_APP_PASSWORD)
-		}
-
-	var isAppPasswordNumeric: Boolean
-		get() = prefs.getBoolean(KEY_APP_PASSWORD_NUMERIC, false)
-		set(value) = prefs.edit { putBoolean(KEY_APP_PASSWORD_NUMERIC, value) }
-
-	val searchSuggestionTypes: Set<SearchSuggestionType>
-		get() = prefs.getStringSet(KEY_SEARCH_SUGGESTION_TYPES, null)?.let { stringSet ->
-			stringSet.mapNotNullTo(EnumSet.noneOf(SearchSuggestionType::class.java)) { x ->
-				enumValueOf<SearchSuggestionType>(x)
-			}
-		} ?: EnumSet.allOf(SearchSuggestionType::class.java)
-
-	var isBiometricProtectionEnabled: Boolean
-		get() = prefs.getBoolean(KEY_PROTECT_APP_BIOMETRIC, true)
-		set(value) = prefs.edit { putBoolean(KEY_PROTECT_APP_BIOMETRIC, value) }
-
-	val isMirrorSwitchingEnabled: Boolean
-		get() = prefs.getBoolean(KEY_MIRROR_SWITCHING, false)
-
-	val isExitConfirmationEnabled: Boolean
-		get() = prefs.getBoolean(KEY_EXIT_CONFIRM, false)
-
-	val isDynamicShortcutsEnabled: Boolean
-		get() = prefs.getBoolean(KEY_SHORTCUTS, true)
-
-	val isUnstableUpdatesAllowed: Boolean
-		get() = prefs.getBoolean(KEY_UPDATES_UNSTABLE, false)
-
-	val isPagesTabEnabled: Boolean
-		get() = prefs.getBoolean(KEY_PAGES_TAB, true)
-
-	val defaultDetailsTab: Int
-		get() = if (isPagesTabEnabled) {
-			val raw = prefs.getString(KEY_DETAILS_TAB, null)?.toIntOrNull() ?: -1
-			if (raw == -1) {
-				lastDetailsTab
-			} else {
-				raw
-			}.coerceIn(0, 2)
-		} else {
-			0
-		}
-
-	var lastDetailsTab: Int
-		get() = prefs.getInt(KEY_DETAILS_LAST_TAB, 0)
-		set(value) = prefs.edit { putInt(KEY_DETAILS_LAST_TAB, value) }
-
-	val isContentPrefetchEnabled: Boolean
-		get() {
-			if (isBackgroundNetworkRestricted()) {
-				return false
-			}
-			val policy =
-				NetworkPolicy.from(prefs.getString(KEY_PREFETCH_CONTENT, null), NetworkPolicy.NEVER)
-			return policy.isNetworkAllowed(connectivityManager)
-		}
-
-	var sourcesSortOrder: SourcesSortOrder
-		get() = prefs.getEnumValue(KEY_SOURCES_ORDER, SourcesSortOrder.MANUAL)
-		set(value) = prefs.edit { putEnumValue(KEY_SOURCES_ORDER, value) }
-
-	var defaultBrowseSortOrder: SortOrder?
-		get() = prefs.getString(KEY_DEFAULT_BROWSE_SORT, null)
-			?.takeIf { it != BROWSE_SORT_AUTOMATIC }
-			?.let { runCatching { SortOrder.valueOf(it) }.getOrNull() }
-			?.takeIf { it == SortOrder.POPULARITY || it == SortOrder.UPDATED }
-		set(value) = prefs.edit {
-			putString(KEY_DEFAULT_BROWSE_SORT, value?.name ?: BROWSE_SORT_AUTOMATIC)
-		}
-
-	fun defaultBrowseSortOrder(available: Set<SortOrder>, fallback: SortOrder): SortOrder =
-		defaultBrowseSortOrder?.takeIf { it in available } ?: fallback
-
-	var isNovelSourcesFirst: Boolean
-		get() = prefs.getBoolean(KEY_NOVEL_SOURCES_FIRST, false)
-		set(value) = prefs.edit { putBoolean(KEY_NOVEL_SOURCES_FIRST, value) }
-
-	fun isChaptersSortedByName(mangaId: Long): Boolean =
-		prefs.getBoolean(KEY_SORT_CHAPTERS_BY_NAME + mangaId, false)
-
-	fun setChaptersSortedByName(mangaId: Long, value: Boolean) {
-		prefs.edit {
-			if (value) putBoolean(KEY_SORT_CHAPTERS_BY_NAME + mangaId, true)
-			else remove(KEY_SORT_CHAPTERS_BY_NAME + mangaId)
-		}
-	}
-
-	var isSourcesGridMode: Boolean
-		get() = prefs.getBoolean(KEY_SOURCES_GRID, true)
-		set(value) = prefs.edit { putBoolean(KEY_SOURCES_GRID, value) }
-
-	var sourcesVersion: Int
-		get() = prefs.getInt(KEY_SOURCES_VERSION, 0)
-		set(value) = prefs.edit { putInt(KEY_SOURCES_VERSION, value) }
-
-	var isAllSourcesEnabled: Boolean
-		get() = prefs.getBoolean(KEY_SOURCES_ENABLED_ALL, false)
-		set(value) = prefs.edit { putBoolean(KEY_SOURCES_ENABLED_ALL, value) }
-
-	var isBrokenSourcesHidden: Boolean
-		get() = prefs.getBoolean(KEY_SOURCES_HIDE_BROKEN, false)
-		set(value) = prefs.edit { putBoolean(KEY_SOURCES_HIDE_BROKEN, value) }
-
-	val isPagesNumbersEnabled: Boolean
-		get() = prefs.getBoolean(KEY_PAGES_NUMBERS, false)
-
-	val screenshotsPolicy: ScreenshotsPolicy
-		get() = prefs.getEnumValue(KEY_SCREENSHOTS_POLICY, ScreenshotsPolicy.ALLOW)
-
-	val isAdBlockEnabled: Boolean
-		get() = prefs.getBoolean(KEY_ADBLOCK, false)
-
-	var userSpecifiedMangaDirectories: Set<File>
-		get() {
-			val set = prefs.getStringSet(KEY_LOCAL_MANGA_DIRS, emptySet()).orEmpty()
-			return set.mapNotNullToSet { File(it).takeIfReadable() }
-		}
-		set(value) {
-			val set = value.mapToSet { it.absolutePath }
-			prefs.edit { putStringSet(KEY_LOCAL_MANGA_DIRS, set) }
-		}
-
-	var mangaStorageDir: File?
-		get() = prefs.getString(KEY_LOCAL_STORAGE, null)?.let {
-			File(it)
-		}?.takeIf { it.exists() && it in userSpecifiedMangaDirectories }
-		set(value) = prefs.edit {
-			if (value == null) {
-				remove(KEY_LOCAL_STORAGE)
-			} else {
-				val userDirs = userSpecifiedMangaDirectories
-				if (value !in userDirs) {
-					userSpecifiedMangaDirectories = userDirs + value
-				}
-				putString(KEY_LOCAL_STORAGE, value.path)
-			}
-		}
-
-	var allowDownloadOnMeteredNetwork: TriStateOption
-		get() = prefs.getEnumValue(KEY_DOWNLOADS_METERED_NETWORK, TriStateOption.ASK)
-		set(value) = prefs.edit { putEnumValue(KEY_DOWNLOADS_METERED_NETWORK, value) }
-
-	val preferredDownloadFormat: DownloadFormat
-		get() = prefs.getEnumValue(KEY_DOWNLOADS_FORMAT, DownloadFormat.AUTOMATIC)
-
-	var isSuggestionsEnabled: Boolean
-		get() = prefs.getBoolean(KEY_SUGGESTIONS, false)
-		set(value) = prefs.edit { putBoolean(KEY_SUGGESTIONS, value) }
-
-	val isSuggestionsWiFiOnly: Boolean
-		get() = prefs.getBoolean(KEY_SUGGESTIONS_WIFI_ONLY, false)
-
-	val isSuggestionsExcludeNsfw: Boolean
-		get() = prefs.getBoolean(KEY_SUGGESTIONS_EXCLUDE_NSFW, false)
-
-	val isSuggestionsIncludeDisabledSources: Boolean
-		get() = prefs.getBoolean(KEY_SUGGESTIONS_DISABLED_SOURCES, false)
-
-	val isSuggestionsNotificationAvailable: Boolean
-		get() = prefs.getBoolean(KEY_SUGGESTIONS_NOTIFICATIONS, false)
-
-	val suggestionsTagsBlacklist: Set<String>
-		get() {
-			val string = prefs.getString(KEY_SUGGESTIONS_EXCLUDE_TAGS, null)?.trimEnd(' ', ',')
-			if (string.isNullOrEmpty()) {
-				return emptySet()
-			}
-			return string.split(',').mapToSet { it.trim() }
-		}
-
-	val isReaderBarEnabled: Boolean
-		get() = prefs.getBoolean(KEY_READER_BAR, true)
-
-	val isReaderBarTransparent: Boolean
-		get() = prefs.getBoolean(KEY_READER_BAR_TRANSPARENT, true)
-
-	/** Reader top bar opacity, 50–100; 100 = opaque, 50 = ~50% see-through. */
-	val readerTopBarOpacity: Int
-		get() = prefs.getInt(KEY_READER_TOP_BAR_OPACITY, 50).coerceIn(50, 100)
-
-	/** Reader bottom bar opacity, 50–100; 100 = opaque. */
-	val readerBottomBarOpacity: Int
-		get() = prefs.getInt(KEY_READER_BOTTOM_BAR_OPACITY, 50).coerceIn(50, 100)
-
-	/** When true, the reader's bottom bar floats with side margins + rounded corners. */
-	val isReaderFloatBar: Boolean
-		get() = prefs.getBoolean(KEY_READER_FLOAT_BAR, true)
-
-	val isReaderChapterToastEnabled: Boolean
-		get() = prefs.getBoolean(KEY_READER_CHAPTER_TOAST, true)
-
-	val isReaderKeepScreenOn: Boolean
-		get() = prefs.getBoolean(KEY_READER_SCREEN_ON, true)
-
-	var readerColorFilter: ReaderColorFilter?
-		get() = runCatching {
-			ReaderColorFilter(
-				brightness = prefs.getFloatCompat(
-					KEY_CF_BRIGHTNESS,
-					ReaderColorFilter.EMPTY.brightness,
-					-1f,
-					1f,
-				),
-				contrast = prefs.getFloatCompat(
-					KEY_CF_CONTRAST,
-					ReaderColorFilter.EMPTY.contrast,
-					-1f,
-					1f,
-				),
-				isInverted = prefs.getBoolean(KEY_CF_INVERTED, ReaderColorFilter.EMPTY.isInverted),
-				isGrayscale = prefs.getBoolean(KEY_CF_GRAYSCALE, ReaderColorFilter.EMPTY.isGrayscale),
-				isBookBackground = prefs.getBoolean(KEY_CF_BOOK, ReaderColorFilter.EMPTY.isBookBackground),
-			).takeUnless { it.isEmpty }
-		}.getOrNull()
-		set(value) {
-			prefs.edit {
-				if (value != null) {
-					putFloat(KEY_CF_BRIGHTNESS, value.brightness)
-					putFloat(KEY_CF_CONTRAST, value.contrast)
-					putBoolean(KEY_CF_INVERTED, value.isInverted)
-					putBoolean(KEY_CF_GRAYSCALE, value.isGrayscale)
-					putBoolean(KEY_CF_BOOK, value.isBookBackground)
-				} else {
-					remove(KEY_CF_BRIGHTNESS)
-					remove(KEY_CF_CONTRAST)
-					remove(KEY_CF_INVERTED)
-					remove(KEY_CF_GRAYSCALE)
-					remove(KEY_CF_BOOK)
-				}
-			}
-		}
-
-	var imagesProxy: Int
-		get() {
-			val raw = prefs.getString(KEY_IMAGES_PROXY, null)?.toIntOrNull()
-			return raw ?: if (prefs.getBoolean(KEY_IMAGES_PROXY_OLD, false)) 0 else -1
-		}
-		set(value) {
-			require(value in -1..1)
-			prefs.edit {
-				putString(KEY_IMAGES_PROXY, value.toString())
-				remove(KEY_IMAGES_PROXY_OLD)
-			}
-		}
-
-	var dnsOverHttps: DoHProvider
-		get() = prefs.getEnumValue(KEY_DOH, DoHProvider.NONE)
-		set(value) = prefs.edit { putEnumValue(KEY_DOH, value) }
-
-	var isSSLBypassEnabled: Boolean
-		get() = prefs.getBoolean(KEY_SSL_BYPASS, false)
-		set(value) = prefs.edit { putBoolean(KEY_SSL_BYPASS, value) }
-
-	val isCloudflareAutoSolverEnabled: Boolean
-		get() = prefs.getBoolean(KEY_CF_AUTOSOLVE, false)
-
-	val isFlareSolverrEnabled: Boolean
-		get() = prefs.getBoolean(KEY_FLARESOLVERR_ENABLED, false)
-
-	val flareSolverrUrl: String
-		get() = prefs.getString(KEY_FLARESOLVERR_URL, null)?.nullIfEmpty() ?: DEFAULT_FLARESOLVERR_URL
-
-	val flareSolverrTimeoutMs: Int
-		get() = (prefs.getString(KEY_FLARESOLVERR_TIMEOUT, null)?.toIntOrNull() ?: DEFAULT_FLARESOLVERR_TIMEOUT)
-			.coerceAtLeast(MIN_FLARESOLVERR_TIMEOUT)
-
-	val proxyType: Proxy.Type
-		get() {
-			val raw = prefs.getString(KEY_PROXY_TYPE, null) ?: return Proxy.Type.DIRECT
-			return enumValues<Proxy.Type>().find { it.name == raw } ?: Proxy.Type.DIRECT
-		}
-
-	val proxyAddress: String?
-		get() = prefs.getString(KEY_PROXY_ADDRESS, null)
-
-	val proxyPort: Int
-		get() = prefs.getString(KEY_PROXY_PORT, null)?.toIntOrNull() ?: 0
-
-	val proxyLogin: String?
-		get() = prefs.getString(KEY_PROXY_LOGIN, null)?.nullIfEmpty()
-
-	val proxyPassword: String?
-		get() = prefs.getString(KEY_PROXY_PASSWORD, null)?.nullIfEmpty()
-
-	val isProxyBypassEnabled: Boolean
-		get() = prefs.getBoolean(KEY_PROXY_BYPASS_ENABLED, false)
-
-	var localListOrder: SortOrder
-		get() = prefs.getEnumValue(KEY_LOCAL_LIST_ORDER, SortOrder.NEWEST)
-		set(value) = prefs.edit { putEnumValue(KEY_LOCAL_LIST_ORDER, value) }
-
-	var historySortOrder: ListSortOrder
-		get() = prefs.getEnumValue(KEY_HISTORY_ORDER, ListSortOrder.LAST_READ)
-		set(value) = prefs.edit { putEnumValue(KEY_HISTORY_ORDER, value) }
-
-	var allFavoritesSortOrder: ListSortOrder
-		get() = prefs.getEnumValue(KEY_FAVORITES_ORDER, ListSortOrder.NEWEST)
-		set(value) = prefs.edit { putEnumValue(KEY_FAVORITES_ORDER, value) }
-
-	val isRelatedMangaEnabled: Boolean
-		get() = prefs.getBoolean(KEY_RELATED_MANGA, true)
-
-	val isWebtoonZoomEnabled: Boolean
-		get() = prefs.getBoolean(KEY_WEBTOON_ZOOM, true)
-
-	var isWebtoonGapsEnabled: Boolean
-		get() = prefs.getBoolean(KEY_WEBTOON_GAPS, false)
-		set(value) = prefs.edit { putBoolean(KEY_WEBTOON_GAPS, value) }
-
-	var isWebtoonPullGestureEnabled: Boolean
-		get() = prefs.getBoolean(KEY_WEBTOON_PULL_GESTURE, false)
-		set(value) = prefs.edit { putBoolean(KEY_WEBTOON_PULL_GESTURE, value) }
-
-	@get:FloatRange(from = 0.0, to = 0.5)
-	val defaultWebtoonZoomOut: Float
-		get() = prefs.getInt(KEY_WEBTOON_ZOOM_OUT, 0).coerceIn(0, 50) / 100f
-
-	@get:FloatRange(from = 0.0, to = 1.0)
-	var readerAutoscrollSpeed: Float
-		get() = prefs.getFloatCompat(KEY_READER_AUTOSCROLL_SPEED, 0f, 0f, 1f)
-		set(@FloatRange(from = 0.0, to = 1.0) value) = prefs.edit {
-			putFloat(
-				KEY_READER_AUTOSCROLL_SPEED,
-				value,
-			)
-		}
-
-	var isReaderAutoscrollFabVisible: Boolean
-		get() = prefs.getBoolean(KEY_READER_AUTOSCROLL_FAB, true)
-		set(value) = prefs.edit { putBoolean(KEY_READER_AUTOSCROLL_FAB, value) }
-
-	var isReaderAutoscrollHoldBoostEnabled: Boolean
-		get() = prefs.getBoolean(KEY_READER_AUTOSCROLL_HOLD, false)
-		set(value) = prefs.edit { putBoolean(KEY_READER_AUTOSCROLL_HOLD, value) }
-
-	@get:FloatRange(from = 1.5, to = 5.0)
-	var readerAutoscrollBoostMultiplier: Float
-		get() = prefs.getFloatCompat(KEY_READER_AUTOSCROLL_BOOST, AUTOSCROLL_BOOST_DEFAULT, AUTOSCROLL_BOOST_MIN, AUTOSCROLL_BOOST_MAX)
-		set(value) = prefs.edit { putFloat(KEY_READER_AUTOSCROLL_BOOST, value) }
-
-	val isPagesPreloadEnabled: Boolean
-		get() {
-			if (isBackgroundNetworkRestricted()) {
-				return false
-			}
-			val policy = NetworkPolicy.from(
-				prefs.getString(KEY_PAGES_PRELOAD, null),
-				NetworkPolicy.NON_METERED,
-			)
-			return policy.isNetworkAllowed(connectivityManager)
-		}
-
-	val is32BitColorsEnabled: Boolean
-		get() = prefs.getBoolean(KEY_32BIT_COLOR, false)
-
-	val isDiscordRpcEnabled: Boolean
-		get() = prefs.getBoolean(KEY_DISCORD_RPC, false)
-
-	val isDiscordRpcSkipNsfw: Boolean
-		get() = prefs.getBoolean(KEY_DISCORD_RPC_SKIP_NSFW, false)
-
-	/** One of [DISCORD_STATUS_ONLINE], [DISCORD_STATUS_IDLE], [DISCORD_STATUS_DND], [DISCORD_STATUS_INVISIBLE] */
-	var discordRpcStatus: String
-		get() = DiscordPresenceStatus.fromPreference(
-			prefs.getString(KEY_DISCORD_RPC_STATUS, null),
-			prefs.getBoolean(KEY_DISCORD_RPC_INVISIBLE_LEGACY, false),
-		).value
-		set(value) = prefs.edit {
-			putString(KEY_DISCORD_RPC_STATUS, DiscordPresenceStatus.fromPreference(value).value)
-		}
-
-	val isDiscordRpcInvisible: Boolean
-		get() = discordRpcStatus == DISCORD_STATUS_INVISIBLE
-
-	var discordToken: String?
-		get() = prefs.getString(KEY_DISCORD_TOKEN, null)?.trim()?.nullIfEmpty()
-		set(value) = prefs.edit { putString(KEY_DISCORD_TOKEN, value?.nullIfEmpty()) }
-
-	val isDiscordRpcOauth: Boolean
-		get() = prefs.getBoolean(KEY_DISCORD_RPC_OAUTH, false)
-
-	val isDiscordOauthBrowser: Boolean
-		get() = prefs.getBoolean(KEY_DISCORD_OAUTH_BROWSER, false)
-
-	var discordAccountName: String?
-		get() = prefs.getString(KEY_DISCORD_ACCOUNT_NAME, null)
-		set(value) = prefs.edit { putString(KEY_DISCORD_ACCOUNT_NAME, value?.nullIfEmpty()) }
-
-	var discordScopes: String?
-		get() = prefs.getString(KEY_DISCORD_SCOPES, null)
-		set(value) = prefs.edit { putString(KEY_DISCORD_SCOPES, value?.nullIfEmpty()) }
-
-	var discordLastExchangedCode: String?
-		get() = prefs.getString(KEY_DISCORD_LAST_CODE, null)
-		set(value) = prefs.edit { putString(KEY_DISCORD_LAST_CODE, value?.nullIfEmpty()) }
-
-	var discordRefreshToken: String?
-		get() = prefs.getString(KEY_DISCORD_REFRESH_TOKEN, null)?.trim()?.nullIfEmpty()
-		set(value) = prefs.edit { putString(KEY_DISCORD_REFRESH_TOKEN, value?.nullIfEmpty()) }
-
-	var discordCodeVerifier: String?
-		get() = prefs.getString(KEY_DISCORD_CODE_VERIFIER, null)
-		set(value) = prefs.edit {
-			if (value != null) putString(KEY_DISCORD_CODE_VERIFIER, value) else remove(KEY_DISCORD_CODE_VERIFIER)
-		}
-
-	val isPeriodicalBackupEnabled: Boolean
-		get() = prefs.getBoolean(KEY_BACKUP_PERIODICAL_ENABLED, false)
-
-	val periodicalBackupFrequency: Float
-		get() = prefs.getString(KEY_BACKUP_PERIODICAL_FREQUENCY, null)?.toFloatOrNull() ?: 7f
-
-	val periodicalBackupFrequencyMillis: Long
-		get() = (TimeUnit.DAYS.toMillis(1) * periodicalBackupFrequency).toLong()
-
-	val periodicalBackupMaxCount: Int
-		get() = if (prefs.getBoolean(KEY_BACKUP_PERIODICAL_TRIM, true)) {
-			prefs.getInt(KEY_BACKUP_PERIODICAL_COUNT, 10)
-		} else {
-			Int.MAX_VALUE
-		}
-
-	var periodicalBackupDirectory: Uri?
-		get() = prefs.getString(KEY_BACKUP_PERIODICAL_OUTPUT, null)?.toUriOrNull()
-		set(value) = prefs.edit { putString(KEY_BACKUP_PERIODICAL_OUTPUT, value?.toString()) }
-
-	val isBackupTelegramUploadEnabled: Boolean
-		get() = prefs.getBoolean(KEY_BACKUP_TG_ENABLED, false)
-
-	val backupTelegramChatId: String?
-		get() = prefs.getString(KEY_BACKUP_TG_CHAT, null)?.nullIfEmpty()
-
-	val backupTelegramBotToken: String?
-		get() = prefs.getString(KEY_BACKUP_TG_TOKEN, null)?.trim()?.nullIfEmpty()
-
-	val isReadingTimeEstimationEnabled: Boolean
-		get() = prefs.getBoolean(KEY_READING_TIME, true)
-
-	val isPagesSavingAskEnabled: Boolean
-		get() = prefs.getBoolean(KEY_PAGES_SAVE_ASK, true)
-
-	val isStatsEnabled: Boolean
-		get() = prefs.getBoolean(KEY_STATS_ENABLED, false)
-
-	val isAutoLocalChaptersCleanupEnabled: Boolean
-		get() = prefs.getBoolean(KEY_CHAPTERS_CLEAR_AUTO, false)
-
-	fun isPagesCropEnabled(mode: ReaderMode): Boolean {
-		val rawValue = prefs.getStringSet(KEY_READER_CROP, emptySet())
-		if (rawValue.isNullOrEmpty()) {
-			return false
-		}
-		val needle = if (mode == ReaderMode.WEBTOON) READER_CROP_WEBTOON else READER_CROP_PAGED
-		return needle.toString() in rawValue
-	}
-
-	fun isTipEnabled(tip: String): Boolean {
-		return prefs.getStringSet(KEY_TIPS_CLOSED, emptySet())?.contains(tip) != true
-	}
-
-	fun closeTip(tip: String) {
-		val closedTips = prefs.getStringSet(KEY_TIPS_CLOSED, emptySet()).orEmpty()
-		if (tip in closedTips) {
-			return
-		}
-		prefs.edit { putStringSet(KEY_TIPS_CLOSED, closedTips + tip) }
-	}
-
-	fun isIncognitoModeEnabled(isNsfw: Boolean): Boolean {
-		return isIncognitoModeEnabled || (isNsfw && incognitoModeForNsfw == TriStateOption.ENABLED)
-	}
-
-	fun getPagesSaveDir(context: Context): DocumentFile? =
-		prefs.getString(KEY_PAGES_SAVE_DIR, null)?.toUriOrNull()?.let {
-			DocumentFile.fromTreeUri(context, it)?.takeIf { it.canWrite() }
-		}
-
-	fun setPagesSaveDir(uri: Uri?) {
-		prefs.edit { putString(KEY_PAGES_SAVE_DIR, uri?.toString()) }
-	}
-
-	fun getMangaListBadges(): Int {
-		val raw = prefs.getStringSet(KEY_MANGA_LIST_BADGES, mangaListBadgesDefault).orEmpty()
-		var result = 0
-		for (item in raw) {
-			result = result or item.toInt()
-		}
-		return result
-	}
-
-	fun subscribe(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
-		prefs.registerOnSharedPreferenceChangeListener(listener)
-	}
-
-	fun unsubscribe(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
-		prefs.unregisterOnSharedPreferenceChangeListener(listener)
-	}
-
-	fun observeChanges() = prefs.observeChanges()
-
-	fun observe(vararg keys: String): Flow<String?> = prefs.observeChanges()
-		.filter { key -> key == null || key in keys }
-		.onStart { emit(null) }
-		.flowOn(Dispatchers.IO)
-
-	fun getAllValues(): Map<String, *> = prefs.all
-
-	fun upsertAll(m: Map<String, *>, isMerge: Boolean = false) = prefs.edit {
-		if (!isMerge) {
-			clear()
-		}
-		putAll(m)
-	}
-
-	private fun isBackgroundNetworkRestricted(): Boolean {
-		return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-			connectivityManager.restrictBackgroundStatus == ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED
-		} else {
-			false
-		}
-	}
-
-	private fun SharedPreferences.getFloatCompat(
-		key: String,
-		defaultValue: Float,
-		minValue: Float,
-		maxValue: Float,
-	): Float {
-		return try {
-			getFloat(key, defaultValue).coerceIn(minValue, maxValue)
-		} catch (_: ClassCastException) {
-			val migratedValue = when (val rawValue = all[key]) {
-				is Number -> rawValue.toFloat()
-				is String -> rawValue.toFloatOrNull()
-				else -> null
-			}?.coerceIn(minValue, maxValue) ?: defaultValue
-			edit { putFloat(key, migratedValue) }
-			migratedValue
-		}
-	}
-
-	private fun SharedPreferences.getLongCompat(
-		key: String,
-		defaultValue: Long,
-	): Long {
-		return try {
-			getLong(key, defaultValue)
-		} catch (_: ClassCastException) {
-			val migratedValue = when (val rawValue = all[key]) {
-				is Number -> rawValue.toLong()
-				is String -> rawValue.toLongOrNull()
-				else -> null
-			} ?: defaultValue
-			edit { putLong(key, migratedValue) }
-			migratedValue
-		}
-	}
-
-	companion object {
-
-		const val TRACK_HISTORY = "history"
-		const val TRACK_FAVOURITES = "favourites"
-
-		const val KEY_ADBLOCK = "adblock"
-		const val KEY_LIST_MODE = "list_mode_2"
-		const val KEY_LIST_MODE_HISTORY = "list_mode_history"
-		const val KEY_LIST_CHECKPOINT = "list_checkpoint"
-		const val KEY_LIST_MODE_FAVORITES = "list_mode_favorites"
-		const val KEY_LIST_MODE_SUGGESTIONS = "list_mode_suggestions"
-		const val KEY_THEME = "theme"
-		const val KEY_COLOR_THEME = "color_theme"
-		const val KEY_THEME_AMOLED = "amoled_theme"
-		const val KEY_THEME_AMOLED_NAVBAR = "amoled_navbar"
-		const val KEY_OFFLINE_DISABLED = "no_offline"
-		const val KEY_PAGES_CACHE_CLEAR = "pages_cache_clear"
-		const val KEY_HTTP_CACHE_CLEAR = "http_cache_clear"
-		const val KEY_COOKIES_CLEAR = "cookies_clear"
-		const val KEY_CHAPTERS_CLEAR = "chapters_clear"
-		const val KEY_CHAPTERS_CLEAR_AUTO = "chapters_clear_auto"
-		const val KEY_THUMBS_CACHE_CLEAR = "thumbs_cache_clear"
-		const val KEY_SEARCH_HISTORY_CLEAR = "search_history_clear"
-		const val KEY_UPDATES_FEED_CLEAR = "updates_feed_clear"
-		const val KEY_GRID_SIZE = "grid_size"
-		const val KEY_GRID_SIZE_PAGES = "grid_size_pages"
-		const val KEY_REMOTE_SOURCES = "remote_sources"
-		const val KEY_LOCAL_STORAGE = "local_storage"
-		const val KEY_READER_DOUBLE_PAGES = "reader_double_pages"
-		const val KEY_READER_DOUBLE_PAGES_SENSITIVITY = "reader_double_pages_sensitivity_2"
-		const val KEY_READER_DOUBLE_FOLDABLE = "reader_double_foldable"
-		const val KEY_READER_DOUBLE_COVER_PAGE = "reader_double_cover_page"
-		const val KEY_READER_ZOOM_BUTTONS = "reader_zoom_buttons"
-		const val KEY_READER_CONTROL_LTR = "reader_taps_ltr"
-		const val KEY_READER_NAVIGATION_INVERTED = "reader_navigation_inverted"
-		const val KEY_READER_FULLSCREEN = "reader_fullscreen"
-		const val KEY_READER_VOLUME_BUTTONS = "reader_volume_buttons"
-		const val KEY_READER_ORIENTATION = "reader_orientation"
-		const val KEY_TRACKER_ENABLED = "tracker_enabled"
-		const val KEY_TRACKER_WIFI_ONLY = "tracker_wifi"
-		const val KEY_TRACKER_FREQUENCY = "tracker_freq"
-		const val KEY_TRACK_SOURCES = "track_sources"
-		const val KEY_TRACK_CATEGORIES = "track_categories"
-		const val KEY_TRACK_WARNING = "track_warning"
-		const val KEY_TRACKER_NOTIFICATIONS = "tracker_notifications"
-		const val KEY_TRACKER_NO_NSFW = "tracker_no_nsfw"
-		const val KEY_TRACKER_DOWNLOAD = "tracker_download"
-		const val KEY_TRACKER_UNSTUCK_MIGRATION_DONE = "tracker_unstuck_migration_done"
-		const val KEY_TRACKER_PROGRESS_REFRESH_DONE = "tracker_progress_refresh_done"
-		const val KEY_AUTO_PLUGINS = "auto_plugins"
-		const val KEY_USE_ANDROID_EXTENSIONS = "use_android_installed_extensions"
-		const val KEY_SHOW_PLUGIN_APK_HANDLER = "show_plugin_apk_handler"
-		const val KEY_LAST_AUTO_PLUGINS = "last_auto_plugins"
-		const val KEY_NOTIFICATIONS_SETTINGS = "notifications_settings"
-		const val KEY_NOTIFICATIONS_SOUND = "notifications_sound"
-		const val KEY_NOTIFICATIONS_VIBRATE = "notifications_vibrate"
-		const val KEY_NOTIFICATIONS_LIGHT = "notifications_light"
-		const val KEY_NOTIFICATIONS_INFO = "tracker_notifications_info"
-		const val KEY_READER_ANIMATION = "reader_animation2"
-		const val KEY_READER_CONTROLS = "reader_controls"
-		const val KEY_READER_MODE = "reader_mode"
-		const val KEY_READER_MODE_DETECT = "reader_mode_detect"
-		const val KEY_READER_CROP = "reader_crop"
-		const val KEY_APP_PASSWORD = "app_password"
-		const val KEY_APP_PASSWORD_NUMERIC = "app_password_num"
-		const val KEY_PROTECT_APP = "protect_app"
-		const val KEY_PROTECT_APP_BIOMETRIC = "protect_app_bio"
-		const val KEY_ZOOM_MODE = "zoom_mode"
-		const val KEY_BACKUP = "backup"
-		const val KEY_RESTORE = "restore"
-		const val KEY_BACKUP_PERIODICAL_ENABLED = "backup_periodic"
-		const val KEY_BACKUP_PERIODICAL_FREQUENCY = "backup_periodic_freq"
-		const val KEY_BACKUP_PERIODICAL_TRIM = "backup_periodic_trim"
-		const val KEY_BACKUP_PERIODICAL_COUNT = "backup_periodic_count"
-		const val KEY_BACKUP_PERIODICAL_OUTPUT = "backup_periodic_output"
-		const val KEY_BACKUP_PERIODICAL_LAST = "backup_periodic_last"
-		const val KEY_HISTORY_GROUPING = "history_grouping"
-		const val KEY_UPDATED_GROUPING = "updated_grouping"
-		const val KEY_PROGRESS_INDICATORS = "progress_indicators"
-		/** Global chapter-list display order, independent of source reading direction. */
-		const val KEY_REVERSE_CHAPTERS = "reverse_chapters"
-		const val KEY_GRID_VIEW_CHAPTERS = "grid_view_chapters"
-		const val KEY_INCOGNITO_NSFW = "incognito_nsfw"
-		const val KEY_PAGES_NUMBERS = "pages_numbers"
-		const val KEY_SCREENSHOTS_POLICY = "screenshots_policy"
-		const val KEY_PAGES_PRELOAD = "pages_preload"
-		const val KEY_SUGGESTIONS = "suggestions"
-		const val KEY_SUGGESTIONS_WIFI_ONLY = "suggestions_wifi"
-		const val KEY_SUGGESTIONS_EXCLUDE_NSFW = "suggestions_exclude_nsfw"
-		const val KEY_SUGGESTIONS_EXCLUDE_TAGS = "suggestions_exclude_tags"
-		const val KEY_SUGGESTIONS_DISABLED_SOURCES = "suggestions_disabled_sources"
-		const val KEY_SUGGESTIONS_NOTIFICATIONS = "suggestions_notifications"
-		const val KEY_SHIKIMORI = "shikimori"
-		const val KEY_ANILIST = "anilist"
-		const val KEY_MAL = "mal"
-		const val KEY_KITSU = "kitsu"
-		const val KEY_MANGABAKA = "mangabaka"
-		const val KEY_DOWNLOADS_METERED_NETWORK = "downloads_metered_network"
-		const val KEY_DOWNLOADS_FORMAT = "downloads_format"
-		const val KEY_ALL_FAVOURITES_VISIBLE = "all_favourites_visible"
-		const val KEY_FAVORITES_LAST_CATEGORY = "favorites_last_category"
-		const val KEY_DOH = "doh"
-		const val KEY_EXIT_CONFIRM = "exit_confirm"
-		const val KEY_INCOGNITO_MODE = "incognito"
-		const val KEY_READER_MULTITASK = "reader_multitask"
-		const val KEY_READER_BAR = "reader_bar"
-		const val KEY_READER_BAR_TRANSPARENT = "reader_bar_transparent"
-		const val KEY_READER_TOP_BAR_OPACITY = "reader_top_bar_opacity"
-		const val KEY_READER_BOTTOM_BAR_OPACITY = "reader_bottom_bar_opacity"
-		const val KEY_READER_FLOAT_BAR = "reader_float_bar"
-		const val KEY_READER_CHAPTER_TOAST = "reader_chapter_toast"
-		const val KEY_READER_BACKGROUND = "reader_background"
-		const val KEY_READER_SCREEN_ON = "reader_screen_on"
-		const val KEY_SHORTCUTS = "dynamic_shortcuts"
-		const val KEY_READER_TAP_ACTIONS = "reader_tap_actions"
-		const val KEY_READER_OPTIMIZE = "reader_optimize"
-		const val KEY_UPSCALE_STRENGTH = "reader_upscale_strength"
-		const val KEY_UPSCALE_PASSES = "reader_upscale_passes"
-		const val KEY_UPSCALE_THRESHOLD = "reader_upscale_threshold"
-		const val KEY_READER_UPSCALE = "reader_upscale"
-		const val KEY_EINK_FLASH = "eink_flash"
-		const val KEY_EINK_FLASH_DURATION = "eink_flash_duration"
-		const val KEY_EINK_FLASH_EVERY = "eink_flash_every"
-		const val KEY_EINK_FLASH_COLOR = "eink_flash_color"
-		const val KEY_LOCAL_LIST_ORDER = "local_order"
-		const val KEY_HISTORY_ORDER = "history_order"
-		const val KEY_FAVORITES_ORDER = "fav_order"
-		const val KEY_WEBTOON_GAPS = "webtoon_gaps"
-		const val KEY_WEBTOON_ZOOM = "webtoon_zoom"
-		const val KEY_WEBTOON_ZOOM_OUT = "webtoon_zoom_out"
-		const val KEY_WEBTOON_PULL_GESTURE = "webtoon_pull_gesture"
-		const val KEY_PREFETCH_CONTENT = "prefetch_content"
-		const val KEY_APP_LOCALE = "app_locale"
-		const val KEY_SOURCES_GRID = "sources_grid"
-		const val KEY_UPDATES_UNSTABLE = "updates_unstable"
-		const val KEY_TIPS_CLOSED = "tips_closed"
-		const val KEY_SSL_BYPASS = "ssl_bypass"
-		const val KEY_CF_AUTOSOLVE = "cf_autosolve"
-		const val KEY_FLARESOLVERR_ENABLED = "flaresolverr_enabled"
-		const val KEY_FLARESOLVERR_URL = "flaresolverr_url"
-		const val KEY_FLARESOLVERR_TIMEOUT = "flaresolverr_timeout"
-		const val KEY_READER_AUTOSCROLL_SPEED = "as_speed"
-		const val KEY_READER_AUTOSCROLL_FAB = "as_fab"
-		const val KEY_READER_AUTOSCROLL_HOLD = "as_hold"
-		const val KEY_READER_AUTOSCROLL_BOOST = "as_boost"
-		const val KEY_MIRROR_SWITCHING = "mirror_switching"
-		const val KEY_PROXY = "proxy"
-		const val KEY_PROXY_TYPE = "proxy_type_2"
-		const val KEY_PROXY_ADDRESS = "proxy_address"
-		const val KEY_PROXY_PORT = "proxy_port"
-		const val KEY_PROXY_AUTH = "proxy_auth"
-		const val KEY_PROXY_LOGIN = "proxy_login"
-		const val KEY_PROXY_PASSWORD = "proxy_password"
-		const val KEY_PROXY_BYPASS_ENABLED = "proxy_bypass_enabled"
-		const val KEY_IMAGES_PROXY = "images_proxy_2"
-		const val KEY_LOCAL_MANGA_DIRS = "local_manga_dirs"
-		const val KEY_DISABLE_NSFW = "no_nsfw"
-		const val KEY_RELATED_MANGA = "related_manga"
-		const val KEY_NAV_MAIN = "nav_main"
-		const val KEY_NAV_LABELS = "nav_labels"
-		const val KEY_NAV_PINNED = "nav_pinned"
-		const val KEY_NAV_FLOATING = "nav_floating"
-		const val KEY_NAV_CORNER_RADIUS = "nav_corner_radius"
-		const val KEY_MAIN_FAB = "main_fab"
-		const val KEY_32BIT_COLOR = "enhanced_colors"
-		const val KEY_SOURCES_ORDER = "sources_sort_order"
-		const val KEY_DEFAULT_BROWSE_SORT = "default_browse_sort"
-		const val KEY_NOVEL_SOURCES_FIRST = "novel_sources_first"
-		const val KEY_SORT_CHAPTERS_BY_NAME = "sort_chapters_by_name_"
-		const val KEY_SOURCES_CATALOG = "sources_catalog"
-		const val KEY_CF_BRIGHTNESS = "cf_brightness"
-		const val KEY_CF_CONTRAST = "cf_contrast"
-		const val KEY_CF_INVERTED = "cf_inverted"
-		const val KEY_CF_GRAYSCALE = "cf_grayscale"
-		const val KEY_CF_BOOK = "cf_book"
-		const val KEY_PAGES_TAB = "pages_tab"
-		const val KEY_DETAILS_TAB = "details_tab"
-		const val KEY_DETAILS_LAST_TAB = "details_last_tab"
-		const val KEY_READING_TIME = "reading_time"
-		const val KEY_PAGES_SAVE_DIR = "pages_dir"
-		const val KEY_PAGES_SAVE_ASK = "pages_dir_ask"
-		const val KEY_STATS_ENABLED = "stats_on"
-		const val KEY_FEED_HEADER = "feed_header"
-		const val KEY_SEARCH_SUGGESTION_TYPES = "search_suggest_types"
-		const val KEY_FIRST_LAUNCH = "first_launch"
-		const val KEY_SOURCES_VERSION = "sources_version"
-		const val KEY_SOURCES_ENABLED_ALL = "sources_enabled_all"
-		const val KEY_SOURCES_HIDE_BROKEN = "sources_hide_broken"
-		const val BROWSE_SORT_AUTOMATIC = "AUTO"
-		const val KEY_QUICK_FILTER = "quick_filter"
-		const val KEY_COLLAPSE_DESCRIPTION = "description_collapse"
-		const val KEY_BACKUP_TG_ENABLED = "backup_periodic_tg_enabled"
-		const val KEY_BACKUP_TG_CHAT = "backup_periodic_tg_chat_id"
-		const val KEY_BACKUP_TG_TOKEN = "backup_periodic_tg_bot_token"
-		const val KEY_MANGA_LIST_BADGES = "manga_list_badges"
-		const val KEY_DISCORD_RPC = "discord_rpc"
-		const val KEY_DISCORD_RPC_SKIP_NSFW = "discord_rpc_skip_nsfw"
-		const val KEY_DISCORD_RPC_STATUS = "discord_rpc_status"
-		private const val KEY_DISCORD_RPC_INVISIBLE_LEGACY = "discord_rpc_invisible"
-		const val DISCORD_STATUS_ONLINE = "online"
-		const val DISCORD_STATUS_IDLE = "idle"
-		const val DISCORD_STATUS_DND = "dnd"
-		const val DISCORD_STATUS_INVISIBLE = "invisible"
-		const val KEY_DISCORD_TOKEN = "discord_token"
-		const val KEY_DISCORD_RPC_OAUTH = "discord_rpc_oauth"
-		const val KEY_DISCORD_OAUTH_BROWSER = "discord_oauth_browser"
-		const val KEY_DISCORD_ACCOUNT_NAME = "discord_account_name"
-		const val KEY_DISCORD_SCOPES = "discord_scopes"
-		const val KEY_DISCORD_LAST_CODE = "discord_last_code"
-		const val KEY_DISCORD_REFRESH_TOKEN = "discord_refresh_token"
-		const val KEY_DISCORD_CODE_VERIFIER = "discord_code_verifier"
-		const val KEY_DISCORD_OAUTH_SIGNIN = "discord_oauth_signin"
-
-		const val KEY_TRANSLATE_PROVIDER = "translate_provider"
-		const val KEY_TRANSLATE_ENDPOINT = "translate_endpoint"
-		const val KEY_TRANSLATE_API_KEY = "translate_api_key"
-		const val KEY_TRANSLATE_MODEL = "translate_model"
-		const val KEY_TRANSLATE_CUSTOM_HEADERS = "translate_custom_headers"
-		const val KEY_TRANSLATE_PROFILES_MIGRATED = "translate_profiles_migrated"
-		const val KEY_TRANSLATE_SOURCE_LANG = "translate_source_lang"
-		const val KEY_TRANSLATE_TARGET_LANG = "translate_target_lang"
-		const val KEY_TRANSLATE_TRIGGER_MODE = "translate_trigger_mode"
-		const val KEY_TRANSLATE_OVERLAY_BG = "translate_overlay_bg"
-		const val KEY_TRANSLATE_CONCURRENCY = "translate_concurrency"
-		const val KEY_TRANSLATE_RPM = "translate_rpm"
-		const val KEY_TRANSLATE_ENABLED = "translate_enabled"
-		const val KEY_TRANSLATE_CLEAR_CACHE = "translate_clear_cache"
-		const val KEY_COMMUNITY_ENABLED = "community_enabled"
-		const val KEY_COMMUNITY_TELEMETRY = "community_telemetry"
-
-		// keys for non-persistent preferences
-		const val KEY_APP_VERSION = "app_version"
-		const val KEY_IGNORE_DOZE = "ignore_dose"
-		const val KEY_TRACKER_DEBUG = "tracker_debug"
-		const val KEY_LINK_WEBLATE = "about_app_translation"
-		const val KEY_LINK_DISCORD = "about_discord"
-		const val KEY_LINK_GITHUB = "about_github"
-		const val KEY_LINK_MANUAL = "about_help"
-		const val KEY_DONATION_TON = "donation_ton"
-		const val KEY_DONATION_ETH = "donation_eth"
-		const val KEY_DONATION_SOL = "donation_sol"
-		const val KEY_DONATION_BTC = "donation_btc"
-		const val KEY_PROXY_TEST = "proxy_test"
-		const val KEY_OPEN_BROWSER = "open_browser"
-		const val KEY_HANDLE_LINKS = "handle_links"
-		const val KEY_BACKUP_TG = "backup_periodic_tg"
-		const val KEY_BACKUP_TG_OPEN = "backup_periodic_tg_open"
-		const val KEY_BACKUP_TG_TEST = "backup_periodic_tg_test"
-		const val KEY_CLEAR_MANGA_DATA = "manga_data_clear"
-		const val KEY_STORAGE_USAGE = "storage_usage"
-		const val KEY_WEBVIEW_CLEAR = "webview_clear"
-
-		// old keys are for migration only
-		private const val KEY_IMAGES_PROXY_OLD = "images_proxy"
-
-		// values
-		private const val READER_CROP_PAGED = 1
-		private const val READER_CROP_WEBTOON = 2
-
-		const val DEFAULT_FLARESOLVERR_URL = "http://localhost:8191/v1"
-		private const val DEFAULT_FLARESOLVERR_TIMEOUT = 60_000
-		private const val MIN_FLARESOLVERR_TIMEOUT = 10_000
-		const val AUTOSCROLL_BOOST_MIN = 1.5f
-		const val AUTOSCROLL_BOOST_MAX = 5.0f
-		const val AUTOSCROLL_BOOST_DEFAULT = 2.0f
-	}
+    val notificationVibrate: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFICATIONS_VIBRATE, false)
+
+    val notificationLight: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFICATIONS_LIGHT, true)
+
+    val readerAnimation: ReaderAnimation
+        get() = prefs.getEnumValue(KEY_READER_ANIMATION, ReaderAnimation.DEFAULT)
+
+    val readerBackground: ReaderBackground
+        get() = prefs.getEnumValue(KEY_READER_BACKGROUND, ReaderBackground.DEFAULT)
+
+    val defaultReaderMode: ReaderMode
+        get() = prefs.getEnumValue(KEY_READER_MODE, ReaderMode.STANDARD)
+
+    val isReaderModeDetectionEnabled: Boolean
+        get() = prefs.getBoolean(KEY_READER_MODE_DETECT, true)
+
+    var isHistoryGroupingEnabled: Boolean
+        get() = prefs.getBoolean(KEY_HISTORY_GROUPING, true)
+        set(value) = prefs.edit { putBoolean(KEY_HISTORY_GROUPING, value) }
+
+    var isUpdatedGroupingEnabled: Boolean
+        get() = prefs.getBoolean(KEY_UPDATED_GROUPING, true)
+        set(value) = prefs.edit { putBoolean(KEY_UPDATED_GROUPING, value) }
+
+    var isFeedHeaderVisible: Boolean
+        get() = prefs.getBoolean(KEY_FEED_HEADER, true)
+        set(value) = prefs.edit { putBoolean(KEY_FEED_HEADER, value) }
+
+    val progressIndicatorMode: ProgressIndicatorMode
+        get() = prefs.getEnumValue(KEY_PROGRESS_INDICATORS, ProgressIndicatorMode.PERCENT_READ)
+
+    var incognitoModeForNsfw: TriStateOption
+        get() = prefs.getEnumValue(KEY_INCOGNITO_NSFW, TriStateOption.ASK)
+        set(value) = prefs.edit { putEnumValue(KEY_INCOGNITO_NSFW, value) }
+
+    var isIncognitoModeEnabled: Boolean
+        get() = prefs.getBoolean(KEY_INCOGNITO_MODE, false)
+        set(value) = prefs.edit { putBoolean(KEY_INCOGNITO_MODE, value) }
+
+    val isReaderMultiTaskEnabled: Boolean
+        get() = prefs.getBoolean(KEY_READER_MULTITASK, false)
+
+    var isChaptersReverse: Boolean
+        get() = prefs.getBoolean(KEY_REVERSE_CHAPTERS, false)
+        set(value) = prefs.edit { putBoolean(KEY_REVERSE_CHAPTERS, value) }
+
+    var isChaptersGridView: Boolean
+        get() = prefs.getBoolean(KEY_GRID_VIEW_CHAPTERS, false)
+        set(value) = prefs.edit { putBoolean(KEY_GRID_VIEW_CHAPTERS, value) }
+
+    val zoomMode: ZoomMode
+        get() = prefs.getEnumValue(KEY_ZOOM_MODE, ZoomMode.FIT_CENTER)
+
+    val trackSources: Set<String>
+        get() = prefs.getStringSet(KEY_TRACK_SOURCES, null) ?: setOf(TRACK_FAVOURITES)
+
+    var appPassword: String?
+        get() = prefs.getString(KEY_APP_PASSWORD, null)
+        set(value) = prefs.edit {
+            if (value != null) putString(KEY_APP_PASSWORD, value) else remove(KEY_APP_PASSWORD)
+        }
+
+    var isAppPasswordNumeric: Boolean
+        get() = prefs.getBoolean(KEY_APP_PASSWORD_NUMERIC, false)
+        set(value) = prefs.edit { putBoolean(KEY_APP_PASSWORD_NUMERIC, value) }
+
+    val searchSuggestionTypes: Set<SearchSuggestionType>
+        get() = prefs.getStringSet(KEY_SEARCH_SUGGESTION_TYPES, null)?.let { stringSet ->
+            stringSet.mapNotNullTo(EnumSet.noneOf(SearchSuggestionType::class.java)) { x ->
+                enumValueOf<SearchSuggestionType>(x)
+            }
+        } ?: EnumSet.allOf(SearchSuggestionType::class.java)
+
+    var isBiometricProtectionEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PROTECT_APP_BIOMETRIC, true)
+        set(value) = prefs.edit { putBoolean(KEY_PROTECT_APP_BIOMETRIC, value) }
+
+    val isMirrorSwitchingEnabled: Boolean
+        get() = prefs.getBoolean(KEY_MIRROR_SWITCHING, false)
+
+    val isExitConfirmationEnabled: Boolean
+        get() = prefs.getBoolean(KEY_EXIT_CONFIRM, false)
+
+    val isDynamicShortcutsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SHORTCUTS, true)
+
+    val isUnstableUpdatesAllowed: Boolean
+        get() = prefs.getBoolean(KEY_UPDATES_UNSTABLE, false)
+
+    val isPagesTabEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PAGES_TAB, true)
+
+    val defaultDetailsTab: Int
+        get() = if (isPagesTabEnabled) {
+            val raw = prefs.getString(KEY_DETAILS_TAB, null)?.toIntOrNull() ?: -1
+            if (raw == -1) {
+                lastDetailsTab
+            } else {
+                raw
+            }.coerceIn(0, 2)
+        } else {
+            0
+        }
+
+    var lastDetailsTab: Int
+        get() = prefs.getInt(KEY_DETAILS_LAST_TAB, 0)
+        set(value) = prefs.edit { putInt(KEY_DETAILS_LAST_TAB, value) }
+
+    val isContentPrefetchEnabled: Boolean
+        get() {
+            if (isBackgroundNetworkRestricted()) {
+                return false
+            }
+            val policy =
+                NetworkPolicy.from(prefs.getString(KEY_PREFETCH_CONTENT, null), NetworkPolicy.NEVER)
+            return policy.isNetworkAllowed(connectivityManager)
+        }
+
+    var sourcesSortOrder: SourcesSortOrder
+        get() = prefs.getEnumValue(KEY_SOURCES_ORDER, SourcesSortOrder.MANUAL)
+        set(value) = prefs.edit { putEnumValue(KEY_SOURCES_ORDER, value) }
+
+    var defaultBrowseSortOrder: SortOrder?
+        get() = prefs.getString(KEY_DEFAULT_BROWSE_SORT, null)
+            ?.takeIf { it != BROWSE_SORT_AUTOMATIC }
+            ?.let { runCatching { SortOrder.valueOf(it) }.getOrNull() }
+            ?.takeIf { it == SortOrder.POPULARITY || it == SortOrder.UPDATED }
+        set(value) = prefs.edit {
+            putString(KEY_DEFAULT_BROWSE_SORT, value?.name ?: BROWSE_SORT_AUTOMATIC)
+        }
+
+    fun defaultBrowseSortOrder(available: Set<SortOrder>, fallback: SortOrder): SortOrder =
+        defaultBrowseSortOrder?.takeIf { it in available } ?: fallback
+
+    var isNovelSourcesFirst: Boolean
+        get() = prefs.getBoolean(KEY_NOVEL_SOURCES_FIRST, false)
+        set(value) = prefs.edit { putBoolean(KEY_NOVEL_SOURCES_FIRST, value) }
+
+    fun isChaptersSortedByName(mangaId: Long): Boolean =
+        prefs.getBoolean(KEY_SORT_CHAPTERS_BY_NAME + mangaId, false)
+
+    fun setChaptersSortedByName(mangaId: Long, value: Boolean) {
+        prefs.edit {
+            if (value) putBoolean(KEY_SORT_CHAPTERS_BY_NAME + mangaId, true)
+            else remove(KEY_SORT_CHAPTERS_BY_NAME + mangaId)
+        }
+    }
+
+    var isSourcesGridMode: Boolean
+        get() = prefs.getBoolean(KEY_SOURCES_GRID, true)
+        set(value) = prefs.edit { putBoolean(KEY_SOURCES_GRID, value) }
+
+    var sourcesVersion: Int
+        get() = prefs.getInt(KEY_SOURCES_VERSION, 0)
+        set(value) = prefs.edit { putInt(KEY_SOURCES_VERSION, value) }
+
+    var isAllSourcesEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SOURCES_ENABLED_ALL, false)
+        set(value) = prefs.edit { putBoolean(KEY_SOURCES_ENABLED_ALL, value) }
+
+    var isBrokenSourcesHidden: Boolean
+        get() = prefs.getBoolean(KEY_SOURCES_HIDE_BROKEN, false)
+        set(value) = prefs.edit { putBoolean(KEY_SOURCES_HIDE_BROKEN, value) }
+
+    val isPagesNumbersEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PAGES_NUMBERS, false)
+
+    val screenshotsPolicy: ScreenshotsPolicy
+        get() = prefs.getEnumValue(KEY_SCREENSHOTS_POLICY, ScreenshotsPolicy.ALLOW)
+
+    val isAdBlockEnabled: Boolean
+        get() = prefs.getBoolean(KEY_ADBLOCK, false)
+
+    var userSpecifiedMangaDirectories: Set<File>
+        get() {
+            val set = prefs.getStringSet(KEY_LOCAL_MANGA_DIRS, emptySet()).orEmpty()
+            return set.mapNotNullToSet { File(it).takeIfReadable() }
+        }
+        set(value) {
+            val set = value.mapToSet { it.absolutePath }
+            prefs.edit { putStringSet(KEY_LOCAL_MANGA_DIRS, set) }
+        }
+
+    var mangaStorageDir: File?
+        get() = prefs.getString(KEY_LOCAL_STORAGE, null)?.let {
+            File(it)
+        }?.takeIf { it.exists() && it in userSpecifiedMangaDirectories }
+        set(value) = prefs.edit {
+            if (value == null) {
+                remove(KEY_LOCAL_STORAGE)
+            } else {
+                val userDirs = userSpecifiedMangaDirectories
+                if (value !in userDirs) {
+                    userSpecifiedMangaDirectories = userDirs + value
+                }
+                putString(KEY_LOCAL_STORAGE, value.path)
+            }
+        }
+
+    var allowDownloadOnMeteredNetwork: TriStateOption
+        get() = prefs.getEnumValue(KEY_DOWNLOADS_METERED_NETWORK, TriStateOption.ASK)
+        set(value) = prefs.edit { putEnumValue(KEY_DOWNLOADS_METERED_NETWORK, value) }
+
+    val preferredDownloadFormat: DownloadFormat
+        get() = prefs.getEnumValue(KEY_DOWNLOADS_FORMAT, DownloadFormat.AUTOMATIC)
+
+    var isSuggestionsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SUGGESTIONS, false)
+        set(value) = prefs.edit { putBoolean(KEY_SUGGESTIONS, value) }
+
+    val isSuggestionsWiFiOnly: Boolean
+        get() = prefs.getBoolean(KEY_SUGGESTIONS_WIFI_ONLY, false)
+
+    val isSuggestionsExcludeNsfw: Boolean
+        get() = prefs.getBoolean(KEY_SUGGESTIONS_EXCLUDE_NSFW, false)
+
+    val isSuggestionsIncludeDisabledSources: Boolean
+        get() = prefs.getBoolean(KEY_SUGGESTIONS_DISABLED_SOURCES, false)
+
+    val isSuggestionsNotificationAvailable: Boolean
+        get() = prefs.getBoolean(KEY_SUGGESTIONS_NOTIFICATIONS, false)
+
+    val suggestionsTagsBlacklist: Set<String>
+        get() {
+            val string = prefs.getString(KEY_SUGGESTIONS_EXCLUDE_TAGS, null)?.trimEnd(' ', ',')
+            if (string.isNullOrEmpty()) {
+                return emptySet()
+            }
+            return string.split(',').mapToSet { it.trim() }
+        }
+
+    val isReaderBarEnabled: Boolean
+        get() = prefs.getBoolean(KEY_READER_BAR, true)
+
+    val isReaderBarTransparent: Boolean
+        get() = prefs.getBoolean(KEY_READER_BAR_TRANSPARENT, true)
+
+    /** Reader top bar opacity, 50–100; 100 = opaque, 50 = ~50% see-through. */
+    val readerTopBarOpacity: Int
+        get() = prefs.getInt(KEY_READER_TOP_BAR_OPACITY, 50).coerceIn(50, 100)
+
+    /** Reader bottom bar opacity, 50–100; 100 = opaque. */
+    val readerBottomBarOpacity: Int
+        get() = prefs.getInt(KEY_READER_BOTTOM_BAR_OPACITY, 50).coerceIn(50, 100)
+
+    /** When true, the reader's bottom bar floats with side margins + rounded corners. */
+    val isReaderFloatBar: Boolean
+        get() = prefs.getBoolean(KEY_READER_FLOAT_BAR, true)
+
+    val isReaderChapterToastEnabled: Boolean
+        get() = prefs.getBoolean(KEY_READER_CHAPTER_TOAST, true)
+
+    val isReaderKeepScreenOn: Boolean
+        get() = prefs.getBoolean(KEY_READER_SCREEN_ON, true)
+
+    var readerColorFilter: ReaderColorFilter?
+        get() = runCatching {
+            ReaderColorFilter(
+                brightness = prefs.getFloatCompat(
+                    KEY_CF_BRIGHTNESS,
+                    ReaderColorFilter.EMPTY.brightness,
+                    -1f,
+                    1f,
+                ),
+                contrast = prefs.getFloatCompat(
+                    KEY_CF_CONTRAST,
+                    ReaderColorFilter.EMPTY.contrast,
+                    -1f,
+                    1f,
+                ),
+                isInverted = prefs.getBoolean(KEY_CF_INVERTED, ReaderColorFilter.EMPTY.isInverted),
+                isGrayscale = prefs.getBoolean(KEY_CF_GRAYSCALE, ReaderColorFilter.EMPTY.isGrayscale),
+                isBookBackground = prefs.getBoolean(KEY_CF_BOOK, ReaderColorFilter.EMPTY.isBookBackground),
+            ).takeUnless { it.isEmpty }
+        }.getOrNull()
+        set(value) {
+            prefs.edit {
+                if (value != null) {
+                    putFloat(KEY_CF_BRIGHTNESS, value.brightness)
+                    putFloat(KEY_CF_CONTRAST, value.contrast)
+                    putBoolean(KEY_CF_INVERTED, value.isInverted)
+                    putBoolean(KEY_CF_GRAYSCALE, value.isGrayscale)
+                    putBoolean(KEY_CF_BOOK, value.isBookBackground)
+                } else {
+                    remove(KEY_CF_BRIGHTNESS)
+                    remove(KEY_CF_CONTRAST)
+                    remove(KEY_CF_INVERTED)
+                    remove(KEY_CF_GRAYSCALE)
+                    remove(KEY_CF_BOOK)
+                }
+            }
+        }
+
+    var imagesProxy: Int
+        get() {
+            val raw = prefs.getString(KEY_IMAGES_PROXY, null)?.toIntOrNull()
+            return raw ?: if (prefs.getBoolean(KEY_IMAGES_PROXY_OLD, false)) 0 else -1
+        }
+        set(value) {
+            require(value in -1..1)
+            prefs.edit {
+                putString(KEY_IMAGES_PROXY, value.toString())
+                remove(KEY_IMAGES_PROXY_OLD)
+            }
+        }
+
+    var dnsOverHttps: DoHProvider
+        get() = prefs.getEnumValue(KEY_DOH, DoHProvider.NONE)
+        set(value) = prefs.edit { putEnumValue(KEY_DOH, value) }
+
+    var isSSLBypassEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SSL_BYPASS, false)
+        set(value) = prefs.edit { putBoolean(KEY_SSL_BYPASS, value) }
+
+    val isCloudflareAutoSolverEnabled: Boolean
+        get() = prefs.getBoolean(KEY_CF_AUTOSOLVE, false)
+
+    val isFlareSolverrEnabled: Boolean
+        get() = prefs.getBoolean(KEY_FLARESOLVERR_ENABLED, false)
+
+    val flareSolverrUrl: String
+        get() = prefs.getString(KEY_FLARESOLVERR_URL, null)?.nullIfEmpty() ?: DEFAULT_FLARESOLVERR_URL
+
+    val flareSolverrTimeoutMs: Int
+        get() = (prefs.getString(KEY_FLARESOLVERR_TIMEOUT, null)?.toIntOrNull() ?: DEFAULT_FLARESOLVERR_TIMEOUT)
+            .coerceAtLeast(MIN_FLARESOLVERR_TIMEOUT)
+
+    val proxyType: Proxy.Type
+        get() {
+            val raw = prefs.getString(KEY_PROXY_TYPE, null) ?: return Proxy.Type.DIRECT
+            return enumValues<Proxy.Type>().find { it.name == raw } ?: Proxy.Type.DIRECT
+        }
+
+    val proxyAddress: String?
+        get() = prefs.getString(KEY_PROXY_ADDRESS, null)
+
+    val proxyPort: Int
+        get() = prefs.getString(KEY_PROXY_PORT, null)?.toIntOrNull() ?: 0
+
+    val proxyLogin: String?
+        get() = prefs.getString(KEY_PROXY_LOGIN, null)?.nullIfEmpty()
+
+    val proxyPassword: String?
+        get() = prefs.getString(KEY_PROXY_PASSWORD, null)?.nullIfEmpty()
+
+    val isProxyBypassEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PROXY_BYPASS_ENABLED, false)
+
+    var localListOrder: SortOrder
+        get() = prefs.getEnumValue(KEY_LOCAL_LIST_ORDER, SortOrder.NEWEST)
+        set(value) = prefs.edit { putEnumValue(KEY_LOCAL_LIST_ORDER, value) }
+
+    var historySortOrder: ListSortOrder
+        get() = prefs.getEnumValue(KEY_HISTORY_ORDER, ListSortOrder.LAST_READ)
+        set(value) = prefs.edit { putEnumValue(KEY_HISTORY_ORDER, value) }
+
+    var allFavoritesSortOrder: ListSortOrder
+        get() = prefs.getEnumValue(KEY_FAVORITES_ORDER, ListSortOrder.NEWEST)
+        set(value) = prefs.edit { putEnumValue(KEY_FAVORITES_ORDER, value) }
+
+    val isRelatedMangaEnabled: Boolean
+        get() = prefs.getBoolean(KEY_RELATED_MANGA, true)
+
+    val isWebtoonZoomEnabled: Boolean
+        get() = prefs.getBoolean(KEY_WEBTOON_ZOOM, true)
+
+    var isWebtoonGapsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_WEBTOON_GAPS, false)
+        set(value) = prefs.edit { putBoolean(KEY_WEBTOON_GAPS, value) }
+
+    var isWebtoonPullGestureEnabled: Boolean
+        get() = prefs.getBoolean(KEY_WEBTOON_PULL_GESTURE, false)
+        set(value) = prefs.edit { putBoolean(KEY_WEBTOON_PULL_GESTURE, value) }
+
+    @get:FloatRange(from = 0.0, to = 0.5)
+    val defaultWebtoonZoomOut: Float
+        get() = prefs.getInt(KEY_WEBTOON_ZOOM_OUT, 0).coerceIn(0, 50) / 100f
+
+    @get:FloatRange(from = 0.0, to = 1.0)
+    var readerAutoscrollSpeed: Float
+        get() = prefs.getFloatCompat(KEY_READER_AUTOSCROLL_SPEED, 0f, 0f, 1f)
+        set(@FloatRange(from = 0.0, to = 1.0) value) = prefs.edit {
+            putFloat(
+                KEY_READER_AUTOSCROLL_SPEED,
+                value,
+            )
+        }
+
+    var isReaderAutoscrollFabVisible: Boolean
+        get() = prefs.getBoolean(KEY_READER_AUTOSCROLL_FAB, true)
+        set(value) = prefs.edit { putBoolean(KEY_READER_AUTOSCROLL_FAB, value) }
+
+    var isReaderAutoscrollHoldBoostEnabled: Boolean
+        get() = prefs.getBoolean(KEY_READER_AUTOSCROLL_HOLD, false)
+        set(value) = prefs.edit { putBoolean(KEY_READER_AUTOSCROLL_HOLD, value) }
+
+    @get:FloatRange(from = 1.5, to = 5.0)
+    var readerAutoscrollBoostMultiplier: Float
+        get() = prefs.getFloatCompat(KEY_READER_AUTOSCROLL_BOOST, AUTOSCROLL_BOOST_DEFAULT, AUTOSCROLL_BOOST_MIN, AUTOSCROLL_BOOST_MAX)
+        set(value) = prefs.edit { putFloat(KEY_READER_AUTOSCROLL_BOOST, value) }
+
+    val isPagesPreloadEnabled: Boolean
+        get() {
+            if (isBackgroundNetworkRestricted()) {
+                return false
+            }
+            val policy = NetworkPolicy.from(
+                prefs.getString(KEY_PAGES_PRELOAD, null),
+                NetworkPolicy.NON_METERED,
+            )
+            return policy.isNetworkAllowed(connectivityManager)
+        }
+
+    val is32BitColorsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_32BIT_COLOR, false)
+
+    val isDiscordRpcEnabled: Boolean
+        get() = prefs.getBoolean(KEY_DISCORD_RPC, false)
+
+    val isDiscordRpcSkipNsfw: Boolean
+        get() = prefs.getBoolean(KEY_DISCORD_RPC_SKIP_NSFW, false)
+
+    /** One of [DISCORD_STATUS_ONLINE], [DISCORD_STATUS_IDLE], [DISCORD_STATUS_DND], [DISCORD_STATUS_INVISIBLE] */
+    var discordRpcStatus: String
+        get() = DiscordPresenceStatus.fromPreference(
+            prefs.getString(KEY_DISCORD_RPC_STATUS, null),
+            prefs.getBoolean(KEY_DISCORD_RPC_INVISIBLE_LEGACY, false),
+        ).value
+        set(value) = prefs.edit {
+            putString(KEY_DISCORD_RPC_STATUS, DiscordPresenceStatus.fromPreference(value).value)
+        }
+
+    val isDiscordRpcInvisible: Boolean
+        get() = discordRpcStatus == DISCORD_STATUS_INVISIBLE
+
+    var discordToken: String?
+        get() = prefs.getString(KEY_DISCORD_TOKEN, null)?.trim()?.nullIfEmpty()
+        set(value) = prefs.edit { putString(KEY_DISCORD_TOKEN, value?.nullIfEmpty()) }
+
+    val isDiscordRpcOauth: Boolean
+        get() = prefs.getBoolean(KEY_DISCORD_RPC_OAUTH, false)
+
+    val isDiscordOauthBrowser: Boolean
+        get() = prefs.getBoolean(KEY_DISCORD_OAUTH_BROWSER, false)
+
+    var discordAccountName: String?
+        get() = prefs.getString(KEY_DISCORD_ACCOUNT_NAME, null)
+        set(value) = prefs.edit { putString(KEY_DISCORD_ACCOUNT_NAME, value?.nullIfEmpty()) }
+
+    var discordScopes: String?
+        get() = prefs.getString(KEY_DISCORD_SCOPES, null)
+        set(value) = prefs.edit { putString(KEY_DISCORD_SCOPES, value?.nullIfEmpty()) }
+
+    var discordLastExchangedCode: String?
+        get() = prefs.getString(KEY_DISCORD_LAST_CODE, null)
+        set(value) = prefs.edit { putString(KEY_DISCORD_LAST_CODE, value?.nullIfEmpty()) }
+
+    var discordRefreshToken: String?
+        get() = prefs.getString(KEY_DISCORD_REFRESH_TOKEN, null)?.trim()?.nullIfEmpty()
+        set(value) = prefs.edit { putString(KEY_DISCORD_REFRESH_TOKEN, value?.nullIfEmpty()) }
+
+    var discordCodeVerifier: String?
+        get() = prefs.getString(KEY_DISCORD_CODE_VERIFIER, null)
+        set(value) = prefs.edit {
+            if (value != null) putString(KEY_DISCORD_CODE_VERIFIER, value) else remove(KEY_DISCORD_CODE_VERIFIER)
+        }
+
+    val isPeriodicalBackupEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BACKUP_PERIODICAL_ENABLED, false)
+
+    val periodicalBackupFrequency: Float
+        get() = prefs.getString(KEY_BACKUP_PERIODICAL_FREQUENCY, null)?.toFloatOrNull() ?: 7f
+
+    val periodicalBackupFrequencyMillis: Long
+        get() = (TimeUnit.DAYS.toMillis(1) * periodicalBackupFrequency).toLong()
+
+    val periodicalBackupMaxCount: Int
+        get() = if (prefs.getBoolean(KEY_BACKUP_PERIODICAL_TRIM, true)) {
+            prefs.getInt(KEY_BACKUP_PERIODICAL_COUNT, 10)
+        } else {
+            Int.MAX_VALUE
+        }
+
+    var periodicalBackupDirectory: Uri?
+        get() = prefs.getString(KEY_BACKUP_PERIODICAL_OUTPUT, null)?.toUriOrNull()
+        set(value) = prefs.edit { putString(KEY_BACKUP_PERIODICAL_OUTPUT, value?.toString()) }
+
+    val isBackupTelegramUploadEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BACKUP_TG_ENABLED, false)
+
+    val backupTelegramChatId: String?
+        get() = prefs.getString(KEY_BACKUP_TG_CHAT, null)?.nullIfEmpty()
+
+    val backupTelegramBotToken: String?
+        get() = prefs.getString(KEY_BACKUP_TG_TOKEN, null)?.trim()?.nullIfEmpty()
+
+    val isReadingTimeEstimationEnabled: Boolean
+        get() = prefs.getBoolean(KEY_READING_TIME, true)
+
+    val isPagesSavingAskEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PAGES_SAVE_ASK, true)
+
+    val isStatsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_STATS_ENABLED, false)
+
+    val isAutoLocalChaptersCleanupEnabled: Boolean
+        get() = prefs.getBoolean(KEY_CHAPTERS_CLEAR_AUTO, false)
+
+    fun isPagesCropEnabled(mode: ReaderMode): Boolean {
+        val rawValue = prefs.getStringSet(KEY_READER_CROP, emptySet())
+        if (rawValue.isNullOrEmpty()) {
+            return false
+        }
+        val needle = if (mode == ReaderMode.WEBTOON) READER_CROP_WEBTOON else READER_CROP_PAGED
+        return needle.toString() in rawValue
+    }
+
+    fun isTipEnabled(tip: String): Boolean {
+        return prefs.getStringSet(KEY_TIPS_CLOSED, emptySet())?.contains(tip) != true
+    }
+
+    fun closeTip(tip: String) {
+        val closedTips = prefs.getStringSet(KEY_TIPS_CLOSED, emptySet()).orEmpty()
+        if (tip in closedTips) {
+            return
+        }
+        prefs.edit { putStringSet(KEY_TIPS_CLOSED, closedTips + tip) }
+    }
+
+    fun isIncognitoModeEnabled(isNsfw: Boolean): Boolean {
+        return isIncognitoModeEnabled || (isNsfw && incognitoModeForNsfw == TriStateOption.ENABLED)
+    }
+
+    fun getPagesSaveDir(context: Context): DocumentFile? =
+        prefs.getString(KEY_PAGES_SAVE_DIR, null)?.toUriOrNull()?.let {
+            DocumentFile.fromTreeUri(context, it)?.takeIf { it.canWrite() }
+        }
+
+    fun setPagesSaveDir(uri: Uri?) {
+        prefs.edit { putString(KEY_PAGES_SAVE_DIR, uri?.toString()) }
+    }
+
+    fun getMangaListBadges(): Int {
+        val raw = prefs.getStringSet(KEY_MANGA_LIST_BADGES, mangaListBadgesDefault).orEmpty()
+        var result = 0
+        for (item in raw) {
+            result = result or item.toInt()
+        }
+        return result
+    }
+
+    fun subscribe(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun unsubscribe(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.unregisterOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun observeChanges() = prefs.observeChanges()
+
+    fun observe(vararg keys: String): Flow<String?> = prefs.observeChanges()
+        .filter { key -> key == null || key in keys }
+        .onStart { emit(null) }
+        .flowOn(Dispatchers.IO)
+
+    fun getAllValues(): Map<String, *> = prefs.all
+
+    fun upsertAll(m: Map<String, *>, isMerge: Boolean = false) = prefs.edit {
+        if (!isMerge) {
+            clear()
+        }
+        putAll(m)
+    }
+
+    private fun isBackgroundNetworkRestricted(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            connectivityManager.restrictBackgroundStatus == ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED
+        } else {
+            false
+        }
+    }
+
+    private fun SharedPreferences.getFloatCompat(
+        key: String,
+        defaultValue: Float,
+        minValue: Float,
+        maxValue: Float,
+    ): Float {
+        return try {
+            getFloat(key, defaultValue).coerceIn(minValue, maxValue)
+        } catch (_: ClassCastException) {
+            val migratedValue = when (val rawValue = all[key]) {
+                is Number -> rawValue.toFloat()
+                is String -> rawValue.toFloatOrNull()
+                else -> null
+            }?.coerceIn(minValue, maxValue) ?: defaultValue
+            edit { putFloat(key, migratedValue) }
+            migratedValue
+        }
+    }
+
+    private fun SharedPreferences.getLongCompat(
+        key: String,
+        defaultValue: Long,
+    ): Long {
+        return try {
+            getLong(key, defaultValue)
+        } catch (_: ClassCastException) {
+            val migratedValue = when (val rawValue = all[key]) {
+                is Number -> rawValue.toLong()
+                is String -> rawValue.toLongOrNull()
+                else -> null
+            } ?: defaultValue
+            edit { putLong(key, migratedValue) }
+            migratedValue
+        }
+    }
+
+    companion object {
+        const val KEY_TRACKER_AUTO_MATCH = "tracker_auto_match"
+
+        const val TRACK_HISTORY = "history"
+        const val TRACK_FAVOURITES = "favourites"
+
+        const val KEY_ADBLOCK = "adblock"
+        const val KEY_LIST_MODE = "list_mode_2"
+        const val KEY_LIST_MODE_HISTORY = "list_mode_history"
+        const val KEY_LIST_CHECKPOINT = "list_checkpoint"
+        const val KEY_LIST_MODE_FAVORITES = "list_mode_favorites"
+        const val KEY_LIST_MODE_SUGGESTIONS = "list_mode_suggestions"
+        const val KEY_THEME = "theme"
+        const val KEY_COLOR_THEME = "color_theme"
+        const val KEY_THEME_AMOLED = "amoled_theme"
+        const val KEY_THEME_AMOLED_NAVBAR = "amoled_navbar"
+        const val KEY_OFFLINE_DISABLED = "no_offline"
+        const val KEY_PAGES_CACHE_CLEAR = "pages_cache_clear"
+        const val KEY_HTTP_CACHE_CLEAR = "http_cache_clear"
+        const val KEY_COOKIES_CLEAR = "cookies_clear"
+        const val KEY_CHAPTERS_CLEAR = "chapters_clear"
+        const val KEY_CHAPTERS_CLEAR_AUTO = "chapters_clear_auto"
+        const val KEY_THUMBS_CACHE_CLEAR = "thumbs_cache_clear"
+        const val KEY_SEARCH_HISTORY_CLEAR = "search_history_clear"
+        const val KEY_UPDATES_FEED_CLEAR = "updates_feed_clear"
+        const val KEY_GRID_SIZE = "grid_size"
+        const val KEY_GRID_SIZE_PAGES = "grid_size_pages"
+        const val KEY_REMOTE_SOURCES = "remote_sources"
+        const val KEY_LOCAL_STORAGE = "local_storage"
+        const val KEY_READER_DOUBLE_PAGES = "reader_double_pages"
+        const val KEY_READER_DOUBLE_PAGES_SENSITIVITY = "reader_double_pages_sensitivity_2"
+        const val KEY_READER_DOUBLE_FOLDABLE = "reader_double_foldable"
+        const val KEY_READER_DOUBLE_COVER_PAGE = "reader_double_cover_page"
+        const val KEY_READER_ZOOM_BUTTONS = "reader_zoom_buttons"
+        const val KEY_READER_CONTROL_LTR = "reader_taps_ltr"
+        const val KEY_READER_NAVIGATION_INVERTED = "reader_navigation_inverted"
+        const val KEY_READER_FULLSCREEN = "reader_fullscreen"
+        const val KEY_READER_VOLUME_BUTTONS = "reader_volume_buttons"
+        const val KEY_READER_ORIENTATION = "reader_orientation"
+        const val KEY_TRACKER_ENABLED = "tracker_enabled"
+        const val KEY_TRACKER_WIFI_ONLY = "tracker_wifi"
+        const val KEY_TRACKER_FREQUENCY = "tracker_freq"
+        const val KEY_TRACK_SOURCES = "track_sources"
+        const val KEY_TRACK_CATEGORIES = "track_categories"
+        const val KEY_TRACK_WARNING = "track_warning"
+        const val KEY_TRACKER_NOTIFICATIONS = "tracker_notifications"
+        const val KEY_TRACKER_NO_NSFW = "tracker_no_nsfw"
+        const val KEY_TRACKER_DOWNLOAD = "tracker_download"
+        const val KEY_TRACKER_UNSTUCK_MIGRATION_DONE = "tracker_unstuck_migration_done"
+        const val KEY_TRACKER_PROGRESS_REFRESH_DONE = "tracker_progress_refresh_done"
+        const val KEY_AUTO_PLUGINS = "auto_plugins"
+        const val KEY_USE_ANDROID_EXTENSIONS = "use_android_installed_extensions"
+        const val KEY_SHOW_PLUGIN_APK_HANDLER = "show_plugin_apk_handler"
+        const val KEY_LAST_AUTO_PLUGINS = "last_auto_plugins"
+        const val KEY_NOTIFICATIONS_SETTINGS = "notifications_settings"
+        const val KEY_NOTIFICATIONS_SOUND = "notifications_sound"
+        const val KEY_NOTIFICATIONS_VIBRATE = "notifications_vibrate"
+        const val KEY_NOTIFICATIONS_LIGHT = "notifications_light"
+        const val KEY_NOTIFICATIONS_INFO = "tracker_notifications_info"
+        const val KEY_READER_ANIMATION = "reader_animation2"
+        const val KEY_READER_CONTROLS = "reader_controls"
+        const val KEY_READER_MODE = "reader_mode"
+        const val KEY_READER_MODE_DETECT = "reader_mode_detect"
+        const val KEY_READER_CROP = "reader_crop"
+        const val KEY_APP_PASSWORD = "app_password"
+        const val KEY_APP_PASSWORD_NUMERIC = "app_password_num"
+        const val KEY_PROTECT_APP = "protect_app"
+        const val KEY_PROTECT_APP_BIOMETRIC = "protect_app_bio"
+        const val KEY_ZOOM_MODE = "zoom_mode"
+        const val KEY_BACKUP = "backup"
+        const val KEY_RESTORE = "restore"
+        const val KEY_BACKUP_PERIODICAL_ENABLED = "backup_periodic"
+        const val KEY_BACKUP_PERIODICAL_FREQUENCY = "backup_periodic_freq"
+        const val KEY_BACKUP_PERIODICAL_TRIM = "backup_periodic_trim"
+        const val KEY_BACKUP_PERIODICAL_COUNT = "backup_periodic_count"
+        const val KEY_BACKUP_PERIODICAL_OUTPUT = "backup_periodic_output"
+        const val KEY_BACKUP_PERIODICAL_LAST = "backup_periodic_last"
+        const val KEY_HISTORY_GROUPING = "history_grouping"
+        const val KEY_UPDATED_GROUPING = "updated_grouping"
+        const val KEY_PROGRESS_INDICATORS = "progress_indicators"
+        /** Global chapter-list display order, independent of source reading direction. */
+        const val KEY_REVERSE_CHAPTERS = "reverse_chapters"
+        const val KEY_GRID_VIEW_CHAPTERS = "grid_view_chapters"
+        const val KEY_INCOGNITO_NSFW = "incognito_nsfw"
+        const val KEY_PAGES_NUMBERS = "pages_numbers"
+        const val KEY_SCREENSHOTS_POLICY = "screenshots_policy"
+        const val KEY_PAGES_PRELOAD = "pages_preload"
+        const val KEY_SUGGESTIONS = "suggestions"
+        const val KEY_SUGGESTIONS_WIFI_ONLY = "suggestions_wifi"
+        const val KEY_SUGGESTIONS_EXCLUDE_NSFW = "suggestions_exclude_nsfw"
+        const val KEY_SUGGESTIONS_EXCLUDE_TAGS = "suggestions_exclude_tags"
+        const val KEY_SUGGESTIONS_DISABLED_SOURCES = "suggestions_disabled_sources"
+        const val KEY_SUGGESTIONS_NOTIFICATIONS = "suggestions_notifications"
+        const val KEY_SHIKIMORI = "shikimori"
+        const val KEY_ANILIST = "anilist"
+        const val KEY_MAL = "mal"
+        const val KEY_KITSU = "kitsu"
+        const val KEY_MANGABAKA = "mangabaka"
+        const val KEY_DOWNLOADS_METERED_NETWORK = "downloads_metered_network"
+        const val KEY_DOWNLOADS_FORMAT = "downloads_format"
+        const val KEY_ALL_FAVOURITES_VISIBLE = "all_favourites_visible"
+        const val KEY_FAVORITES_LAST_CATEGORY = "favorites_last_category"
+        const val KEY_DOH = "doh"
+        const val KEY_EXIT_CONFIRM = "exit_confirm"
+        const val KEY_INCOGNITO_MODE = "incognito"
+        const val KEY_READER_MULTITASK = "reader_multitask"
+        const val KEY_READER_BAR = "reader_bar"
+        const val KEY_READER_BAR_TRANSPARENT = "reader_bar_transparent"
+        const val KEY_READER_TOP_BAR_OPACITY = "reader_top_bar_opacity"
+        const val KEY_READER_BOTTOM_BAR_OPACITY = "reader_bottom_bar_opacity"
+        const val KEY_READER_FLOAT_BAR = "reader_float_bar"
+        const val KEY_READER_CHAPTER_TOAST = "reader_chapter_toast"
+        const val KEY_READER_BACKGROUND = "reader_background"
+        const val KEY_READER_SCREEN_ON = "reader_screen_on"
+        const val KEY_SHORTCUTS = "dynamic_shortcuts"
+        const val KEY_READER_TAP_ACTIONS = "reader_tap_actions"
+        const val KEY_READER_OPTIMIZE = "reader_optimize"
+        const val KEY_UPSCALE_STRENGTH = "reader_upscale_strength"
+        const val KEY_UPSCALE_PASSES = "reader_upscale_passes"
+        const val KEY_UPSCALE_THRESHOLD = "reader_upscale_threshold"
+        const val KEY_READER_UPSCALE = "reader_upscale"
+        const val KEY_EINK_FLASH = "eink_flash"
+        const val KEY_EINK_FLASH_DURATION = "eink_flash_duration"
+        const val KEY_EINK_FLASH_EVERY = "eink_flash_every"
+        const val KEY_EINK_FLASH_COLOR = "eink_flash_color"
+        const val KEY_LOCAL_LIST_ORDER = "local_order"
+        const val KEY_HISTORY_ORDER = "history_order"
+        const val KEY_FAVORITES_ORDER = "fav_order"
+        const val KEY_WEBTOON_GAPS = "webtoon_gaps"
+        const val KEY_WEBTOON_ZOOM = "webtoon_zoom"
+        const val KEY_WEBTOON_ZOOM_OUT = "webtoon_zoom_out"
+        const val KEY_WEBTOON_PULL_GESTURE = "webtoon_pull_gesture"
+        const val KEY_PREFETCH_CONTENT = "prefetch_content"
+        const val KEY_APP_LOCALE = "app_locale"
+        const val KEY_SOURCES_GRID = "sources_grid"
+        const val KEY_UPDATES_UNSTABLE = "updates_unstable"
+        const val KEY_TIPS_CLOSED = "tips_closed"
+        const val KEY_SSL_BYPASS = "ssl_bypass"
+        const val KEY_CF_AUTOSOLVE = "cf_autosolve"
+        const val KEY_FLARESOLVERR_ENABLED = "flaresolverr_enabled"
+        const val KEY_FLARESOLVERR_URL = "flaresolverr_url"
+        const val KEY_FLARESOLVERR_TIMEOUT = "flaresolverr_timeout"
+        const val KEY_READER_AUTOSCROLL_SPEED = "as_speed"
+        const val KEY_READER_AUTOSCROLL_FAB = "as_fab"
+        const val KEY_READER_AUTOSCROLL_HOLD = "as_hold"
+        const val KEY_READER_AUTOSCROLL_BOOST = "as_boost"
+        const val KEY_MIRROR_SWITCHING = "mirror_switching"
+        const val KEY_PROXY = "proxy"
+        const val KEY_PROXY_TYPE = "proxy_type_2"
+        const val KEY_PROXY_ADDRESS = "proxy_address"
+        const val KEY_PROXY_PORT = "proxy_port"
+        const val KEY_PROXY_AUTH = "proxy_auth"
+        const val KEY_PROXY_LOGIN = "proxy_login"
+        const val KEY_PROXY_PASSWORD = "proxy_password"
+        const val KEY_PROXY_BYPASS_ENABLED = "proxy_bypass_enabled"
+        const val KEY_IMAGES_PROXY = "images_proxy_2"
+        const val KEY_LOCAL_MANGA_DIRS = "local_manga_dirs"
+        const val KEY_DISABLE_NSFW = "no_nsfw"
+        const val KEY_RELATED_MANGA = "related_manga"
+        const val KEY_NAV_MAIN = "nav_main"
+        const val KEY_NAV_LABELS = "nav_labels"
+        const val KEY_NAV_PINNED = "nav_pinned"
+        const val KEY_NAV_FLOATING = "nav_floating"
+        const val KEY_NAV_CORNER_RADIUS = "nav_corner_radius"
+        const val KEY_MAIN_FAB = "main_fab"
+        const val KEY_32BIT_COLOR = "enhanced_colors"
+        const val KEY_SOURCES_ORDER = "sources_sort_order"
+        const val KEY_DEFAULT_BROWSE_SORT = "default_browse_sort"
+        const val KEY_NOVEL_SOURCES_FIRST = "novel_sources_first"
+        const val KEY_SORT_CHAPTERS_BY_NAME = "sort_chapters_by_name_"
+        const val KEY_SOURCES_CATALOG = "sources_catalog"
+        const val KEY_CF_BRIGHTNESS = "cf_brightness"
+        const val KEY_CF_CONTRAST = "cf_contrast"
+        const val KEY_CF_INVERTED = "cf_inverted"
+        const val KEY_CF_GRAYSCALE = "cf_grayscale"
+        const val KEY_CF_BOOK = "cf_book"
+        const val KEY_PAGES_TAB = "pages_tab"
+        const val KEY_DETAILS_TAB = "details_tab"
+        const val KEY_DETAILS_LAST_TAB = "details_last_tab"
+        const val KEY_READING_TIME = "reading_time"
+        const val KEY_PAGES_SAVE_DIR = "pages_dir"
+        const val KEY_PAGES_SAVE_ASK = "pages_dir_ask"
+        const val KEY_STATS_ENABLED = "stats_on"
+        const val KEY_FEED_HEADER = "feed_header"
+        const val KEY_SEARCH_SUGGESTION_TYPES = "search_suggest_types"
+        const val KEY_FIRST_LAUNCH = "first_launch"
+        const val KEY_SOURCES_VERSION = "sources_version"
+        const val KEY_SOURCES_ENABLED_ALL = "sources_enabled_all"
+        const val KEY_SOURCES_HIDE_BROKEN = "sources_hide_broken"
+        const val BROWSE_SORT_AUTOMATIC = "AUTO"
+        const val KEY_QUICK_FILTER = "quick_filter"
+        const val KEY_COLLAPSE_DESCRIPTION = "description_collapse"
+        const val KEY_BACKUP_TG_ENABLED = "backup_periodic_tg_enabled"
+        const val KEY_BACKUP_TG_CHAT = "backup_periodic_tg_chat_id"
+        const val KEY_BACKUP_TG_TOKEN = "backup_periodic_tg_bot_token"
+        const val KEY_MANGA_LIST_BADGES = "manga_list_badges"
+        const val KEY_DISCORD_RPC = "discord_rpc"
+        const val KEY_DISCORD_RPC_SKIP_NSFW = "discord_rpc_skip_nsfw"
+        const val KEY_DISCORD_RPC_STATUS = "discord_rpc_status"
+        private const val KEY_DISCORD_RPC_INVISIBLE_LEGACY = "discord_rpc_invisible"
+        const val DISCORD_STATUS_ONLINE = "online"
+        const val DISCORD_STATUS_IDLE = "idle"
+        const val DISCORD_STATUS_DND = "dnd"
+        const val DISCORD_STATUS_INVISIBLE = "invisible"
+        const val KEY_DISCORD_TOKEN = "discord_token"
+        const val KEY_DISCORD_RPC_OAUTH = "discord_rpc_oauth"
+        const val KEY_DISCORD_OAUTH_BROWSER = "discord_oauth_browser"
+        const val KEY_DISCORD_ACCOUNT_NAME = "discord_account_name"
+        const val KEY_DISCORD_SCOPES = "discord_scopes"
+        const val KEY_DISCORD_LAST_CODE = "discord_last_code"
+        const val KEY_DISCORD_REFRESH_TOKEN = "discord_refresh_token"
+        const val KEY_DISCORD_CODE_VERIFIER = "discord_code_verifier"
+        const val KEY_DISCORD_OAUTH_SIGNIN = "discord_oauth_signin"
+
+        const val KEY_TRANSLATE_PROVIDER = "translate_provider"
+        const val KEY_TRANSLATE_ENDPOINT = "translate_endpoint"
+        const val KEY_TRANSLATE_API_KEY = "translate_api_key"
+        const val KEY_TRANSLATE_MODEL = "translate_model"
+        const val KEY_TRANSLATE_CUSTOM_HEADERS = "translate_custom_headers"
+        const val KEY_TRANSLATE_PROFILES_MIGRATED = "translate_profiles_migrated"
+        const val KEY_TRANSLATE_SOURCE_LANG = "translate_source_lang"
+        const val KEY_TRANSLATE_TARGET_LANG = "translate_target_lang"
+        const val KEY_TRANSLATE_TRIGGER_MODE = "translate_trigger_mode"
+        const val KEY_TRANSLATE_OVERLAY_BG = "translate_overlay_bg"
+        const val KEY_TRANSLATE_CONCURRENCY = "translate_concurrency"
+        const val KEY_TRANSLATE_RPM = "translate_rpm"
+        const val KEY_TRANSLATE_ENABLED = "translate_enabled"
+        const val KEY_TRANSLATE_CLEAR_CACHE = "translate_clear_cache"
+        const val KEY_COMMUNITY_ENABLED = "community_enabled"
+        const val KEY_COMMUNITY_TELEMETRY = "community_telemetry"
+
+        // keys for non-persistent preferences
+        const val KEY_APP_VERSION = "app_version"
+        const val KEY_IGNORE_DOZE = "ignore_dose"
+        const val KEY_TRACKER_DEBUG = "tracker_debug"
+        const val KEY_LINK_WEBLATE = "about_app_translation"
+        const val KEY_LINK_DISCORD = "about_discord"
+        const val KEY_LINK_GITHUB = "about_github"
+        const val KEY_LINK_MANUAL = "about_help"
+        const val KEY_DONATION_TON = "donation_ton"
+        const val KEY_DONATION_ETH = "donation_eth"
+        const val KEY_DONATION_SOL = "donation_sol"
+        const val KEY_DONATION_BTC = "donation_btc"
+        const val KEY_PROXY_TEST = "proxy_test"
+        const val KEY_OPEN_BROWSER = "open_browser"
+        const val KEY_HANDLE_LINKS = "handle_links"
+        const val KEY_BACKUP_TG = "backup_periodic_tg"
+        const val KEY_BACKUP_TG_OPEN = "backup_periodic_tg_open"
+        const val KEY_BACKUP_TG_TEST = "backup_periodic_tg_test"
+        const val KEY_CLEAR_MANGA_DATA = "manga_data_clear"
+        const val KEY_STORAGE_USAGE = "storage_usage"
+        const val KEY_WEBVIEW_CLEAR = "webview_clear"
+
+        // old keys are for migration only
+        private const val KEY_IMAGES_PROXY_OLD = "images_proxy"
+
+        // values
+        private const val READER_CROP_PAGED = 1
+        private const val READER_CROP_WEBTOON = 2
+
+        const val DEFAULT_FLARESOLVERR_URL = "http://localhost:8191/v1"
+        private const val DEFAULT_FLARESOLVERR_TIMEOUT = 60_000
+        private const val MIN_FLARESOLVERR_TIMEOUT = 10_000
+        const val AUTOSCROLL_BOOST_MIN = 1.5f
+        const val AUTOSCROLL_BOOST_MAX = 5.0f
+        const val AUTOSCROLL_BOOST_DEFAULT = 2.0f
+    }
 }

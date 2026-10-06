@@ -13,36 +13,36 @@ private const val RATING_MAX = 100f
 
 @Singleton
 class MangaBakaScrobbler @Inject constructor(
-	private val repository: MangaBakaRepository,
-	db: MangaDatabase,
-	mangaRepositoryFactory: MangaRepository.Factory,
+    private val repository: MangaBakaRepository,
+    db: MangaDatabase,
+    mangaRepositoryFactory: MangaRepository.Factory,
 ) : Scrobbler(db, ScrobblerService.MANGABAKA, repository, mangaRepositoryFactory) {
 
-	init {
-		statuses[ScrobblingStatus.PLANNED] = "plan_to_read"
-		statuses[ScrobblingStatus.READING] = "reading"
-		statuses[ScrobblingStatus.RE_READING] = "rereading"
-		statuses[ScrobblingStatus.COMPLETED] = "completed"
-		statuses[ScrobblingStatus.ON_HOLD] = "paused"
-		statuses[ScrobblingStatus.DROPPED] = "dropped"
-	}
+    init {
+        statuses[ScrobblingStatus.PLANNED] = "plan_to_read"
+        statuses[ScrobblingStatus.READING] = "reading"
+        statuses[ScrobblingStatus.RE_READING] = "rereading"
+        statuses[ScrobblingStatus.COMPLETED] = "completed"
+        statuses[ScrobblingStatus.ON_HOLD] = "paused"
+        statuses[ScrobblingStatus.DROPPED] = "dropped"
+    }
 
-	override suspend fun updateScrobblingInfo(
-		mangaId: Long,
-		rating: Float,
-		status: ScrobblingStatus?,
-		comment: String?,
-	) {
-		val entity = requireNotNull(db.getScrobblingDao().find(scrobblerService.id, mangaId)) {
-			"Scrobbling info for manga $mangaId not found"
-		}
-		repository.updateRate(
-			rateId = entity.id,
-			mangaId = entity.mangaId,
-			rating = rating * RATING_MAX,
-			status = statuses[status],
-			comment = comment,
-			setStartDate = status == ScrobblingStatus.READING && entity.status != statuses[ScrobblingStatus.READING],
-		)
-	}
+    override suspend fun updateScrobblingInfoImpl(
+        mangaId: Long,
+        rating: Float,
+        status: ScrobblingStatus?,
+        comment: String?,
+    ) {
+        val entity = requireNotNull(db.getScrobblingDao().find(scrobblerService.id, mangaId, trackerRepository.cachedUser?.id ?: 0L)) {
+            "Scrobbling info for manga $mangaId not found"
+        }
+        repository.updateRate(
+            rateId = entity.id,
+            mangaId = entity.mangaId,
+            rating = rating * RATING_MAX,
+            status = statuses[status],
+            comment = comment,
+            setStartDate = status == ScrobblingStatus.READING && entity.status != statuses[ScrobblingStatus.READING],
+        )
+    }
 }
