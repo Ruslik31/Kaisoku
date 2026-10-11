@@ -1,0 +1,5 @@
+Add local recommendations Beta with Legacy fallback.
+Add diversity controls, feedback and novel suggestions.
+Add optional public recommendations with confirmed matching.
+Filter caught-up and recently read titles.
+Fix newer Mihon extension crashes.
