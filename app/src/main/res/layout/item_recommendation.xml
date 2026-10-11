@@ -7,6 +7,23 @@
 	android:layout_height="wrap_content"
 	android:orientation="vertical">
 
+    <com.google.android.material.chip.ChipGroup android:id="@+id/recommendation_filters"
+        android:layout_width="match_parent" android:layout_height="wrap_content" app:singleSelection="true"
+        app:selectionRequired="true" android:visibility="gone">
+        <com.google.android.material.chip.Chip android:id="@+id/recommendation_all"
+            style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="@string/recommendation_all" android:checkable="true" />
+        <com.google.android.material.chip.Chip android:id="@+id/recommendation_manga"
+            style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="@string/recommendation_manga" android:checkable="true" />
+        <com.google.android.material.chip.Chip android:id="@+id/recommendation_novels"
+            style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="@string/recommendation_novels" android:checkable="true" />
+    </com.google.android.material.chip.ChipGroup>
+    <TextView android:id="@+id/recommendation_message" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:textAppearance="?attr/textAppearanceBodySmall"
+        android:padding="8dp" android:visibility="gone" />
+
 	<androidx.viewpager2.widget.ViewPager2
 		android:id="@+id/pager"
 		android:layout_width="match_parent"

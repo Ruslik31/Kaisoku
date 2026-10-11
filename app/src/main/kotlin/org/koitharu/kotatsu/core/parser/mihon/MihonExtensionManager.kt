@@ -242,6 +242,7 @@ class MihonExtensionManager @Inject constructor(
 					displayName = catalogueSource.name,
 					locale = catalogueSource.lang.takeIf { it.isNotBlank() },
 					isNsfwSource = MihonExtensionPackageUtil.readNsfwFlag(metaData),
+                    recommendationVersion = "${identity.versionCode}:${identity.apkDigest}",
 				)
 				MihonSourceRegistry.register(
 					sourceInstance = catalogueSource,

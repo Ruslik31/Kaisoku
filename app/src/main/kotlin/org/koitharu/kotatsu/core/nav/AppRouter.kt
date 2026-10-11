@@ -153,6 +153,10 @@ class AppRouter private constructor(
     fun openSearch(source: MangaSource, query: String) = openList(source, MangaListFilter(query = query), null)
 
     fun openDetails(manga: Manga) {
+        if (manga.source is org.koitharu.kotatsu.suggestions.local.PublicRecommendationSource) {
+            openSearch(manga.title)
+            return
+        }
         startActivity(detailsIntent(contextOrNull() ?: return, manga))
     }
 
@@ -168,6 +172,10 @@ class AppRouter private constructor(
     }
 
     fun openReader(manga: Manga, anchor: View? = null) {
+        if (manga.source.unwrap() is org.koitharu.kotatsu.suggestions.local.PublicRecommendationSource) {
+            openSearch(manga.title)
+            return
+        }
         if (manga.source.unwrap() is LnReaderMangaSource) {
             startActivity(
                 Intent(contextOrNull() ?: return, NovelReaderActivity::class.java)

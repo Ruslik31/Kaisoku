@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recommendations_beta">Local recommendations · Beta</string>
+    <string name="recommendations_legacy">Use legacy suggestions</string>
+    <string name="recommendations_legacy_summary">Use the previous algorithm in Explore and on title details.</string>
+    <string name="recommendations_diversity">Similar → Balanced → Wild</string>
+    <string name="recommendations_diversity_value">Exploration: %1$d%%</string>
+    <string name="recommendations_started">Recommend started titles with new chapters</string>
+    <string name="recommendations_started_summary">Only confirmed unread releases since your last reading session count. Caught-up titles stay hidden.</string>
+    <string name="recommendations_threshold">Required share of new chapters</string>
+    <string name="recommendations_threshold_value">%1$d%% of the current chapter total</string>
+    <string name="recommendations_public">Public recommendations</string>
+    <string name="recommendations_public_summary">Optional AniList and MangaUpdates requests send selected title identifiers or search queries. History, statistics and your taste profile stay on this device.</string>
+    <string name="recommendations_languages">Recommendation languages</string>
+    <string name="recommendations_languages_summary">Empty selection includes all languages. Sources with multiple or unknown languages remain available.</string>
+    <string name="recommendations_clear_dismissals">Clear “Not interested” choices</string>
+    <string name="recommendations_info">Beta: ranking uses favorites, reading history and available statistics locally. Quality depends on source metadata and candidate availability. Similar names may refer to different works or adaptations. Long-press a recommendation to hide it; Undo restores it. No reading progress or favorite categories are changed.</string>
+    <string name="recommendation_because">Because you read %1$s</string>
+    <string name="recommendation_because_favorite">Because you saved %1$s</string>
+    <string name="recommendation_genres">Similar genres</string>
+    <string name="recommendation_author">Same author</string>
+    <string name="recommendation_related">Related on this source</string>
+    <string name="recommendation_discovery">Something to explore</string>
+    <string name="recommendation_new_chapters">Confirmed new chapters</string>
+    <string name="recommendation_not_interested">Not interested</string>
+    <string name="recommendation_hidden">Recommendation hidden</string>
+    <string name="recommendation_find_source">Find a readable source</string>
+    <string name="recommendation_no_sources">No sources match your current preferences. Install or enable a suitable source, then try again.</string>
+    <string name="recommendation_public_match">Match for public recommendations</string>
+    <string name="recommendation_confirm_match">Choose the same work and edition</string>
+    <string name="recommendation_match_risk">Check the title, edition and adaptation. A wrong match can give unrelated recommendations. This only saves a recommendation match; it does not link a tracker or add a favorite.</string>
+    <string name="recommendation_all">All</string>
+    <string name="recommendation_manga">Manga</string>
+    <string name="recommendation_novels">Novels</string>
+    <string name="recommendation_cached_error">Showing saved recommendations. Refresh failed: %1$s</string>
+    <string name="recommendation_network_required">Recommendations need a connection allowed by your Wi-Fi preference.</string>
+</resources>

@@ -17,6 +17,8 @@ sealed class MangaListModel : ListModel {
 	abstract val manga: Manga
 	abstract val counter: Int
 
+    open val recommendation: org.koitharu.kotatsu.suggestions.local.Recommendation? = null
+
 	val id: Long
 		get() = manga.id
 

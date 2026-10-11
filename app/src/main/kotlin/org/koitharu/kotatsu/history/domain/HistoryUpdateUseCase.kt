@@ -16,8 +16,18 @@ import javax.inject.Inject
 
 class HistoryUpdateUseCase @Inject constructor(
     private val historyRepository: HistoryRepository,
+    private val recommendationStore: org.koitharu.kotatsu.suggestions.local.RecommendationStore,
 ) {
     private var lastAsyncUpdate: Job? = null
+
+    @Synchronized
+    fun finishReadingSession(manga: Manga, chapterId: Long?) {
+        val historyUpdate = lastAsyncUpdate ?: return
+        processLifecycleScope.launch(Dispatchers.Default) {
+            historyUpdate.join()
+            recommendationStore.recordChapters(manga, reading = true, chapterId = chapterId)
+        }
+    }
 
     suspend operator fun invoke(manga: Manga, readerState: ReaderState, percent: Float, chapterCompleted: Boolean = false) {
         historyRepository.addOrUpdate(

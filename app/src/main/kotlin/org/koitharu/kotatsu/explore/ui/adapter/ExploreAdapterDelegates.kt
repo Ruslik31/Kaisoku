@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.explore.ui.adapter
 
 import android.view.View
+import androidx.core.view.isVisible
 import androidx.core.content.ContextCompat
 import androidx.core.text.bold
 import androidx.core.text.buildSpannedString
@@ -54,7 +55,8 @@ fun exploreButtonsAD(
 }
 
 fun exploreRecommendationItemAD(
-	itemClickListener: OnListItemClickListener<Manga>,
+	itemClickListener: OnListItemClickListener<MangaCompactListModel>,
+    mediaListener: (String) -> Unit,
 ) = adapterDelegateViewBinding<RecommendationsItem, ListModel, ItemRecommendationBinding>(
 	{ layoutInflater, parent -> ItemRecommendationBinding.inflate(layoutInflater, parent, false) },
 ) {
@@ -75,21 +77,43 @@ fun exploreRecommendationItemAD(
 
 	bind {
 		adapter.items = item.manga
+        binding.recommendationFilters.isVisible = item.mediaFilter != null
+        binding.recommendationFilters.setOnCheckedStateChangeListener(null)
+        binding.recommendationFilters.check(when (item.mediaFilter) {
+            "MANGA" -> R.id.recommendation_manga
+            "NOVEL" -> R.id.recommendation_novels
+            else -> R.id.recommendation_all
+        })
+        binding.recommendationFilters.setOnCheckedStateChangeListener { _, ids ->
+            val media = when (ids.firstOrNull()) {
+                R.id.recommendation_manga -> "MANGA"
+                R.id.recommendation_novels -> "NOVEL"
+                else -> "ALL"
+            }
+            if (media != item.mediaFilter) mediaListener(media)
+        }
+        binding.recommendationMessage.textAndVisible = if (item.error != null) context.getString(R.string.recommendation_cached_error, item.error)
+            else if (item.mediaFilter != null && item.manga.isEmpty()) context.getString(R.string.text_suggestion_holder) else null
+        binding.pager.isVisible = item.manga.isNotEmpty()
+        binding.dots.isVisible = item.manga.isNotEmpty()
 	}
 }
 
 fun recommendationMangaItemAD(
-	itemClickListener: OnListItemClickListener<Manga>,
+	itemClickListener: OnListItemClickListener<MangaCompactListModel>,
 ) = adapterDelegateViewBinding<MangaCompactListModel, MangaCompactListModel, ItemRecommendationMangaBinding>(
 	{ layoutInflater, parent -> ItemRecommendationMangaBinding.inflate(layoutInflater, parent, false) },
 ) {
 
 	binding.root.setOnClickListener { v ->
-		itemClickListener.onItemClick(item.manga, v)
+		itemClickListener.onItemClick(item, v)
 	}
+    binding.root.setOnLongClickListener { view -> itemClickListener.onItemLongClick(item, view) }
 	bind {
 		binding.textViewTitle.text = item.manga.title
-		binding.textViewSubtitle.textAndVisible = item.subtitle
+		binding.textViewSubtitle.textAndVisible = item.recommendation?.let {
+            org.koitharu.kotatsu.suggestions.local.recommendationReasonText(it, context)
+        } ?: item.subtitle
 		binding.imageViewCover.setImageAsync(item.manga.coverUrl, item.manga.source)
 	}
 }

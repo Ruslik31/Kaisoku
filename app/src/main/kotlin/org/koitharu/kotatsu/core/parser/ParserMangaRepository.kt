@@ -91,6 +91,18 @@ class ParserMangaRepository(
 
 	override suspend fun getRelatedMangaImpl(seed: Manga): List<Manga> = parser.getRelatedManga(seed)
 
+    override suspend fun discover(order: SortOrder, filter: MangaListFilter): List<Manga> =
+        parser.getList(0, order, filter)
+
+    override val supportsGenreDiscovery: Boolean get() = true
+
+    override val supportsRelatedDiscovery: Boolean get() = parser.javaClass.getMethod(
+        "getRelatedManga", Manga::class.java, kotlin.coroutines.Continuation::class.java,
+    ).declaringClass != org.koitharu.kotatsu.parsers.core.AbstractMangaParser::class.java
+
+    override suspend fun discoverRelated(seed: Manga): List<Manga> =
+        if (supportsRelatedDiscovery) parser.getRelatedManga(seed) else emptyList()
+
 	override suspend fun getDetailsImpl(manga: Manga): Manga = withMirrors {
 		parser.getDetails(manga)
 	}

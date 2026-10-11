@@ -21,6 +21,22 @@ data class LibrarySourceUsage(
 @Dao
 abstract class MangaDao {
 
+    @Transaction
+    @Query("""
+        SELECT manga.*,
+            EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0) AS favorite,
+            COALESCE(h.updated_at, 0) AS lastRead,
+            COALESCE((SELECT MIN(36000000, SUM(CAST(MAX(0, MIN(duration, 36000000)) AS REAL)))
+                FROM stats s WHERE s.manga_id = manga.manga_id), 0) AS durationMillis,
+            COALESCE(h.percent, 0) AS progress,
+            COALESCE(h.chapters, 0) AS historyChapters
+        FROM manga LEFT JOIN history h ON h.manga_id = manga.manga_id AND h.deleted_at = 0
+        WHERE h.manga_id IS NOT NULL OR
+            EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+        ORDER BY favorite DESC, lastRead DESC, manga.manga_id LIMIT 1000
+    """)
+    abstract fun recommendationTaste(): kotlinx.coroutines.flow.Flow<List<org.koitharu.kotatsu.suggestions.local.RecommendationTasteRow>>
+
 	@Transaction
 	@Query("SELECT * FROM manga WHERE manga_id = :id")
 	abstract suspend fun find(id: Long): MangaWithTags?

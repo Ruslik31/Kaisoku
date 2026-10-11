@@ -47,6 +47,7 @@ class HistoryRepository @Inject constructor(
     private val mangaRepository: MangaDataRepository,
     private val localObserver: HistoryLocalObserver,
     private val newChaptersUseCaseProvider: Provider<CheckNewChaptersUseCase>,
+    private val recommendationStore: org.koitharu.kotatsu.suggestions.local.RecommendationStore,
 ) {
 
     suspend fun getList(offset: Int, limit: Int): List<Manga> {
@@ -136,6 +137,7 @@ class HistoryRepository @Inject constructor(
             )
         }
         newChaptersUseCaseProvider.get()(manga, chapterId)
+        if (force) recommendationStore.manualProgress(manga)
         if (chapterCompleted) trackerSync.onChapterCompleted(manga, chapterId)
     }
 

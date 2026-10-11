@@ -1,0 +1,59 @@
+package org.koitharu.kotatsu.suggestions.local
+
+import org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaSource
+import org.koitharu.kotatsu.core.model.unwrap
+import org.koitharu.kotatsu.parsers.model.Manga
+
+enum class RecommendationKind { MANGA, NOVEL }
+enum class RecommendationProvenance { CACHE, RELATED, GENRE, SEARCH, POPULAR, LATEST, ANILIST, MANGAUPDATES }
+
+sealed interface RecommendationTarget {
+    data class SourceTitle(val manga: Manga) : RecommendationTarget
+    data class PublicTitle(val provider: String, val identifier: String, val manga: Manga) : RecommendationTarget
+}
+
+data class Recommendation(
+    val target: RecommendationTarget,
+    val score: Double = 0.0,
+    val reason: RecommendationReason = RecommendationReason.DISCOVERY,
+    val because: String? = null,
+    val provenance: RecommendationProvenance = RecommendationProvenance.CACHE,
+    val confidence: Double = 0.0,
+    val trustedIdentifiers: Map<String, String> = emptyMap(),
+) {
+    val manga: Manga get() = when (target) {
+        is RecommendationTarget.SourceTitle -> target.manga
+        is RecommendationTarget.PublicTitle -> target.manga
+    }
+    val key: String = when (target) {
+        is RecommendationTarget.SourceTitle -> "source:${manga.source.name}:${manga.id}"
+        is RecommendationTarget.PublicTitle -> "public:${manga.recommendationKind()}:${target.provider}:${target.identifier}"
+    }
+}
+
+enum class RecommendationReason { BECAUSE_READ, BECAUSE_FAVORITE, GENRES, AUTHOR, RELATED, DISCOVERY, NEW_CHAPTERS }
+
+fun Manga.recommendationKind(): RecommendationKind =
+    when (val current = source.unwrap()) {
+        is PublicRecommendationSource -> current.kind
+        is LnReaderMangaSource -> RecommendationKind.NOVEL
+        else -> RecommendationKind.MANGA
+    }
+
+sealed interface RecommendationRequest {
+    data object Explore : RecommendationRequest
+    data class Details(val seed: Manga) : RecommendationRequest
+}
+
+data class TasteTitle(
+    val manga: Manga,
+    val favorite: Boolean,
+    val lastRead: Long,
+    val durationMillis: Long = 0,
+)
+
+data class RecommendationSnapshot(
+    val results: List<Recommendation> = emptyList(),
+    val refreshing: Boolean = false,
+    val error: String? = null,
+)

@@ -4,6 +4,8 @@ import android.view.Menu
 import android.view.MenuInflater
 import androidx.fragment.app.viewModels
 import dagger.hilt.android.AndroidEntryPoint
+import androidx.lifecycle.lifecycleScope
+import org.koitharu.kotatsu.core.util.ext.addMenuProvider
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.list.ui.MangaListFragment
@@ -12,7 +14,24 @@ import org.koitharu.kotatsu.list.ui.MangaListFragment
 class RelatedListFragment : MangaListFragment() {
 
 	override val viewModel by viewModels<RelatedListViewModel>()
-	override val isSwipeRefreshEnabled = false
+	override val isSwipeRefreshEnabled get() = !settings.useLegacySuggestions
+
+    override fun onViewBindingCreated(binding: org.koitharu.kotatsu.databinding.FragmentListBinding, state: android.os.Bundle?) {
+        super.onViewBindingCreated(binding, state)
+        addMenuProvider(object : androidx.core.view.MenuProvider {
+            override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
+                menu.add(Menu.NONE, R.id.action_recommendation_provider_match, Menu.NONE, R.string.recommendation_public_match)
+            }
+            override fun onPrepareMenu(menu: Menu) {
+                menu.findItem(R.id.action_recommendation_provider_match)?.isVisible = settings.publicRecommendations && !settings.useLegacySuggestions
+            }
+            override fun onMenuItemSelected(item: android.view.MenuItem): Boolean {
+                if (item.itemId != R.id.action_recommendation_provider_match) return false
+                recommendationUi.confirmProvider(viewModel.seed, binding.root, viewLifecycleOwner.lifecycleScope) { viewModel.onRefresh() }
+                return true
+            }
+        })
+    }
 
 	override fun onScrolledToEnd() = Unit
 

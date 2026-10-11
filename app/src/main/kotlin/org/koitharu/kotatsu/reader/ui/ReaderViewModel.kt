@@ -317,6 +317,9 @@ class ReaderViewModel @Inject constructor(
     fun onPause() {
         getMangaOrNull()?.let {
             statsCollector.onPause(it.id)
+            if (isIncognitoMode.value == false) {
+                historyUpdateUseCase.finishReadingSession(it, readingState.value?.chapterId)
+            }
         }
     }
 

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item type="id" name="action_recommendation_provider_match" />
+    <item type="id" name="action_recommendation_media" />
+</resources>

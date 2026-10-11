@@ -10,6 +10,23 @@
 		android:layout="@layout/preference_toggle_header"
 		android:title="@string/suggestions_enable" />
 
+    <SwitchPreferenceCompat android:key="suggestions_legacy" android:defaultValue="false"
+        android:title="@string/recommendations_legacy" android:summary="@string/recommendations_legacy_summary" />
+    <SeekBarPreference android:key="suggestions_diversity" android:defaultValue="50" android:max="100"
+        android:title="@string/recommendations_diversity" app:min="0" app:showSeekBarValue="false" />
+    <SwitchPreferenceCompat android:key="suggestions_started" android:defaultValue="true"
+        android:title="@string/recommendations_started" android:summary="@string/recommendations_started_summary" />
+    <SeekBarPreference android:key="suggestions_release_threshold" android:defaultValue="25" android:max="100"
+        android:title="@string/recommendations_threshold" app:min="1" app:showSeekBarValue="true" />
+    <MultiSelectListPreference android:key="suggestions_languages" android:title="@string/recommendations_languages"
+        android:summary="@string/recommendations_languages_summary" />
+    <SwitchPreferenceCompat android:key="suggestions_public" android:defaultValue="false"
+        android:title="@string/recommendations_public" android:summary="@string/recommendations_public_summary" />
+    <Preference android:key="recommendations_clear_dismissals" android:persistent="false"
+        android:title="@string/recommendations_clear_dismissals" />
+    <Preference android:key="recommendations_beta_info" android:persistent="false" android:selectable="false"
+        android:title="@string/recommendations_beta" android:summary="@string/recommendations_info" />
+
 	<SwitchPreferenceCompat
 		android:defaultValue="false"
 		android:dependency="suggestions"

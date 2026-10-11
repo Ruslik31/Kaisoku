@@ -26,6 +26,31 @@ import java.io.IOException
 class MihonMangaUpdatesTest {
 
     @Test
+    fun RecommendationMetadataDoesNotFetchChaptersForCombinedSources() = runTest {
+        val source = object : CombinedSource() {
+            override suspend fun update(manga: SManga, fetchDetails: Boolean, fetchChapters: Boolean): SMangaUpdate {
+                assertTrue(fetchDetails)
+                assertTrue(!fetchChapters)
+                return SMangaUpdate(manga, emptyList())
+            }
+        }
+        assertEquals("/work", updates(source).metadata(manga()).url)
+    }
+
+    @Test
+    fun RecommendationMetadataDoesNotFetchChaptersForLegacySources() = runTest {
+        val source = LegacySource(chapters = { error("Recommendation metadata must not paginate chapters") })
+        assertEquals("/work", updates(source).metadata(manga()).url)
+    }
+
+    @Test
+    fun RecommendationMetadataPreservesCancellationWithoutFallbackRequests() = runTest {
+        val cancellation = CancellationException("Screen changed")
+        val source = LegacySource(details = { throw cancellation }, chapters = { error("Must not fetch chapters") })
+        assertSame(cancellation, runCatching { updates(source).metadata(manga()) }.exceptionOrNull())
+    }
+
+    @Test
     fun inheritedCombinedOverrideLoadsBothAndPreservesOriginalChapterMetadata() = runTest {
         val originalChapter = chapter().apply {
             memo = JsonObject(mapOf("imageToken" to JsonPrimitive("fixture-token")))

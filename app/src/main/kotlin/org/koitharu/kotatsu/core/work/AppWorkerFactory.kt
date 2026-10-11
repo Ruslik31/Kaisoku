@@ -77,6 +77,7 @@ class AppWorkerFactory @Inject constructor(
     private val syncBackendSettings: Provider<SyncBackendSettings>,
     private val aniListRepository: Provider<AniListRepository>,
     private val trackerLibrary: Provider<org.koitharu.kotatsu.scrobbling.common.data.TrackerLibraryRepository>,
+    private val recommendationEngine: Provider<org.koitharu.kotatsu.suggestions.local.RecommendationEngine>,
 ) : WorkerFactory() {
 
     override fun createWorker(
@@ -136,6 +137,7 @@ class AppWorkerFactory @Inject constructor(
             workManager = workManager.get(),
             mangaRepositoryFactory = mangaRepositoryFactory.get(),
             sourcesRepository = sourcesRepository.get(),
+            recommendationEngine = recommendationEngine.get(),
         )
 
         GoogleDriveWorker::class.java.name -> GoogleDriveWorker(

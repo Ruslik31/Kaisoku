@@ -7,14 +7,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
-import org.koitharu.kotatsu.core.util.ext.onFirst
 import org.koitharu.kotatsu.list.domain.MangaListMapper
 import org.koitharu.kotatsu.list.domain.QuickFilterListener
 import org.koitharu.kotatsu.list.ui.MangaListViewModel
@@ -23,6 +21,7 @@ import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.list.ui.model.toErrorState
 import org.koitharu.kotatsu.suggestions.domain.SuggestionRepository
 import org.koitharu.kotatsu.suggestions.domain.SuggestionsListQuickFilter
+import org.koitharu.kotatsu.suggestions.local.shareRecommendations
 import javax.inject.Inject
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -30,67 +29,69 @@ import kotlinx.coroutines.flow.SharedFlow
 
 @HiltViewModel
 class SuggestionsViewModel @Inject constructor(
-	repository: SuggestionRepository,
-	settings: AppSettings,
-	private val mangaListMapper: MangaListMapper,
-	private val quickFilter: SuggestionsListQuickFilter,
-	private val suggestionsScheduler: SuggestionsWorker.Scheduler,
-	mangaDataRepository: MangaDataRepository,
-	@LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
+    repository: SuggestionRepository,
+    private val settings: AppSettings,
+    private val mangaListMapper: MangaListMapper,
+    private val quickFilter: SuggestionsListQuickFilter,
+    private val suggestionsScheduler: SuggestionsWorker.Scheduler,
+    mangaDataRepository: MangaDataRepository,
+    @LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), QuickFilterListener by quickFilter {
 
-	override val listMode = settings.observeAsFlow(AppSettings.KEY_LIST_MODE_SUGGESTIONS) { suggestionsListMode }
-		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, settings.suggestionsListMode)
+    override val listMode = settings.observeAsFlow(AppSettings.KEY_LIST_MODE_SUGGESTIONS) { suggestionsListMode }
+        .stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, settings.suggestionsListMode)
 
-	override val content = combine(
-		quickFilter.appliedOptions.combineWithSettings().flatMapLatest { repository.observeAll(0, it) },
-		observeListModeWithTriggers(),
-	) { list, mode ->
-		// Read at map time rather than combined in: the query above already re-runs on every filter
-		// change, so a second input would render the chips one frame ahead of their results.
-		val filters = quickFilter.appliedOptions.value
-		when {
-			list.isEmpty() -> if (filters.isEmpty()) {
-				listOf(
-					EmptyState(
-						icon = R.drawable.ic_empty_common,
-						textPrimary = R.string.nothing_found,
-						textSecondary = R.string.text_suggestion_holder,
-						actionStringRes = 0,
-					),
-				)
-			} else {
-				listOfNotNull(
-					quickFilter.filterItem(filters),
-					EmptyState(
-						icon = R.drawable.ic_empty_common,
-						textPrimary = R.string.nothing_found,
-						textSecondary = R.string.text_empty_holder_secondary_filtered,
-						actionStringRes = 0,
-					),
-				)
-			}
+    override val content = combine(
+        quickFilter.appliedOptions.combineWithSettings().flatMapLatest { repository.observeDisplay(0, it) },
+        observeListModeWithTriggers(),
+    ) { snapshot, mode ->
+        val list = snapshot.results.map { it.manga }
+        // Read at map time rather than combined in: the query above already re-runs on every filter
+        // change, so a second input would render the chips one frame ahead of their results.
+        val filters = quickFilter.appliedOptions.value
+        when {
+            list.isEmpty() && snapshot.error != null -> listOf(java.io.IOException(snapshot.error).toErrorState(canRetry = true))
+            list.isEmpty() -> if (filters.isEmpty()) {
+                listOf(
+                    EmptyState(
+                        icon = R.drawable.ic_empty_common,
+                        textPrimary = R.string.nothing_found,
+                        textSecondary = R.string.text_suggestion_holder,
+                        actionStringRes = 0,
+                    ),
+                )
+            } else {
+                listOfNotNull(
+                    quickFilter.filterItem(filters),
+                    EmptyState(
+                        icon = R.drawable.ic_empty_common,
+                        textPrimary = R.string.nothing_found,
+                        textSecondary = R.string.text_empty_holder_secondary_filtered,
+                        actionStringRes = 0,
+                    ),
+                )
+            }
 
-			else -> buildList(list.size + 1) {
-				quickFilter.filterItem(filters)?.let(::add)
-				mangaListMapper.toListModelList(this, list, mode)
-			}
-		}
-	}.onStart {
-		loadingCounter.increment()
-	}.onFirst {
-		loadingCounter.decrement()
-	}.catch {
-		emit(listOf(it.toErrorState(canRetry = false)))
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
+            else -> buildList(list.size + 1) {
+                quickFilter.filterItem(filters)?.let(::add)
+                snapshot.error?.let { add(java.io.IOException(it).toErrorState(canRetry = true)) }
+                if (settings.useLegacySuggestions) mangaListMapper.toListModelList(this, list, mode)
+                else addAll(mangaListMapper.toRecommendationModels(snapshot.results, mode))
+            }
+        }
+    }.catch {
+        emit(listOf(it.toErrorState(canRetry = false)))
+    }.shareRecommendations(viewModelScope + Dispatchers.Default, listOf(LoadingState))
 
-	override fun onRefresh() = updateSuggestions()
+    override fun onRefresh() = updateSuggestions()
 
-	override fun onRetry() = Unit
+    override fun onRetry() = updateSuggestions()
+    val isLegacy get() = settings.useLegacySuggestions
+    fun setMedia(value: String) { settings.recommendationMedia = value }
 
-	fun updateSuggestions() {
-		launchLoadingJob(Dispatchers.Default) {
-			suggestionsScheduler.startNow()
-		}
-	}
+    fun updateSuggestions() {
+        launchLoadingJob(Dispatchers.Default) {
+            suggestionsScheduler.startNow()
+        }
+    }
 }

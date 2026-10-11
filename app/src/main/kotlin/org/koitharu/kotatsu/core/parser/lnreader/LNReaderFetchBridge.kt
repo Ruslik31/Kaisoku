@@ -13,6 +13,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.util.Locale
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 
 /**
  * Native fetch API bridge for LNReader JS plugins.
@@ -28,6 +30,7 @@ import java.util.Locale
 class LNReaderFetchBridge(
 	private val httpClient: OkHttpClient,
 	private val pluginId: String,
+    private val operationJob: Job? = null,
 ) {
 	companion object {
 		private const val TAG = "LNReaderFetchBridge"
@@ -43,95 +46,103 @@ class LNReaderFetchBridge(
 	 * Performs an HTTP request matching the Fetch API contract.
 	 * Called from JavaScript via native bridge.
 	 */
-	fun fetch(url: String, initStr: String? = null): String {
-		return try {
-			LnLog.d(TAG, "[$pluginId] Fetching: $url")
+    @OptIn(kotlinx.coroutines.InternalCoroutinesApi::class)
+    fun fetch(url: String, initStr: String? = null): String {
+        return try {
+            LnLog.d(TAG, "[$pluginId] Fetching: $url")
 
-			val parsedUrl = url.toHttpUrlOrNull()
-			if (parsedUrl == null) {
-				return errorResponse(url, 0, "Security Error", "Invalid URL: $url")
-			}
-			lastRequestDescription = "Request ${parsedUrl.scheme}://${parsedUrl.host}${parsedUrl.encodedPath}"
+            val parsedUrl = url.toHttpUrlOrNull()
+            if (parsedUrl == null) {
+                return errorResponse(url, 0, "Security Error", "Invalid URL: $url")
+            }
+            lastRequestDescription = "Request ${parsedUrl.scheme}://${parsedUrl.host}${parsedUrl.encodedPath}"
 
-			val init = try {
-				if (!initStr.isNullOrEmpty()) org.json.JSONObject(initStr) else null
-			} catch (e: Exception) {
-				null
-			}
+            val init = try {
+                if (!initStr.isNullOrEmpty()) org.json.JSONObject(initStr) else null
+            } catch (e: Exception) {
+                null
+            }
 
-			val method = (init?.optString("method"))?.ifEmpty { "GET" }?.uppercase(Locale.ROOT) ?: "GET"
-			val headersMap = extractHeaders(init)
-			val body = extractBody(init)
+            val method = (init?.optString("method"))?.ifEmpty { "GET" }?.uppercase(Locale.ROOT) ?: "GET"
+            val headersMap = extractHeaders(init)
+            val body = extractBody(init)
 
-			val requestBuilder = Request.Builder()
-				.url(parsedUrl)
+            val requestBuilder = Request.Builder()
+                .url(parsedUrl)
 
-			val headerBuilder = Headers.Builder()
-			if (!headersMap.containsKey("user-agent")) {
-				headerBuilder.add("User-Agent", DEFAULT_USER_AGENT)
-			}
-			headersMap.forEach { (key, value) ->
-				// Fetch owns compression negotiation; explicit gzip disables OkHttp decompression.
-				if (!key.equals("accept-encoding", ignoreCase = true)) headerBuilder.add(key, value)
-			}
-			requestBuilder.headers(headerBuilder.build())
+            val headerBuilder = Headers.Builder()
+            if (!headersMap.containsKey("user-agent")) {
+                headerBuilder.add("User-Agent", DEFAULT_USER_AGENT)
+            }
+            headersMap.forEach { (key, value) ->
+                // Fetch owns compression negotiation; explicit gzip disables OkHttp decompression.
+                if (!key.equals("accept-encoding", ignoreCase = true)) headerBuilder.add(key, value)
+            }
+            requestBuilder.headers(headerBuilder.build())
 
-			val contentType = headersMap["content-type"] ?: "application/x-www-form-urlencoded"
-			val requestBody = body?.toRequestBody(contentType.toMediaType())
-			requestBuilder.method(method, when (method) {
-				"GET", "HEAD" -> null
-				"POST", "PUT", "PATCH" -> requestBody ?: "".toRequestBody(contentType.toMediaType())
-				else -> requestBody
-			})
+            val contentType = headersMap["content-type"] ?: "application/x-www-form-urlencoded"
+            val requestBody = body?.toRequestBody(contentType.toMediaType())
+            requestBuilder.method(method, when (method) {
+                "GET", "HEAD" -> null
+                "POST", "PUT", "PATCH" -> requestBody ?: "".toRequestBody(contentType.toMediaType())
+                else -> requestBody
+            })
 
-			httpClient.newCall(requestBuilder.build()).execute().use { response ->
-				lastRequestDescription = "HTTP ${response.code}: ${response.request.url.scheme}://${response.request.url.host}${response.request.url.encodedPath}"
-				val responseBody = response.body?.string() ?: ""
-				val responseHeaders = mutableMapOf<String, String>()
-				response.headers.forEach { (name, value) ->
-					responseHeaders[name] = value
-				}
+            operationJob?.ensureActive()
+            val call = httpClient.newCall(requestBuilder.build())
+            val cancellation = operationJob?.invokeOnCompletion(onCancelling = true, invokeImmediately = true) {
+                if (operationJob.isCancelled) call.cancel()
+            }
+            try { call.execute().use { response ->
+                lastRequestDescription = "HTTP ${response.code}: ${response.request.url.scheme}://${response.request.url.host}${response.request.url.encodedPath}"
+                val responseBody = response.body?.string() ?: ""
+                val responseHeaders = mutableMapOf<String, String>()
+                response.headers.forEach { (name, value) ->
+                    responseHeaders[name] = value
+                }
 
-				LnLog.d(TAG, "[$pluginId] Success: ${response.code} (${responseBody.length} bytes)")
+                LnLog.d(TAG, "[$pluginId] Success: ${response.code} (${responseBody.length} bytes)")
 
-				val responseJson = org.json.JSONObject()
-				responseJson.put("ok", response.isSuccessful)
-				responseJson.put("status", response.code)
-				responseJson.put("statusText", response.message.ifEmpty { "OK" })
-				responseJson.put("url", response.request.url.toString())
-				responseJson.put("text", responseBody)
+                val responseJson = org.json.JSONObject()
+                responseJson.put("ok", response.isSuccessful)
+                responseJson.put("status", response.code)
+                responseJson.put("statusText", response.message.ifEmpty { "OK" })
+                responseJson.put("url", response.request.url.toString())
+                responseJson.put("text", responseBody)
 
-				val jsHeaders = org.json.JSONObject()
-				responseHeaders.forEach { (k, v) -> jsHeaders.put(k, v) }
-				responseJson.put("headers", jsHeaders)
+                val jsHeaders = org.json.JSONObject()
+                responseHeaders.forEach { (k, v) -> jsHeaders.put(k, v) }
+                responseJson.put("headers", jsHeaders)
 
-				responseJson.toString()
-			}
-		} catch (e: Exception) {
-			lastRequestDescription = "${lastRequestDescription.orEmpty()}: ${e.message ?: e.javaClass.simpleName}"
-			val causeList = generateSequence(e as Throwable) { it.cause }.toList()
-			val interactiveEx = causeList.find {
-				it.javaClass.name.contains("CloudFlare") ||
-					it.javaClass.name.contains("InteractiveAction")
-			} as? Exception
+                responseJson.toString()
+            } } finally { cancellation?.dispose() }
+        } catch (e: Exception) {
+            operationJob?.ensureActive()
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            lastRequestDescription = "${lastRequestDescription.orEmpty()}: ${e.message ?: e.javaClass.simpleName}"
+            val causeList = generateSequence(e as Throwable) { it.cause }.toList()
+            val interactiveEx = causeList.find {
+                it.javaClass.name.contains("CloudFlare") ||
+                    it.javaClass.name.contains("InteractiveAction")
+            } as? Exception
 
-			if (interactiveEx != null) {
-				LnLog.e(TAG, "[$pluginId] Native Protection engaged: ${interactiveEx.message}")
-				pendingFatalException = interactiveEx
-				errorResponse(url, 403, "Protected", interactiveEx.message ?: "Protected")
-			} else if (e is java.io.IOException) {
-				LnLog.e(TAG, "[$pluginId] Network error: ${e.message}")
-				errorResponse(url, 0, "Network Error", e.message ?: "Network error")
-			} else {
-				LnLog.e(TAG, "[$pluginId] Fatal error: ${e.message}")
-				errorResponse(url, 0, "Fatal Error", "Fatal error: ${e.message}")
-			}
-		}
-	}
+            if (interactiveEx != null) {
+                LnLog.e(TAG, "[$pluginId] Native Protection engaged: ${interactiveEx.message}")
+                pendingFatalException = interactiveEx
+                errorResponse(url, 403, "Protected", interactiveEx.message ?: "Protected")
+            } else if (e is java.io.IOException) {
+                LnLog.e(TAG, "[$pluginId] Network error: ${e.message}")
+                errorResponse(url, 0, "Network Error", e.message ?: "Network error")
+            } else {
+                LnLog.e(TAG, "[$pluginId] Fatal error: ${e.message}")
+                errorResponse(url, 0, "Fatal Error", "Fatal error: ${e.message}")
+            }
+        }
+    }
 
-	/**
-	 * Generate the JavaScript wrapper function for injection into QuickJS.
-	 */
+    /**
+     * Generate the JavaScript wrapper function for injection into QuickJS.
+     */
 	fun toJavaScriptFunction(): String {
 		return """
 			class Headers {

@@ -30,7 +30,7 @@ import javax.inject.Inject
 
 @Reusable
 class MangaListMapper @Inject constructor(
-	@ApplicationContext context: Context,
+	@ApplicationContext private val context: Context,
 	private val settings: AppSettings,
 	private val trackingRepository: TrackingRepository,
 	private val historyRepository: HistoryRepository,
@@ -38,6 +38,19 @@ class MangaListMapper @Inject constructor(
 	private val localMangaIndex: LocalMangaIndex,
 	private val dataRepository: MangaDataRepository,
 ) {
+
+    suspend fun toRecommendationModels(values: List<org.koitharu.kotatsu.suggestions.local.Recommendation>, mode: ListMode): List<MangaListModel> {
+        val models = toListModelList(values.map { it.manga }, mode)
+        return models.mapIndexed { index, model ->
+            val recommendation = values[index]
+            val reason = org.koitharu.kotatsu.suggestions.local.recommendationReasonText(recommendation, context)
+            when (model) {
+                is MangaGridModel -> model.copy(recommendation = recommendation)
+                is MangaCompactListModel -> model.copy(recommendation = recommendation, subtitle = reason)
+                is MangaDetailedListModel -> model.copy(recommendation = recommendation, subtitle = reason)
+            }
+        }
+    }
 
 
 	suspend fun toListModelList(

@@ -10,10 +10,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
+import org.koitharu.kotatsu.suggestions.local.shareRecommendations
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
@@ -161,13 +163,17 @@ class DetailsViewModel @Inject constructor(
 		relatedMangaRequest(details, finished, settings.isRelatedMangaEnabled, settings.isNsfwContentDisabled)
 	}.distinctUntilChanged { old, new -> old?.key == new?.key }
 
-	val relatedManga: StateFlow<List<MangaListModel>> = relatedRequest.mapLatest { request ->
-		if (request == null) return@mapLatest emptyList()
-		val related = relatedMangaUseCase(request.manga).orEmpty().let { list ->
-			if (request.hideAdult) list.filterNot { it.isNsfw() } else list
-		}
-		mangaListMapper.toListModelList(manga = related, mode = ListMode.GRID)
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, emptyList())
+	private val recommendationState = relatedRequest.flatMapLatest { request ->
+        if (request == null) kotlinx.coroutines.flow.flowOf(org.koitharu.kotatsu.suggestions.local.RecommendationSnapshot())
+        else relatedMangaUseCase.observe(request.manga)
+    }.shareRecommendations(viewModelScope + Dispatchers.Default, org.koitharu.kotatsu.suggestions.local.RecommendationSnapshot())
+
+    val recommendationError = recommendationState.mapLatest { it.error }
+
+	val relatedManga: StateFlow<List<MangaListModel>> = recommendationState.mapLatest { snapshot ->
+        if (settings.useLegacySuggestions) mangaListMapper.toListModelList(snapshot.results.map { it.manga }, ListMode.GRID)
+        else mangaListMapper.toRecommendationModels(snapshot.results, ListMode.GRID)
+	}.shareRecommendations(viewModelScope + Dispatchers.Default, emptyList())
 
 	val tags = manga.mapLatest {
 		mangaListMapper.mapTags(it?.tags.orEmpty())

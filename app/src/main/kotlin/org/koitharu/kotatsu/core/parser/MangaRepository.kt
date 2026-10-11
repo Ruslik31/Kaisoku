@@ -71,6 +71,20 @@ interface MangaRepository {
 
 	suspend fun getRelated(seed: Manga): List<Manga>
 
+    /** Recommendation calls must not mutate browse pagination or the user's selected filters. */
+    suspend fun discover(order: SortOrder, filter: MangaListFilter): List<Manga> = emptyList()
+
+    /** Optional metadata-only endpoint. Never fall back to full chapter/page retrieval here. */
+    val supportsLightweightMetadata: Boolean get() = false
+
+    val supportsRelatedDiscovery: Boolean get() = false
+
+    val supportsGenreDiscovery: Boolean get() = false
+    suspend fun getLightweightMetadata(manga: Manga): Manga? = null
+
+    /** Source-defined relationships only; generic keyword fallback is bounded by the engine. */
+    suspend fun discoverRelated(seed: Manga): List<Manga> = emptyList()
+
 	fun getImageClient(): OkHttpClient? = null
 
 	fun createPageRequest(pageUrl: String, page: MangaPage): Request = Request.Builder()
@@ -127,17 +141,18 @@ interface MangaRepository {
 		private val mihonExtensionManager: MihonExtensionManager,
 		private val lnReaderSourceManager: LnReaderSourceManager,
 		private val appSettings: AppSettings,
+        private val recommendationStore: org.koitharu.kotatsu.suggestions.local.RecommendationStore,
 	) {
 
 		private val cache = ArrayMap<MangaSource, WeakReference<MangaRepository>>()
 
-		@AnyThread
-		fun create(source: MangaSource): MangaRepository {
-			when (source) {
-				is MangaSourceInfo -> return create(source.mangaSource)
-				LocalMangaSource -> return localMangaRepository
-				UnknownMangaSource -> return EmptyMangaRepository(source)
-			}
+        @AnyThread
+        fun create(source: MangaSource): MangaRepository {
+            when (source) {
+                is MangaSourceInfo -> return create(source.mangaSource)
+                LocalMangaSource -> return localMangaRepository
+                UnknownMangaSource -> return EmptyMangaRepository(source)
+            }
             if (source is MihonMangaSource) {
                 // Resolve before consulting the repository cache: ignored, removed or replaced
                 // packages must not keep being served by an obsolete extension instance.
@@ -154,27 +169,33 @@ interface MangaRepository {
                         } else {
                             contentCache.clear(source)
                             MihonMangaRepository(loaded, contentCache, appSettings).also {
+                                attachEvidence(it)
                                 cache[source] = WeakReference(it)
                             }
                         }
                     }
                 }
             }
-			cache[source]?.get()?.let { return it }
-			return synchronized(cache) {
-				cache[source]?.get()?.let { return it }
-				val repository = createRepository(source)
-				if (repository != null) {
-					cache[source] = WeakReference(repository)
-					repository
-				} else {
-					EmptyMangaRepository(source)
-				}
-			}
-		}
+            cache[source]?.get()?.let { return it }
+            return synchronized(cache) {
+                cache[source]?.get()?.let { return it }
+                val repository = createRepository(source)
+                if (repository != null) {
+                    attachEvidence(repository)
+                    cache[source] = WeakReference(repository)
+                    repository
+                } else {
+                    EmptyMangaRepository(source)
+                }
+            }
+        }
 
-		private fun createRepository(source: MangaSource): MangaRepository? = when (source) {
-			// Constructing a built-in parser can still throw (a malformed source, a removed symbol, or
+        private fun attachEvidence(repository: MangaRepository) {
+            (repository as? CachingMangaRepository)?.onFreshDetails = { recommendationStore.recordChapters(it) }
+        }
+
+        private fun createRepository(source: MangaSource): MangaRepository? = when (source) {
+            // Constructing a built-in parser can still throw (a malformed source, a removed symbol, or
 			// an unavailable source picked up from an old backup). Contain it so the source degrades to
 			// an empty one instead of taking down the whole app.
 			is MangaParserSource -> createBuiltInRepository(source)

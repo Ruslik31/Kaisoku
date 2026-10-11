@@ -62,6 +62,7 @@ class MihonMangaRepository(
 
 	private val mihonSource = loadedSource.catalogueSource
     private val mangaUpdates = MihonMangaUpdates(mihonSource, ::mapHostedFailure)
+    private val discovery = MihonDiscovery(mihonSource)
     private val chapterCache = MihonChapterCache()
 	private var mihonFilters = mihonSource.getFilterList()
 	private val defaultFilterState = mihonFilters.stateFingerprint()
@@ -131,6 +132,19 @@ class MihonMangaRepository(
             chapter.toKaisokuChapter(number = number)
         }
         details.toKaisokuManga(chapters = chapters).copy(id = manga.id)
+    }
+
+    override suspend fun discover(order: SortOrder, filter: MangaListFilter): List<Manga> = withContext(Dispatchers.IO) {
+        runCatchingCancellable {
+            val result = discovery.get(order, filter)
+            result.mangas.map { it.toKaisokuManga() }
+        }.getOrElse { throw mapHostedFailure(it) }
+    }
+
+    override val supportsLightweightMetadata: Boolean get() = true
+
+    override suspend fun getLightweightMetadata(manga: Manga): Manga = withContext(Dispatchers.IO) {
+        mangaUpdates.metadata(manga.toSManga()).toKaisokuManga().copy(id = manga.id)
     }
 
     private suspend fun loadDetailsAndChapters(manga: Manga): Pair<SManga, List<SChapter>> {

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recommendations_beta">Локальные рекомендации · Бета</string>
+    <string name="recommendations_legacy">Прежние рекомендации</string>
+    <string name="recommendations_legacy_summary">Использовать прежний алгоритм в Обзоре и на странице произведения.</string>
+    <string name="recommendations_diversity">Похожие → Сбалансированные → Необычные</string>
+    <string name="recommendations_diversity_value">Доля новых направлений: %1$d%%</string>
+    <string name="recommendations_started">Рекомендовать начатое с новыми главами</string>
+    <string name="recommendations_started_summary">Учитываются только подтверждённые непрочитанные главы, выпущенные после последнего чтения. Прочитанные до конца произведения скрыты.</string>
+    <string name="recommendations_threshold">Необходимая доля новых глав</string>
+    <string name="recommendations_threshold_value">%1$d%% от текущего числа глав</string>
+    <string name="recommendations_public">Публичные рекомендации</string>
+    <string name="recommendations_public_summary">Необязательные запросы к AniList и MangaUpdates передают идентификатор или поисковый запрос выбранного произведения. История, статистика и профиль интересов остаются на устройстве.</string>
+    <string name="recommendations_languages">Языки рекомендаций</string>
+    <string name="recommendations_languages_summary">Если ничего не выбрано, доступны все языки. Многоязычные источники и источники без указанного языка остаются доступны.</string>
+    <string name="recommendations_clear_dismissals">Очистить отметки «Не интересно»</string>
+    <string name="recommendations_info">Бета: избранное, история чтения и доступная статистика обрабатываются на устройстве. Качество зависит от данных источников и доступных произведений. Похожие названия могут относиться к разным произведениям или адаптациям. Удерживайте рекомендацию, чтобы скрыть её; отмена вернёт её. Прогресс чтения и категории избранного не меняются.</string>
+    <string name="recommendation_because">Вы читали: %1$s</string>
+    <string name="recommendation_because_favorite">Вы сохранили: %1$s</string>
+    <string name="recommendation_genres">Похожие жанры</string>
+    <string name="recommendation_author">Тот же автор</string>
+    <string name="recommendation_related">Связано на этом источнике</string>
+    <string name="recommendation_discovery">Попробуйте что-нибудь новое</string>
+    <string name="recommendation_new_chapters">Подтверждённые новые главы</string>
+    <string name="recommendation_not_interested">Не интересно</string>
+    <string name="recommendation_hidden">Рекомендация скрыта</string>
+    <string name="recommendation_find_source">Найти источник для чтения</string>
+    <string name="recommendation_no_sources">Нет источников, подходящих под текущие настройки. Установите или включите подходящий источник и попробуйте снова.</string>
+    <string name="recommendation_public_match">Сопоставить для публичных рекомендаций</string>
+    <string name="recommendation_confirm_match">Выберите то же произведение и издание</string>
+    <string name="recommendation_match_risk">Проверьте название, издание и адаптацию. Ошибочное совпадение может дать неподходящие рекомендации. Сохраняется только выбор для рекомендаций: трекер не привязывается, произведение не добавляется в избранное.</string>
+    <string name="recommendation_all">Все</string>
+    <string name="recommendation_manga">Манга</string>
+    <string name="recommendation_novels">Новеллы</string>
+    <string name="recommendation_cached_error">Показаны сохранённые рекомендации. Ошибка обновления: %1$s</string>
+    <string name="recommendation_network_required">Для рекомендаций нужно соединение, разрешённое настройкой Wi-Fi.</string>
+</resources>

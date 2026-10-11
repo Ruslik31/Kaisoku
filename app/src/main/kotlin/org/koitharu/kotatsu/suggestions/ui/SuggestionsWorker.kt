@@ -99,20 +99,30 @@ class SuggestionsWorker @AssistedInject constructor(
 	private val workManager: WorkManager,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val sourcesRepository: MangaSourcesRepository,
+    private val recommendationEngine: org.koitharu.kotatsu.suggestions.local.RecommendationEngine,
 ) : CoroutineWorker(appContext, params) {
 
 	private val notificationManager by lazy { NotificationManagerCompat.from(appContext) }
 
-	override suspend fun doWork(): Result {
-		trySetForeground()
-		if (!appSettings.isSuggestionsEnabled) {
-			suggestionRepository.clear()
-			return Result.success()
-		}
-		val count = doWorkImpl()
-		val outputData = workDataOf(DATA_COUNT to count)
-		return Result.success(outputData)
-	}
+    override suspend fun doWork(): Result {
+        trySetForeground()
+        if (!appSettings.isSuggestionsEnabled) {
+            return Result.success()
+        }
+        if (!appSettings.useLegacySuggestions) {
+            recommendationEngine.refresh(org.koitharu.kotatsu.suggestions.local.RecommendationRequest.Explore)
+            val results = recommendationEngine.cachedExplore()
+            if (!appSettings.useLegacySuggestions && appSettings.isSuggestionsNotificationAvailable &&
+                applicationContext.checkNotificationPermission(MANGA_CHANNEL_ID)) {
+                results.firstOrNull { it.target is org.koitharu.kotatsu.suggestions.local.RecommendationTarget.SourceTitle }
+                    ?.let { showNotification(it.manga) }
+            }
+            return Result.success(workDataOf(DATA_COUNT to results.size))
+        }
+        val count = doWorkImpl()
+        val outputData = workDataOf(DATA_COUNT to count)
+        return Result.success(outputData)
+    }
 
 	override suspend fun getForegroundInfo(): ForegroundInfo {
 		val title = applicationContext.getString(R.string.suggestions_updating)
@@ -246,8 +256,7 @@ class SuggestionsWorker @AssistedInject constructor(
 
 	private suspend fun getSources(): List<MangaSource> {
 		if (appSettings.isSuggestionsIncludeDisabledSources) {
-			val result = sourcesRepository.allMangaSources.toMutableList<MangaSource>()
-			result.addAll(sourcesRepository.getExternalSources())
+			val result = sourcesRepository.getRecommendationSources(true).toMutableList()
 			result.shuffle()
 			result.sortWith(compareBy(nullsLast(LocaleComparator())) { it.getLocale() })
 			return result
@@ -436,9 +445,7 @@ class SuggestionsWorker @AssistedInject constructor(
 			if (workManager.awaitWorkInfosByTag(TAG_ONESHOT).any { !it.state.isFinished }) {
 				return
 			}
-			val constraints = Constraints.Builder()
-				.setRequiredNetworkType(NetworkType.CONNECTED)
-				.build()
+			val constraints = createConstraints()
 			val request = OneTimeWorkRequestBuilder<SuggestionsWorker>()
 				.setConstraints(constraints)
 				.addTag(TAG_ONESHOT)

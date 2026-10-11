@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.core.ui.BaseFragment
 import org.koitharu.kotatsu.core.ui.dialog.BigButtonsAlertDialog
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
+import org.koitharu.kotatsu.core.util.ext.viewLifecycleScope
 import org.koitharu.kotatsu.core.ui.util.RecyclerViewOwner
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
 import org.koitharu.kotatsu.core.ui.util.SpanSizeResolver
@@ -58,6 +59,7 @@ class ExploreFragment :
 	OnListItemClickListener<MangaSourceItem>, ListSelectionController.Callback {
 
 	private val viewModel by viewModels<ExploreViewModel>()
+    @javax.inject.Inject lateinit var recommendationUi: org.koitharu.kotatsu.suggestions.local.RecommendationUi
 	private var exploreAdapter: ExploreAdapter? = null
 	private var sourceSelectionController: ListSelectionController? = null
 
@@ -73,8 +75,17 @@ class ExploreFragment :
 		exploreAdapter = ExploreAdapter(
 			listener = this,
 			clickListener = this,
-			mangaClickListener = { manga, _ -> router.openDetails(manga) },
+            mangaClickListener = object : OnListItemClickListener<org.koitharu.kotatsu.list.ui.model.MangaCompactListModel> {
+                override fun onItemClick(item: org.koitharu.kotatsu.list.ui.model.MangaCompactListModel, view: View) {
+                    if (item.recommendation?.target is org.koitharu.kotatsu.suggestions.local.RecommendationTarget.PublicTitle)
+                        recommendationUi.findReadableSource(item.manga, view, viewLifecycleScope, router)
+                    else router.openDetails(item.manga)
+                }
+                override fun onItemLongClick(item: org.koitharu.kotatsu.list.ui.model.MangaCompactListModel, view: View) =
+                    recommendationUi.feedback(item.recommendation, view, viewLifecycleScope)
+            },
 			browserSourceClickListener = browserSourceClickListener,
+            mediaListener = viewModel::setRecommendationMedia,
 		)
 		sourceSelectionController = ListSelectionController(
 			appCompatDelegate = checkNotNull(findAppCompatDelegate()),

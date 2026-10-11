@@ -119,6 +119,24 @@ class MangaSourcesRepository @Inject constructor(
 		}
 	}
 
+    suspend fun getRecommendationSources(includeDisabled: Boolean): List<MangaSource> =
+        if (includeDisabled) (getEnabledSources() + getDisabledSources()).distinctBy { it.name }
+        else getEnabledSources()
+
+    fun observeRecommendationVersion(): Flow<String> = combine(
+        dao.observeAll(), registryUpdates, observeMihonSources(), db.getLnReaderSourcesDao().observeAll(),
+    ) { entries, _, mihon, novels ->
+        entries.sortedBy { it.source }.joinToString { "${it.source}:${it.isEnabled}:${it.nsfwOverride}" } + ":" +
+            getPluginSources().sortedBy { it.name }.joinToString { source ->
+                java.io.File(context.filesDir, "plugins/${source.jarName}").let { "${source.name}:${it.length()}:${it.lastModified()}" }
+            } + ":" +
+            mihon.sortedBy { it.name }.joinToString { "${it.name}:${it.recommendationVersion}" } +
+            novels.sortedBy { it.pluginId }.joinToString { "${it.pluginId}:${it.version}:${it.jsCode.hashCode()}" }
+    }.map { signature ->
+        java.security.MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+    }.distinctUntilChanged()
+
 	suspend fun getPinnedSources(): Set<MangaSource> {
 		val mihonSources = getMihonSources()
 		val pluginSources = getPluginSources()

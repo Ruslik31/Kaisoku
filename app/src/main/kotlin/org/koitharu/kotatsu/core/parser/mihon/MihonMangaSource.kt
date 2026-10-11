@@ -9,6 +9,7 @@ class MihonMangaSource(
 	val displayName: String? = null,
 	val locale: String? = null,
 	val isNsfwSource: Boolean = false,
+    val recommendationVersion: String = "",
 ) : MangaSource {
 
 	override val name: String

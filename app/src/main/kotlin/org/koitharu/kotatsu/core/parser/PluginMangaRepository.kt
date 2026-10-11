@@ -87,6 +87,18 @@ class PluginMangaRepository(
 	override suspend fun getRelatedMangaImpl(seed: Manga): List<Manga> =
 		callSuspend("getRelatedManga", seed)
 
+    override suspend fun discover(order: SortOrder, filter: MangaListFilter): List<Manga> =
+        callSuspend("getList", 0, order, filter)
+
+    override val supportsGenreDiscovery: Boolean get() = true
+
+    override val supportsRelatedDiscovery: Boolean get() = delegate.javaClass.getMethod(
+        "getRelatedManga", Manga::class.java, kotlin.coroutines.Continuation::class.java,
+    ).declaringClass.name != "org.koitharu.kotatsu.parsers.core.AbstractMangaParser"
+
+    override suspend fun discoverRelated(seed: Manga): List<Manga> =
+        if (supportsRelatedDiscovery) callSuspend("getRelatedManga", seed) else emptyList()
+
 	override suspend fun getDetailsImpl(manga: Manga): Manga =
 		callSuspend("getDetails", manga)
 

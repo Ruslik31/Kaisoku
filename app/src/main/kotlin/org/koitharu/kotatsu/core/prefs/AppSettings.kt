@@ -622,6 +622,16 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     val isSuggestionsWiFiOnly: Boolean
         get() = prefs.getBoolean(KEY_SUGGESTIONS_WIFI_ONLY, false)
 
+    val useLegacySuggestions: Boolean get() = prefs.getBoolean(KEY_SUGGESTIONS_LEGACY, false)
+    val recommendationDiversity: Int get() = prefs.getInt(KEY_SUGGESTIONS_DIVERSITY, 50).coerceIn(0, 100)
+    val publicRecommendations: Boolean get() = prefs.getBoolean(KEY_SUGGESTIONS_PUBLIC, false)
+    val recommendationLanguages: Set<String> get() = prefs.getStringSet(KEY_SUGGESTIONS_LANGUAGES, emptySet()).orEmpty()
+    val recommendStartedTitles: Boolean get() = prefs.getBoolean(KEY_SUGGESTIONS_STARTED, true)
+    val recommendationReleaseThreshold: Int get() = prefs.getInt(KEY_SUGGESTIONS_THRESHOLD, 25).coerceIn(1, 100)
+    var recommendationMedia: String
+        get() = prefs.getString(KEY_SUGGESTIONS_MEDIA, "ALL") ?: "ALL"
+        set(value) = prefs.edit { putString(KEY_SUGGESTIONS_MEDIA, value) }
+
     val isSuggestionsExcludeNsfw: Boolean
         get() = prefs.getBoolean(KEY_SUGGESTIONS_EXCLUDE_NSFW, false)
 
@@ -1116,6 +1126,13 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_SCREENSHOTS_POLICY = "screenshots_policy"
         const val KEY_PAGES_PRELOAD = "pages_preload"
         const val KEY_SUGGESTIONS = "suggestions"
+        const val KEY_SUGGESTIONS_LEGACY = "suggestions_legacy"
+        const val KEY_SUGGESTIONS_DIVERSITY = "suggestions_diversity"
+        const val KEY_SUGGESTIONS_PUBLIC = "suggestions_public"
+        const val KEY_SUGGESTIONS_LANGUAGES = "suggestions_languages"
+        const val KEY_SUGGESTIONS_STARTED = "suggestions_started"
+        const val KEY_SUGGESTIONS_THRESHOLD = "suggestions_release_threshold"
+        const val KEY_SUGGESTIONS_MEDIA = "suggestions_media"
         const val KEY_SUGGESTIONS_WIFI_ONLY = "suggestions_wifi"
         const val KEY_SUGGESTIONS_EXCLUDE_NSFW = "suggestions_exclude_nsfw"
         const val KEY_SUGGESTIONS_EXCLUDE_TAGS = "suggestions_exclude_tags"

@@ -37,6 +37,15 @@ internal class MihonMangaUpdates(
 
     private val updateMutex = MultiMutex<String>()
 
+    suspend fun metadata(seed: SManga): SManga = updateMutex.withLock(seed.url) {
+        runCatchingCancellable {
+            if (usesCombinedUpdate) source.getMangaUpdate(seed, emptyList(), fetchDetails = true, fetchChapters = false).manga
+            else source.getMangaDetails(seed)
+        }.getOrElse { throw mapFailure(it) }.also {
+            it.fillMissingDetails(seed.url, seed.title, runCatching { seed.thumbnail_url }.getOrNull())
+        }
+    }
+
     suspend fun load(seed: SManga): SMangaUpdate {
         val seedUrl = runCatching { seed.url }.getOrDefault("")
         val seedTitle = runCatching { seed.title }.getOrDefault("")

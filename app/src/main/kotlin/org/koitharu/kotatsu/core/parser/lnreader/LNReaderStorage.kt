@@ -12,6 +12,11 @@ class LNReaderStorage(private val preferences: SharedPreferences? = null) {
 	@Synchronized
 	fun keys(): Set<String> = (preferences?.all?.keys ?: values.keys).toSet()
 
+    @Synchronized
+    fun snapshot(): LNReaderStorage = LNReaderStorage().also { copy ->
+        keys().forEach { key -> copy.set(key, get(key)) }
+    }
+
 	@Synchronized
 	fun set(key: String, value: String?) {
 		if (preferences != null) {

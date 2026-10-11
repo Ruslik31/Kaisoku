@@ -374,8 +374,14 @@
 					app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
 					app:layout_constraintEnd_toEndOf="parent"
 					app:layout_constraintStart_toStartOf="parent"
-					app:layout_constraintTop_toBottomOf="@id/textView_related_title"
+					app:layout_constraintTop_toBottomOf="@id/textView_recommendation_error"
 					tools:listitem="@layout/item_manga_grid" />
+
+                <TextView android:id="@+id/textView_recommendation_error" android:layout_width="0dp"
+                    android:layout_height="wrap_content" android:paddingHorizontal="12dp"
+                    android:textAppearance="?attr/textAppearanceBodySmall" android:visibility="gone"
+                    app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toBottomOf="@id/textView_related_title" />
 
 				<androidx.constraintlayout.widget.Group
 					android:id="@+id/group_related"

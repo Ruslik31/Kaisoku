@@ -152,6 +152,7 @@ class DetailsActivity :
 
 	@Inject
 	lateinit var settings: AppSettings
+    @Inject lateinit var recommendationUi: org.koitharu.kotatsu.suggestions.local.RecommendationUi
 
 	@Inject
 	lateinit var community: CommunityRepository
@@ -167,81 +168,99 @@ class DetailsActivity :
 	override val bottomSheet: View?
 		get() = viewBinding.containerBottomSheet
 
-	override fun onCreate(savedInstanceState: Bundle?) {
-		super.onCreate(savedInstanceState)
-		setContentView(ActivityDetailsBinding.inflate(layoutInflater))
-		infoBinding = LayoutDetailsTableBinding.bind(viewBinding.root)
-		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
-		supportActionBar?.setDisplayShowTitleEnabled(false)
-		viewBinding.chipFavorite.setOnClickListener(this)
-		infoBinding.textViewLocal.setOnClickListener(this)
-		infoBinding.textViewSource.setOnClickListener(this)
-		viewBinding.imageViewCover.setOnClickListener(this)
-		viewBinding.backdropClickArea.setOnClickListener(this)
-		viewBinding.textViewTitle.setTextIsSelectable(false)
-		viewBinding.textViewSubtitle.setTextIsSelectable(false)
-		viewBinding.textViewTitle.setOnClickListener(this)
-		viewBinding.textViewSubtitle.setOnClickListener(this)
-		viewBinding.buttonDescriptionMore.setOnClickListener(this)
-		viewBinding.buttonScrobblingMore.setOnClickListener(this)
-		viewBinding.buttonRelatedMore.setOnClickListener(this)
-		viewBinding.buttonCommunity?.setOnClickListener(this)
-		viewBinding.textViewDescription.addOnLayoutChangeListener(this)
-		viewBinding.swipeRefreshLayout.setOnRefreshListener(this)
-		viewBinding.textViewDescription.viewTreeObserver.addOnDrawListener(this)
-		infoBinding.textViewAuthor.movementMethod = LinkMovementMethodCompat.getInstance()
-		viewBinding.textViewDescription.movementMethod = LinkMovementMethodCompat.getInstance()
-		viewBinding.chipsTags.onChipClickListener = this
-		setupBackdropChrome()
-		TitleScrollCoordinator(viewBinding.textViewTitle).attach(viewBinding.scrollView)
-		if (settings.isDescriptionExpanded) {
-			viewBinding.textViewDescription.maxLines = Int.MAX_VALUE - 1
-		}
-		viewBinding.containerBottomSheet?.let { sheet ->
-			sheet.setOnClickListener(this)
-			sheet.addOnLayoutChangeListener(this)
-			onBackPressedDispatcher.addCallback(BottomSheetCollapseCallback(sheet))
-			BottomSheetBehavior.from(sheet).addBottomSheetCallback(
-				DetailsBottomSheetCallback(viewBinding.swipeRefreshLayout, checkNotNull(viewBinding.navbarDim)),
-			)
-		}
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(ActivityDetailsBinding.inflate(layoutInflater))
+        infoBinding = LayoutDetailsTableBinding.bind(viewBinding.root)
+        setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
+        supportActionBar?.setDisplayShowTitleEnabled(false)
+        viewBinding.chipFavorite.setOnClickListener(this)
+        infoBinding.textViewLocal.setOnClickListener(this)
+        infoBinding.textViewSource.setOnClickListener(this)
+        viewBinding.imageViewCover.setOnClickListener(this)
+        viewBinding.backdropClickArea.setOnClickListener(this)
+        viewBinding.textViewTitle.setTextIsSelectable(false)
+        viewBinding.textViewSubtitle.setTextIsSelectable(false)
+        viewBinding.textViewTitle.setOnClickListener(this)
+        viewBinding.textViewSubtitle.setOnClickListener(this)
+        viewBinding.buttonDescriptionMore.setOnClickListener(this)
+        viewBinding.buttonScrobblingMore.setOnClickListener(this)
+        viewBinding.buttonRelatedMore.setOnClickListener(this)
+        viewBinding.buttonCommunity?.setOnClickListener(this)
+        viewBinding.textViewDescription.addOnLayoutChangeListener(this)
+        viewBinding.swipeRefreshLayout.setOnRefreshListener(this)
+        viewBinding.textViewDescription.viewTreeObserver.addOnDrawListener(this)
+        infoBinding.textViewAuthor.movementMethod = LinkMovementMethodCompat.getInstance()
+        viewBinding.textViewDescription.movementMethod = LinkMovementMethodCompat.getInstance()
+        viewBinding.chipsTags.onChipClickListener = this
+        setupBackdropChrome()
+        TitleScrollCoordinator(viewBinding.textViewTitle).attach(viewBinding.scrollView)
+        if (settings.isDescriptionExpanded) {
+            viewBinding.textViewDescription.maxLines = Int.MAX_VALUE - 1
+        }
+        viewBinding.containerBottomSheet?.let { sheet ->
+            sheet.setOnClickListener(this)
+            sheet.addOnLayoutChangeListener(this)
+            onBackPressedDispatcher.addCallback(BottomSheetCollapseCallback(sheet))
+            BottomSheetBehavior.from(sheet).addBottomSheetCallback(
+                DetailsBottomSheetCallback(viewBinding.swipeRefreshLayout, checkNotNull(viewBinding.navbarDim)),
+            )
+        }
 
-		val appRouter = router
-		viewModel.mangaDetails.filterNotNull().observe(this, ::onMangaUpdated)
-		viewModel.coverUrl.observe(this, ::loadCover)
-		viewModel.backdropUrl.observe(this, ::loadBackdrop)
-		viewModel.onMangaRemoved.observeEvent(this, ::onMangaRemoved)
-		viewModel.onError
-			.filterNot { appRouter.isChapterPagesSheetShown() }
-			.observeEvent(this, DetailsErrorObserver(this, viewModel, exceptionResolver))
-		viewModel.onActionDone
-			.filterNot { appRouter.isChapterPagesSheetShown() }
-			.observeEvent(this, ReversibleActionObserver(viewBinding.scrollView))
-		combine(viewModel.historyInfo, viewModel.isLoading, ::Pair).observe(this) {
-			onHistoryChanged(it.first, it.second)
-		}
-		viewModel.isLoading.observe(this, ::onLoadingStateChanged)
-		viewModel.scrobblingInfo.observe(this, ::onScrobblingInfoChanged)
-		viewModel.localSize.observe(this, ::onLocalSizeChanged)
-		viewModel.relatedManga.observe(this, ::onRelatedMangaChanged)
-		viewModel.favouriteCategories.observe(this, ::onFavoritesChanged)
-		viewModel.favoriteDate.observe(this, ::onFavoriteDateChanged)
-		val menuInvalidator = MenuInvalidator(this)
-		viewModel.isStatsAvailable.observe(this, menuInvalidator)
-		viewModel.remoteManga.observe(this, menuInvalidator)
-		viewModel.tags.observe(this, ::onTagsChanged)
-		viewModel.chapters.observe(this, PrefetchObserver(this) { viewModel.mangaDetails.value?.toManga() })
-		viewModel.onDownloadStarted
-			.filterNot { appRouter.isChapterPagesSheetShown() }
-			.observeEvent(this, DownloadStartedObserver(viewBinding.scrollView))
-		menuProvider = DetailsMenuProvider(
-			activity = this,
-			viewModel = viewModel,
-			snackbarHost = viewBinding.scrollView,
-			appShortcutManager = shortcutManager,
-		)
-		addMenuProvider(menuProvider)
-	}
+        val appRouter = router
+        viewModel.mangaDetails.filterNotNull().observe(this, ::onMangaUpdated)
+        viewModel.coverUrl.observe(this, ::loadCover)
+        viewModel.backdropUrl.observe(this, ::loadBackdrop)
+        viewModel.onMangaRemoved.observeEvent(this, ::onMangaRemoved)
+        viewModel.onError
+            .filterNot { appRouter.isChapterPagesSheetShown() }
+            .observeEvent(this, DetailsErrorObserver(this, viewModel, exceptionResolver))
+        viewModel.onActionDone
+            .filterNot { appRouter.isChapterPagesSheetShown() }
+            .observeEvent(this, ReversibleActionObserver(viewBinding.scrollView))
+        combine(viewModel.historyInfo, viewModel.isLoading, ::Pair).observe(this) {
+            onHistoryChanged(it.first, it.second)
+        }
+        viewModel.isLoading.observe(this, ::onLoadingStateChanged)
+        viewModel.scrobblingInfo.observe(this, ::onScrobblingInfoChanged)
+        viewModel.localSize.observe(this, ::onLocalSizeChanged)
+        viewModel.relatedManga.observe(this, ::onRelatedMangaChanged)
+        viewModel.recommendationError.observe(this) { error ->
+            viewBinding.textViewRecommendationError?.textAndVisible = error?.let { getString(R.string.recommendation_cached_error, it) }
+        }
+        viewModel.favouriteCategories.observe(this, ::onFavoritesChanged)
+        viewModel.favoriteDate.observe(this, ::onFavoriteDateChanged)
+        val menuInvalidator = MenuInvalidator(this)
+        viewModel.isStatsAvailable.observe(this, menuInvalidator)
+        viewModel.remoteManga.observe(this, menuInvalidator)
+        viewModel.tags.observe(this, ::onTagsChanged)
+        viewModel.chapters.observe(this, PrefetchObserver(this) { viewModel.mangaDetails.value?.toManga() })
+        viewModel.onDownloadStarted
+            .filterNot { appRouter.isChapterPagesSheetShown() }
+            .observeEvent(this, DownloadStartedObserver(viewBinding.scrollView))
+        menuProvider = DetailsMenuProvider(
+            activity = this,
+            viewModel = viewModel,
+            snackbarHost = viewBinding.scrollView,
+            appShortcutManager = shortcutManager,
+        )
+        addMenuProvider(menuProvider)
+        addMenuProvider(object : androidx.core.view.MenuProvider {
+            override fun onCreateMenu(menu: android.view.Menu, inflater: android.view.MenuInflater) {
+                menu.add(android.view.Menu.NONE, R.id.action_recommendation_provider_match, android.view.Menu.NONE, R.string.recommendation_public_match)
+            }
+            override fun onPrepareMenu(menu: android.view.Menu) {
+                menu.findItem(R.id.action_recommendation_provider_match)?.isVisible = settings.publicRecommendations && !settings.useLegacySuggestions
+            }
+            override fun onMenuItemSelected(item: android.view.MenuItem): Boolean {
+                if (item.itemId != R.id.action_recommendation_provider_match) return false
+                viewModel.getMangaOrNull()?.let { seed ->
+                    recommendationUi.confirmProvider(seed, viewBinding.root, lifecycleScope) { router.openRelated(seed) }
+                }
+                return true
+            }
+        })
+    }
 
 	override fun onProvideAssistContent(outContent: AssistContent) {
 		super.onProvideAssistContent(outContent)
@@ -482,26 +501,33 @@ class DetailsActivity :
 		}
 	}
 
-	private fun onRelatedMangaChanged(related: List<MangaListModel>) {
-		if (related.isEmpty()) {
-			viewBinding.groupRelated.isVisible = false
-			return
-		}
-		val rv = viewBinding.recyclerViewRelated
+    private fun onRelatedMangaChanged(related: List<MangaListModel>) {
+        viewBinding.textViewRelatedTitle.setText(if (settings.useLegacySuggestions) R.string.related_manga else R.string.recommendations_beta)
+        if (related.isEmpty()) {
+            (viewBinding.recyclerViewRelated.adapter as? BaseListAdapter<ListModel>)?.items = emptyList()
+            viewBinding.groupRelated.isVisible = settings.isRelatedMangaEnabled && !settings.useLegacySuggestions
+            return
+        }
+        val rv = viewBinding.recyclerViewRelated
 
-		@Suppress("UNCHECKED_CAST")
-		val adapter = (rv.adapter as? BaseListAdapter<ListModel>) ?: BaseListAdapter<ListModel>()
-			.addDelegate(
-				ListItemType.MANGA_GRID,
-				mangaGridItemAD(
-					sizeResolver = StaticItemSizeResolver(resources.getDimensionPixelSize(R.dimen.smaller_grid_width)),
-				) { item, view ->
-					router.openDetails(item.toMangaWithOverride())
-				},
-			).also { rv.adapter = it }
-		adapter.items = related
-		viewBinding.groupRelated.isVisible = true
-	}
+        @Suppress("UNCHECKED_CAST")
+        val adapter = (rv.adapter as? BaseListAdapter<ListModel>) ?: BaseListAdapter<ListModel>()
+            .addDelegate(
+                ListItemType.MANGA_GRID,
+                mangaGridItemAD(
+                    sizeResolver = StaticItemSizeResolver(resources.getDimensionPixelSize(R.dimen.smaller_grid_width)),
+                clickListener = object : OnListItemClickListener<MangaListModel> {
+                    override fun onItemClick(item: MangaListModel, view: View) {
+                        if (item.recommendation?.target is org.koitharu.kotatsu.suggestions.local.RecommendationTarget.PublicTitle)
+                            recommendationUi.findReadableSource(item.manga, view, lifecycleScope, router)
+                        else router.openDetails(item.toMangaWithOverride())
+                    }
+                    override fun onItemLongClick(item: MangaListModel, view: View) = recommendationUi.feedback(item.recommendation, view, lifecycleScope)
+                }),
+            ).also { rv.adapter = it }
+        adapter.items = related
+        viewBinding.groupRelated.isVisible = true
+    }
 
 	private fun onLoadingStateChanged(isLoading: Boolean) {
 		viewBinding.swipeRefreshLayout.isRefreshing = isLoading

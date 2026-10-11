@@ -24,6 +24,8 @@ abstract class CachingMangaRepository(
 	private val cache: MemoryContentCache,
 ) : MangaRepository {
 
+    internal var onFreshDetails: (suspend (Manga) -> Unit)? = null
+
 	private val detailsMutex = MultiMutex<Long>()
 	private val relatedMangaMutex = MultiMutex<Long>()
 	private val pagesMutex = MultiMutex<MemoryContentCache.Key>()
@@ -59,7 +61,7 @@ abstract class CachingMangaRepository(
 			cache.getDetails(source, manga.url)?.let { return it }
 		}
 		val details = asyncSafe {
-			getDetailsImpl(manga)
+			getDetailsImpl(manga).also { onFreshDetails?.invoke(it) }
 		}
 		if (cachePolicy.writeEnabled) {
 			cache.putDetails(source, manga.url, details)

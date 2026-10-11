@@ -238,7 +238,10 @@ class NovelReaderViewModel @Inject constructor(
     fun onPause() {
         isReadingActive = false
         lastStatsState = null
-        manga.value?.let { statsCollector.onPause(it.id) }
+        manga.value?.let {
+            statsCollector.onPause(it.id)
+            if (!isIncognitoMode) historyUpdateUseCase.finishReadingSession(it, lastSavedState?.chapterId)
+        }
     }
 
     /**

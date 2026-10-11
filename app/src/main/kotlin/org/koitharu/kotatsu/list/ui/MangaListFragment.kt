@@ -75,6 +75,7 @@ abstract class MangaListFragment :
 
     @Inject
     lateinit var settings: AppSettings
+    @Inject lateinit var recommendationUi: org.koitharu.kotatsu.suggestions.local.RecommendationUi
 
     private var listAdapter: MangaListAdapter? = null
     private var paginationListener: PaginationScrollListener? = null
@@ -180,6 +181,10 @@ abstract class MangaListFragment :
     }
 
     override fun onItemClick(item: MangaListModel, view: View) {
+        if (item.recommendation?.target is org.koitharu.kotatsu.suggestions.local.RecommendationTarget.PublicTitle) {
+            recommendationUi.findReadableSource(item.manga, view, viewLifecycleScope, router)
+            return
+        }
         if (selectionController?.onItemClick(item.id) != true) {
             val manga = item.toMangaWithOverride()
             if ((activity as? MangaListActivity)?.pickForTracker(manga) == true) return
@@ -190,20 +195,30 @@ abstract class MangaListFragment :
     }
 
     override fun onItemLongClick(item: MangaListModel, view: View): Boolean {
+        if (recommendationUi.feedback(item.recommendation, view, viewLifecycleScope)) return true
         return selectionController?.onItemLongClick(view, item.id) == true
     }
 
     override fun onItemContextClick(item: MangaListModel, view: View): Boolean {
+        if (recommendationUi.feedback(item.recommendation, view, viewLifecycleScope)) return true
         return selectionController?.onItemContextClick(view, item.id) == true
     }
 
     override fun onReadClick(manga: Manga, view: View) {
+        if (manga.source is org.koitharu.kotatsu.suggestions.local.PublicRecommendationSource) {
+            recommendationUi.findReadableSource(manga, view, viewLifecycleScope, router)
+            return
+        }
         if (selectionController?.onItemClick(manga.id) != true) {
             router.openReader(manga)
         }
     }
 
     override fun onTagClick(manga: Manga, tag: MangaTag, view: View) {
+        if (manga.source is org.koitharu.kotatsu.suggestions.local.PublicRecommendationSource) {
+            recommendationUi.findReadableSource(manga, view, viewLifecycleScope, router)
+            return
+        }
         if (selectionController?.onItemClick(manga.id) != true) {
             router.showTagDialog(tag)
         }

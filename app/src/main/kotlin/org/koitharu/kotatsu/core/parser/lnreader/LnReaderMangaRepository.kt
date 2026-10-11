@@ -149,6 +149,25 @@ class LnReaderMangaRepository(
 		}
 	}
 
+    override suspend fun discover(order: SortOrder, filter: MangaListFilter): List<Manga> =
+        executeInPluginContext(discovery = true) { bridge ->
+            val query = filter.query?.trim().orEmpty()
+            val novels = if (query.isNotEmpty()) bridge.searchNovels(query, 1)
+            else bridge.popularNovels(1, latest = order == SortOrder.UPDATED)
+            novels.map { novel -> novel.toManga().let { it.copy(publicUrl = absoluteUrl(bridge.resolveUrl(novel.path) ?: it.publicUrl)) } }
+        }
+
+    override val supportsLightweightMetadata: Boolean get() = true
+
+    override suspend fun getLightweightMetadata(manga: Manga): Manga = executeInPluginContext(discovery = true) { bridge ->
+        val details = bridge.parseNovel(manga.url.substringBefore(CHAPTER_SEPARATOR))
+        manga.copy(title = details.name.ifBlank { manga.title },
+            tags = details.genres.mapTo(linkedSetOf()) { MangaTag(it, it.lowercase(Locale.ROOT), source) },
+            authors = setOfNotNull(details.author.takeIf(String::isNotBlank)).takeIf { it.isNotEmpty() } ?: manga.authors,
+            coverUrl = details.cover.takeIf(String::isNotBlank)?.let(::absoluteUrl) ?: manga.coverUrl,
+            chapters = null)
+    }
+
 	// ==================== Chapter content ====================
 
 	override suspend fun getPagesImpl(chapter: MangaChapter): List<MangaPage> {
@@ -191,32 +210,33 @@ class LnReaderMangaRepository(
 	private fun absoluteUrl(path: String): String =
 		entity.site?.toHttpUrlOrNull()?.resolve(path)?.toString() ?: path
 
-	private suspend fun <T> executeInPluginContext(block: suspend (LNReaderPluginBridge) -> T): T {
-		return withContext(Dispatchers.IO) {
-			val fetchBridge = LNReaderFetchBridge(httpClient, entity.pluginId)
-			val engine = LNReaderEngine(fetchBridge, storage)
-			val qjs = engine.createPluginContext(entity.jsCode, entity.pluginId)
-			try {
-				val bridge = LNReaderPluginBridge(qjs, entity.pluginId)
-				imageHeaders = imageHeaders + bridge.imageHeaders()
-				imageHeadersLoaded = true
-				block(bridge).also {
-					// Re-throw any fatal interactive exceptions that were tunneled out of the fetch
-					// bridge even if JS swallowed the error and resolved the promise.
-					fetchBridge.pendingFatalException?.let { throw it }
-				}
-			} catch (e: kotlinx.coroutines.CancellationException) {
-				throw e
-			} catch (e: Exception) {
-				fetchBridge.pendingFatalException?.let { throw it }
-				LnLog.e(TAG, "executeInPluginContext failed for ${source.name}", e)
-				val context = fetchBridge.lastRequestDescription?.let { "\n$it" }.orEmpty()
-				throw LNReaderJSException("LNReader JS Error in ${source.name}: ${e.message ?: e.javaClass.simpleName}$context", e)
-			} finally {
-				qjs.close()
-			}
-		}
-	}
+    private suspend fun <T> executeInPluginContext(discovery: Boolean = false, block: suspend (LNReaderPluginBridge) -> T): T {
+        return pluginContexts.withLock(entity.pluginId) { withContext(Dispatchers.IO) {
+            val client = if (discovery) httpClient.newBuilder().callTimeout(20, TimeUnit.SECONDS).build() else httpClient
+            val fetchBridge = LNReaderFetchBridge(client, entity.pluginId, kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job])
+            val engine = LNReaderEngine(fetchBridge, if (discovery) storage.snapshot() else storage)
+            val qjs = engine.createPluginContext(entity.jsCode, entity.pluginId)
+            try {
+                val bridge = LNReaderPluginBridge(qjs, entity.pluginId)
+                imageHeaders = imageHeaders + bridge.imageHeaders()
+                imageHeadersLoaded = true
+                block(bridge).also {
+                    // Re-throw any fatal interactive exceptions that were tunneled out of the fetch
+                    // bridge even if JS swallowed the error and resolved the promise.
+                    fetchBridge.pendingFatalException?.let { throw it }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fetchBridge.pendingFatalException?.let { throw it }
+                LnLog.e(TAG, "executeInPluginContext failed for ${source.name}", e)
+                val context = fetchBridge.lastRequestDescription?.let { "\n$it" }.orEmpty()
+                throw LNReaderJSException("LNReader JS Error in ${source.name}: ${e.message ?: e.javaClass.simpleName}$context", e)
+            } finally {
+                qjs.close()
+            }
+        } }
+    }
 
 	private suspend fun loadChapterHtml(chapter: MangaChapter): String {
 		val cacheKey = chapter.url
@@ -303,6 +323,7 @@ class LnReaderMangaRepository(
 	}
 
 	companion object {
+		private val pluginContexts = MultiMutex<String>()
 		private const val TAG = "LnReaderRepo"
 		const val CHAPTER_SEPARATOR = "|||"
 		private const val LONG_HASH_SEED = 1125899906842597L
