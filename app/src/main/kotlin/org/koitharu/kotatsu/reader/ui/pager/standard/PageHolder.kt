@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.reader.ui.pager.standard
 
 import android.annotation.SuppressLint
+import org.koitharu.kotatsu.reader.ui.pager.displaySourceWidth
+import org.koitharu.kotatsu.reader.ui.pager.displaySourceHeight
 import android.graphics.PointF
 import android.os.Build
 import android.view.Gravity
@@ -74,7 +76,7 @@ open class PageHolder(
 		binding.textViewNumber.text = (data.index + 1).toString()
 	}
 
-	override fun onReady() {
+	override fun onPageReady() {
 		binding.ssiv.maxScale = defaultMaxScale(binding.ssiv)
 		binding.ssiv.colorFilter = settings.colorFilter?.toColorFilter()
 		when (settings.zoomMode) {
@@ -85,19 +87,19 @@ open class PageHolder(
 
 			ZoomMode.FIT_HEIGHT -> {
 				binding.ssiv.minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CUSTOM
-				binding.ssiv.minScale = binding.ssiv.height / binding.ssiv.sHeight.toFloat()
+				binding.ssiv.minScale = binding.ssiv.height / binding.ssiv.displaySourceHeight.toFloat()
 				binding.ssiv.setScaleAndCenter(
 					binding.ssiv.minScale,
-					PointF(0f, binding.ssiv.sHeight / 2f),
+					PointF(0f, binding.ssiv.displaySourceHeight / 2f),
 				)
 			}
 
 			ZoomMode.FIT_WIDTH -> {
 				binding.ssiv.minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CUSTOM
-				binding.ssiv.minScale = binding.ssiv.width / binding.ssiv.sWidth.toFloat()
+				binding.ssiv.minScale = binding.ssiv.width / binding.ssiv.displaySourceWidth.toFloat()
 				binding.ssiv.setScaleAndCenter(
 					binding.ssiv.minScale,
-					PointF(binding.ssiv.sWidth / 2f, 0f),
+					PointF(binding.ssiv.displaySourceWidth / 2f, 0f),
 				)
 			}
 

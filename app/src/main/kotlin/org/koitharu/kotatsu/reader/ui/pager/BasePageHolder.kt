@@ -4,6 +4,7 @@ import android.content.ComponentCallbacks2
 import android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.PointF
 import android.graphics.drawable.Animatable
 import android.net.Uri
 import android.os.Build
@@ -100,6 +101,9 @@ abstract class BasePageHolder<B : ViewBinding>(
     private var translatedPage: org.koitharu.kotatsu.reader.translate.PageTranslationState.Done? = null
     private var animationListener: AnimatedImageListener? = null
     private var animationRequestUri: Uri? = null
+    private var viewportToRestore: PageViewport? = null
+
+    private data class PageViewport(val x: Float, val y: Float, val zoom: Float)
 
     protected val isAnimatedPageDisplayed: Boolean
         get() = ssiv.isGone && animatedView?.isVisible == true
@@ -139,6 +143,11 @@ abstract class BasePageHolder<B : ViewBinding>(
             applyUpscale()
             return
         }
+        if (previous != null && previous.widePageRotation != settings.widePageRotation) {
+            onPagePresentationChanging()
+            viewportToRestore = captureViewport()
+            if (isAnimatedPageDisplayed) applyAnimatedRotation()
+        }
         settings.applyBackground(itemView)
         animatedView?.colorFilter = settings.colorFilter?.toColorFilter()
         val bitmapConfigChanged = settings.applyBitmapConfig(ssiv)
@@ -172,12 +181,51 @@ abstract class BasePageHolder<B : ViewBinding>(
         settings.isAnimatedPagesEnabled && state.animationUri != null && animatedView != null
 
     private fun showStaticPage(source: ImageSource, preserveState: Boolean) {
-        if (isAnimatedPageDisplayed) onPagePresentationChanging()
-        val viewState = if (preserveState && !isAnimatedPageDisplayed) ssiv.getState() else null
+        if (isAnimatedPageDisplayed || preserveState) onPagePresentationChanging()
+        if (preserveState && !isAnimatedPageDisplayed) viewportToRestore = captureViewport()
         stopAnimation()
         ssiv.isVisible = true
         settings.applyBitmapConfig(ssiv)
-        if (viewState != null) ssiv.setImage(source, null, viewState) else ssiv.setImage(source)
+        ssiv.setImage(source)
+    }
+
+    private fun captureViewport(): PageViewport? {
+        if (this is WebtoonHolder || !ssiv.isReady || ssiv.displaySourceWidth <= 0 || ssiv.displaySourceHeight <= 0) return null
+        val center = ssiv.getCenter() ?: return null
+        val fit = minOf(ssiv.width.toFloat() / ssiv.displaySourceWidth, ssiv.height.toFloat() / ssiv.displaySourceHeight)
+        if (fit <= 0f || !ssiv.scale.isFinite()) return null
+        val (x, y) = PageRotation.toOriginal(center.x / ssiv.displaySourceWidth, center.y / ssiv.displaySourceHeight, ssiv.orientation)
+        return PageViewport(x, y, ssiv.scale / fit)
+    }
+
+    final override fun onReady() {
+        if (!ssiv.isReady || isAnimatedPageDisplayed) return
+        val rotation = PageRotation.orientation(ssiv.sWidth, ssiv.sHeight, settings.widePageRotation)
+        if (ssiv.orientation != rotation) ssiv.orientation = rotation
+        onPageReady()
+        viewportToRestore?.let { viewport ->
+            val (x, y) = PageRotation.toDisplay(viewport.x, viewport.y, rotation)
+            val fit = minOf(ssiv.width.toFloat() / ssiv.displaySourceWidth, ssiv.height.toFloat() / ssiv.displaySourceHeight)
+            ssiv.setScaleAndCenter((viewport.zoom * fit).coerceIn(ssiv.minScale, ssiv.maxScale.coerceAtLeast(ssiv.minScale)),
+                PointF(x * ssiv.displaySourceWidth, y * ssiv.displaySourceHeight))
+        }
+        viewportToRestore = null
+        ssiv.post { applyUpscale() }
+    }
+
+    protected abstract fun onPageReady()
+
+    private fun applyAnimatedRotation() {
+        val view = animatedView ?: return
+        val current = view.drawable ?: return
+        val original = (current as? RotatedPageDrawable)?.source ?: current
+        val rotation = PageRotation.orientation(original.intrinsicWidth, original.intrinsicHeight, settings.widePageRotation)
+        val desired = if (rotation == 0) original else {
+            if (current is RotatedPageDrawable && current.rotation == rotation) current else RotatedPageDrawable(original, rotation)
+        }
+        if (view.drawable !== desired) view.setImageDrawable(desired)
+        onAnimatedImageShown(desired.intrinsicWidth, desired.intrinsicHeight)
+        syncAnimation()
     }
 
     private fun showTranslatedPage(state: org.koitharu.kotatsu.reader.translate.PageTranslationState.Done) {
@@ -199,6 +247,7 @@ abstract class BasePageHolder<B : ViewBinding>(
             clearUpscale()
         }
         boundData = data
+        viewportToRestore = null
         // Free the previous page before requesting the next — SubsamplingScaleImageView keeps its
         // decoded tiles and bitmap until recycle(), so rapid paging would otherwise hold two
         // full sets of page pixels and displayed frames for +1 frame, reproducing the visual
@@ -393,7 +442,7 @@ abstract class BasePageHolder<B : ViewBinding>(
         }
         val page = boundData ?: return
         val fitScale = if (ssiv.isReady && ssiv.sWidth > 0) {
-            ssiv.width / ssiv.sWidth.toFloat()
+            ssiv.width / ssiv.displaySourceWidth.toFloat()
         } else {
             0f
         }
@@ -464,7 +513,7 @@ abstract class BasePageHolder<B : ViewBinding>(
             ssiv.isVisible = false
             // Animated pages scroll in the RecyclerView; release the previous tiled bitmap.
             ssiv.recycle()
-            onAnimatedImageShown(result.image.width, result.image.height)
+            applyAnimatedRotation()
             viewModel.onAnimatedImageLoaded(uri)
             syncAnimation()
         }
@@ -487,8 +536,8 @@ abstract class BasePageHolder<B : ViewBinding>(
 
     protected fun defaultMaxScale(view: SubsamplingScaleImageView): Float {
         return DEFAULT_MAX_SCALE_MULTIPLIER * maxOf(
-            view.width / view.sWidth.toFloat(),
-            view.height / view.sHeight.toFloat(),
+            view.width / view.displaySourceWidth.toFloat(),
+            view.height / view.displaySourceHeight.toFloat(),
         )
     }
 

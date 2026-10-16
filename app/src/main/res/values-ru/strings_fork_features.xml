@@ -11,4 +11,17 @@
     <string name="default_favorites_sort">Сортировка избранного по умолчанию</string>
     <string name="default_favorites_sort_summary">Для всего избранного и новых категорий. Старые категории сохраняют порядок; включите «Сортировка по умолчанию» в параметрах их списка.</string>
     <string name="use_default_favorites_sort">Сортировка по умолчанию</string>
+    <string name="wide_page_rotation">Поворачивать широкие страницы</string>
+    <string name="wide_page_rotation_summary">Поворот горизонтальных страниц для чтения. Исходные файлы и прогресс не меняются.</string>
+    <string name="rotate_clockwise">По часовой стрелке</string>
+    <string name="rotate_counterclockwise">Против часовой стрелки</string>
+    <string name="hold_scroll_settings">Прокрутка при удержании</string>
+    <string name="hold_scroll_enabled">Прокручивать страницу при удержании</string>
+    <string name="hold_scroll_summary">Удерживайте край для прокрутки до отпускания. Назначенные долгие нажатия имеют приоритет; масштабирование и перетаскивание отменяют прокрутку.</string>
+    <string name="hold_scroll_top">Верхний ряд</string>
+    <string name="hold_scroll_left">Слева посередине</string>
+    <string name="hold_scroll_right">Справа посередине</string>
+    <string name="hold_scroll_bottom">Нижний ряд</string>
+    <string name="hold_scroll_up">Прокрутка назад</string>
+    <string name="hold_scroll_down">Прокрутка вперёд</string>
 </resources>

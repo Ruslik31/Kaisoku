@@ -36,12 +36,13 @@ class ReaderControlDelegate(
 		return true
 	}
 
-	fun onGridLongTouch(area: TapGridArea) {
+	fun onGridLongTouch(area: TapGridArea): Boolean {
 		val action = tapGridSettings.getTapAction(
 			area = area,
 			isLongTap = true,
-		) ?: return
+		) ?: return false
 		processAction(action)
+		return true
 	}
 
 	fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {

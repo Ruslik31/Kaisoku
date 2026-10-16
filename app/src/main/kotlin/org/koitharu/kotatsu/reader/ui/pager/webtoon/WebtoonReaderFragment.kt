@@ -10,6 +10,7 @@ import android.widget.TextView
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
+import org.koitharu.kotatsu.reader.ui.pager.screenToLocal
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.coroutineScope
@@ -262,6 +263,14 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 		} else {
 			setItems.join()
 		}
+	}
+
+	override fun findActionPageAt(rawX: Float, rawY: Float): ReaderPage? {
+		val rv = viewBinding?.recyclerView ?: return null
+		val point = rv.screenToLocal(rawX, rawY) ?: return null
+		val child = rv.findChildViewUnder(point.x, point.y) ?: return null
+		val position = rv.getChildAdapterPosition(child)
+		return readerAdapter?.getItemOrNull(position)
 	}
 
 	override fun getCurrentState(): ReaderState? = viewBinding?.run {

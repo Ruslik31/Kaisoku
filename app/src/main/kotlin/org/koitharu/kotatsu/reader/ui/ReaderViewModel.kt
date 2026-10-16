@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.reader.ui
 
 import org.koitharu.kotatsu.reader.domain.readingOrderIndex
+import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 import android.content.Context
 import android.net.Uri
 import androidx.annotation.AnyThread
@@ -471,22 +472,33 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveCurrentPage(
-        pageSaveHelper: PageSaveHelper
+        pageSaveHelper: PageSaveHelper,
+        actionPage: ReaderPage? = null,
     ) {
+        val target = resolveActionPage(actionPage) ?: return
+        val currentManga = manga.value ?: return
         val prevJob = pageSaveJob
         pageSaveJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
-            val state = checkNotNull(getCurrentState())
-            val currentManga = manga.requireValue()
             val task = PageSaveHelper.Task(
                 manga = currentManga,
-                chapterId = state.chapterId,
-                pageNumber = state.page + 1,
-                page = checkNotNull(getCurrentPage()) { "Cannot find current page" },
+                chapterId = target.chapterId,
+                pageNumber = target.index + 1,
+                page = target.toMangaPage(),
             )
             val dest = pageSaveHelper.save(setOf(task))
             onPageSaved.call(dest)
         }
+    }
+
+    fun reportPageActionError(error: Throwable) { errorEvent.call(error) }
+
+    fun resolveActionPage(target: ReaderPage?): ReaderPage? {
+        if (target != null) return content.value.pages.firstOrNull {
+            it.id == target.id && it.chapterId == target.chapterId && it.index == target.index && it.source == target.source
+        }
+        val state = readingState.value ?: return null
+        return content.value.pages.firstOrNull { it.chapterId == state.chapterId && it.index == state.page }
     }
 
     fun getCurrentPage(): MangaPage? {
@@ -496,8 +508,14 @@ class ReaderViewModel @Inject constructor(
         }?.toMangaPage()
     }
 
-    fun requestOcrCurrentPage() {
-        val page = getCurrentPage() ?: return
+    private var ocrActionPage: ReaderPage? = null
+
+    fun rerunOcr() = requestOcrCurrentPage(ocrActionPage)
+
+    fun requestOcrCurrentPage(actionPage: ReaderPage? = null) {
+        val target = resolveActionPage(actionPage) ?: return
+        val page = target.toMangaPage()
+        ocrActionPage = target
         if (!isTranslateConfigured()) {
             onTranslateConfigMissing.call(Unit)
             return
@@ -519,8 +537,9 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun showTranslatedText(expectedPageId: Long? = null, focusedNumber: Int? = null) {
-        val page = expectedPageId?.let { id -> content.value.pages.firstOrNull { it.id == id }?.toMangaPage() }
-            ?: getCurrentPage() ?: return
+        val page = if (expectedPageId == null) getCurrentPage() else {
+            content.value.pages.firstOrNull { it.id == expectedPageId }?.toMangaPage()
+        } ?: return
         val done = translationCoordinator.stateFor(page.id).value as? org.koitharu.kotatsu.reader.translate.PageTranslationState.Done ?: return
         onShowOcrSheet.call(Unit)
         val text = done.blocks.mapIndexedNotNull { index, block ->
@@ -534,15 +553,15 @@ class ReaderViewModel @Inject constructor(
         )
     }
 
-    fun currentTranslationState(): kotlinx.coroutines.flow.StateFlow<org.koitharu.kotatsu.reader.translate.PageTranslationState>? =
-        getCurrentPage()?.let { translationCoordinator.stateFor(it.id) }
+    fun currentTranslationState(actionPage: ReaderPage? = null): kotlinx.coroutines.flow.StateFlow<org.koitharu.kotatsu.reader.translate.PageTranslationState>? =
+        resolveActionPage(actionPage)?.let { translationCoordinator.stateFor(it.id) }
 
     fun rerenderTranslationForCurrentPage() {
         getCurrentPage()?.let(translationCoordinator::rerender)
     }
 
-    fun toggleTranslateCurrentPage() {
-        val page = getCurrentPage() ?: return
+    fun toggleTranslateCurrentPage(actionPage: ReaderPage? = null) {
+        val page = resolveActionPage(actionPage)?.toMangaPage() ?: return
         if (!isTranslateConfigured()) {
             onTranslateConfigMissing.call(Unit)
             return

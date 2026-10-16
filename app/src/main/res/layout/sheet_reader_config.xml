@@ -35,6 +35,13 @@
                 app:drawableStartCompat="@drawable/ic_save" />
 
             <org.koitharu.kotatsu.core.ui.widgets.ListItemTextView
+                android:id="@+id/button_share_page"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/share_image"
+                app:drawableStartCompat="@android:drawable/ic_menu_share" />
+
+            <org.koitharu.kotatsu.core.ui.widgets.ListItemTextView
                 android:id="@+id/button_bookmark"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

@@ -380,6 +380,8 @@ class ReaderActivity :
     }
 
     override fun onPause() {
+        scrollTimer.stopHold()
+        touchedActionPage = null
         // Block new scroll callbacks before fragments pause. Webtoon then invalidates deferred
         // restores and BaseReaderFragment records the first (still live) visible position.
         viewModel.onBackgrounding()
@@ -468,9 +470,15 @@ class ReaderActivity :
 
     override fun onGridLongTouch(area: TapGridArea) {
         if (isReaderResumed()) {
-            controlDelegate.onGridLongTouch(area)
+            if (!controlDelegate.onGridLongTouch(area) && settings.isHoldScrollEnabled) {
+                scrollTimer.startHold(settings.holdScrollDirection(area))
+            }
         }
     }
+
+    private var touchedActionPage: ReaderPage? = null
+    private var actionTouchX = 0f
+    private var actionTouchY = 0f
 
     override fun onProcessTouch(rawX: Int, rawY: Int): Boolean {
         return if (
@@ -489,8 +497,26 @@ class ReaderActivity :
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                touchedActionPage = null
+                val page = readerManager.currentReader?.findActionPageAt(ev.rawX, ev.rawY)
+                if (page != null && onProcessTouch(ev.rawX.toInt(), ev.rawY.toInt())) {
+                    touchedActionPage = page
+                    actionTouchX = ev.rawX
+                    actionTouchY = ev.rawY
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+                if (kotlin.math.hypot(ev.rawX - actionTouchX, ev.rawY - actionTouchY) > slop) touchedActionPage = null
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> touchedActionPage = null
+        }
         touchHelper.dispatchTouchEvent(ev)
-        if (!viewBinding.timerControl.hasGlobalPoint(ev.rawX.toInt(), ev.rawY.toInt())) {
+        if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL ||
+            ev.actionMasked == MotionEvent.ACTION_POINTER_DOWN ||
+            !viewBinding.timerControl.hasGlobalPoint(ev.rawX.toInt(), ev.rawY.toInt())) {
             scrollTimer.onTouchEvent(ev)
         }
         return super.dispatchTouchEvent(ev)
@@ -556,10 +582,11 @@ class ReaderActivity :
     private fun setUiIsVisible(isUiVisible: Boolean) {
         if (viewBinding.appbarTop.isVisible != isUiVisible) {
             if (isAnimationsEnabled) {
-                val transition = TransitionSet()
-                    .setOrdering(TransitionSet.ORDERING_TOGETHER)
-                    .addTransition(Slide(Gravity.TOP).addTarget(viewBinding.appbarTop))
-                    .addTransition(Fade().addTarget(viewBinding.infoBar))
+                val transition = TransitionSet().apply {
+                    ordering = TransitionSet.ORDERING_TOGETHER
+                    addTransition(Slide(Gravity.TOP).addTarget(viewBinding.appbarTop))
+                    addTransition(Fade().addTarget(viewBinding.infoBar))
+                }
                 viewBinding.toolbarDocked?.let {
                     transition.addTransition(Slide(Gravity.BOTTOM).addTarget(it))
                 }
@@ -685,7 +712,9 @@ class ReaderActivity :
     override fun openMenu() {
         viewModel.saveVisibleState(readerManager.currentReader?.getCurrentStateSnapshot())
         val currentMode = readerManager.currentMode ?: return
-        router.showReaderConfigSheet(currentMode)
+        val actionPage = touchedActionPage?.let(viewModel::resolveActionPage)
+        touchedActionPage = null
+        router.showReaderConfigSheet(currentMode, actionPage)
     }
 
     override fun scrollBy(delta: Int, smooth: Boolean): Boolean {
@@ -715,6 +744,25 @@ class ReaderActivity :
 
     override fun onSavePageClick() {
         viewModel.saveCurrentPage(pageSaveHelper)
+    }
+
+    override fun onSavePageClick(page: ReaderPage?) {
+        viewModel.saveCurrentPage(pageSaveHelper, page)
+    }
+
+    override fun onSharePageClick(page: ReaderPage?) {
+        val target = viewModel.resolveActionPage(page) ?: return
+        val manga = viewModel.getMangaOrNull() ?: return
+        lifecycleScope.launch {
+            try {
+                val file = pageSaveHelper.saveToTempFile(PageSaveHelper.Task(manga, target.chapterId, target.index + 1, target.toMangaPage()))
+                router.shareFile(file)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                viewModel.reportPageActionError(e)
+            }
+        }
     }
 
     override fun onScrollTimerClick(isLongClick: Boolean) {

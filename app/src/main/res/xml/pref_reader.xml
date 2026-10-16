@@ -69,6 +69,38 @@
         android:summary="@string/reader_control_ltr_summary"
         android:title="@string/reader_control_ltr" />
 
+    <ListPreference
+        android:key="reader_wide_page_rotation"
+        android:title="@string/wide_page_rotation"
+        android:summary="@string/wide_page_rotation_summary"
+        android:defaultValue="0"
+        android:entries="@array/wide_page_rotations"
+        android:entryValues="@array/wide_page_rotation_values" />
+
+    <PreferenceCategory android:title="@string/hold_scroll_settings">
+        <SwitchPreferenceCompat
+            android:key="reader_hold_scroll"
+            android:defaultValue="false"
+            android:title="@string/hold_scroll_enabled"
+            android:summary="@string/hold_scroll_summary" />
+        <ListPreference android:key="reader_hold_top" android:defaultValue="-1"
+            android:dependency="reader_hold_scroll" android:title="@string/hold_scroll_top"
+            android:entries="@array/hold_scroll_directions" android:entryValues="@array/hold_scroll_direction_values"
+            app:useSimpleSummaryProvider="true" />
+        <ListPreference android:key="reader_hold_left" android:defaultValue="-1"
+            android:dependency="reader_hold_scroll" android:title="@string/hold_scroll_left"
+            android:entries="@array/hold_scroll_directions" android:entryValues="@array/hold_scroll_direction_values"
+            app:useSimpleSummaryProvider="true" />
+        <ListPreference android:key="reader_hold_right" android:defaultValue="1"
+            android:dependency="reader_hold_scroll" android:title="@string/hold_scroll_right"
+            android:entries="@array/hold_scroll_directions" android:entryValues="@array/hold_scroll_direction_values"
+            app:useSimpleSummaryProvider="true" />
+        <ListPreference android:key="reader_hold_bottom" android:defaultValue="1"
+            android:dependency="reader_hold_scroll" android:title="@string/hold_scroll_bottom"
+            android:entries="@array/hold_scroll_directions" android:entryValues="@array/hold_scroll_direction_values"
+            app:useSimpleSummaryProvider="true" />
+    </PreferenceCategory>
+
     <SwitchPreferenceCompat
         android:defaultValue="false"
         android:key="reader_volume_buttons"

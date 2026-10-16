@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.reader.ui.pager.reversed
 
+import org.koitharu.kotatsu.reader.ui.pager.displaySourceWidth
+import org.koitharu.kotatsu.reader.ui.pager.displaySourceHeight
 import android.graphics.PointF
 import android.view.Gravity
 import android.widget.FrameLayout
@@ -34,7 +36,7 @@ class ReversedPageHolder(
 			.gravity = Gravity.START or Gravity.BOTTOM
 	}
 
-	override fun onReady() {
+	override fun onPageReady() {
 		with(binding.ssiv) {
 			maxScale = defaultMaxScale(this)
 			binding.ssiv.colorFilter = settings.colorFilter?.toColorFilter()
@@ -46,19 +48,19 @@ class ReversedPageHolder(
 
 				ZoomMode.FIT_HEIGHT -> {
 					minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CUSTOM
-					minScale = height / sHeight.toFloat()
+					minScale = height / displaySourceHeight.toFloat()
 					setScaleAndCenter(
 						minScale,
-						PointF(sWidth.toFloat(), sHeight / 2f),
+						PointF(displaySourceWidth.toFloat(), displaySourceHeight / 2f),
 					)
 				}
 
 				ZoomMode.FIT_WIDTH -> {
 					minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CUSTOM
-					minScale = width / sWidth.toFloat()
+					minScale = width / displaySourceWidth.toFloat()
 					setScaleAndCenter(
 						minScale,
-						PointF(sWidth / 2f, 0f),
+						PointF(displaySourceWidth / 2f, 0f),
 					)
 				}
 
@@ -66,7 +68,7 @@ class ReversedPageHolder(
 					minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE
 					setScaleAndCenter(
 						maxScale,
-						PointF(sWidth.toFloat(), 0f),
+						PointF(displaySourceWidth.toFloat(), 0f),
 					)
 				}
 			}

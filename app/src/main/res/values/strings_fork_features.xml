@@ -11,4 +11,17 @@
     <string name="default_favorites_sort">Default favorites sorting</string>
     <string name="default_favorites_sort_summary">Used by All favorites and new categories. Existing categories keep their order; enable Use default sorting in their list options to follow this setting.</string>
     <string name="use_default_favorites_sort">Use default sorting</string>
+    <string name="wide_page_rotation">Rotate wide pages</string>
+    <string name="wide_page_rotation_summary">Turn landscape pages upright for reading. Original files and reading progress stay unchanged.</string>
+    <string name="rotate_clockwise">Clockwise</string>
+    <string name="rotate_counterclockwise">Counterclockwise</string>
+    <string name="hold_scroll_settings">Hold-to-scroll</string>
+    <string name="hold_scroll_enabled">Scroll while holding a page</string>
+    <string name="hold_scroll_summary">Long-press an edge to scroll until you release. Custom long-press actions take priority; pinch and drag cancel scrolling.</string>
+    <string name="hold_scroll_top">Top row</string>
+    <string name="hold_scroll_left">Middle left</string>
+    <string name="hold_scroll_right">Middle right</string>
+    <string name="hold_scroll_bottom">Bottom row</string>
+    <string name="hold_scroll_up">Scroll backward</string>
+    <string name="hold_scroll_down">Scroll forward</string>
 </resources>

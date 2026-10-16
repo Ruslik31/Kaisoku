@@ -580,9 +580,10 @@ class AppRouter private constructor(
         }.showDistinct()
     }
 
-    fun showReaderConfigSheet(mode: ReaderMode) {
-        ReaderConfigSheet().withArgs(1) {
+    fun showReaderConfigSheet(mode: ReaderMode, actionPage: org.koitharu.kotatsu.reader.ui.pager.ReaderPage? = null) {
+        ReaderConfigSheet().withArgs(2) {
             putInt(KEY_READER_MODE, mode.id)
+            putParcelable("action_page", actionPage)
         }.showDistinct()
     }
 
@@ -721,7 +722,7 @@ class AppRouter private constructor(
             .startChooser()
     }
 
-    private fun shareFile(file: File) { // TODO directory sharing support
+    fun shareFile(file: File) { // TODO directory sharing support
         val context = contextOrNull() ?: return
         val intentBuilder = ShareCompat.IntentBuilder(context)
             .setType(TYPE_CBZ)

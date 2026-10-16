@@ -41,10 +41,12 @@ data class ReaderSettings(
     val isPagesNumbersEnabled: Boolean,
     val isPagesCropEnabledStandard: Boolean,
     val isPagesCropEnabledWebtoon: Boolean,
+    val widePageRotation: Int = 0,
 ) {
 
     private constructor(settings: AppSettings, colorFilterOverride: ReaderColorFilter?) : this(
         zoomMode = settings.zoomMode,
+        widePageRotation = settings.widePageRotation,
         background = settings.readerBackground,
         colorFilter = colorFilterOverride?.takeUnless { it.isEmpty } ?: settings.readerColorFilter,
         isReaderOptimizationEnabled = settings.isReaderOptimizationEnabled,
@@ -100,6 +102,7 @@ data class ReaderSettings(
 
         private val settingsKeys = scatterSetOf(
             AppSettings.KEY_ZOOM_MODE,
+            AppSettings.KEY_WIDE_PAGE_ROTATION,
             AppSettings.KEY_PAGES_NUMBERS,
             AppSettings.KEY_READER_BACKGROUND,
             AppSettings.KEY_32BIT_COLOR,

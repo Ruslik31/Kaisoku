@@ -225,6 +225,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         get() = prefs.getInt(KEY_GRID_SIZE_PAGES, 100)
         set(value) = prefs.edit { putInt(KEY_GRID_SIZE_PAGES, value) }
 
+    val widePageRotation: Int
+        get() = prefs.getString(KEY_WIDE_PAGE_ROTATION, null)?.toIntOrNull()?.takeIf { it == 90 || it == 270 } ?: 0
+
     val isFavoritesCategoryStripVisible: Boolean
         get() = prefs.getBoolean(KEY_FAVORITES_CATEGORY_STRIP, true)
 
@@ -838,6 +841,24 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         get() = prefs.getBoolean(KEY_READER_AUTOSCROLL_HOLD, false)
         set(value) = prefs.edit { putBoolean(KEY_READER_AUTOSCROLL_HOLD, value) }
 
+    val isHoldScrollEnabled: Boolean get() = prefs.getBoolean(KEY_HOLD_SCROLL, false)
+
+    fun holdScrollDirection(area: org.koitharu.kotatsu.reader.domain.TapGridArea): Int {
+        val key = when (area) {
+            org.koitharu.kotatsu.reader.domain.TapGridArea.TOP_LEFT,
+            org.koitharu.kotatsu.reader.domain.TapGridArea.TOP_CENTER,
+            org.koitharu.kotatsu.reader.domain.TapGridArea.TOP_RIGHT -> KEY_HOLD_SCROLL_TOP
+            org.koitharu.kotatsu.reader.domain.TapGridArea.CENTER_LEFT -> KEY_HOLD_SCROLL_LEFT
+            org.koitharu.kotatsu.reader.domain.TapGridArea.CENTER_RIGHT -> KEY_HOLD_SCROLL_RIGHT
+            org.koitharu.kotatsu.reader.domain.TapGridArea.BOTTOM_LEFT,
+            org.koitharu.kotatsu.reader.domain.TapGridArea.BOTTOM_CENTER,
+            org.koitharu.kotatsu.reader.domain.TapGridArea.BOTTOM_RIGHT -> KEY_HOLD_SCROLL_BOTTOM
+            else -> return 0
+        }
+        val fallback = if (key == KEY_HOLD_SCROLL_TOP || key == KEY_HOLD_SCROLL_LEFT) "-1" else "1"
+        return prefs.getString(key, fallback)?.toIntOrNull()?.coerceIn(-1, 1) ?: fallback.toInt()
+    }
+
     @get:FloatRange(from = 1.5, to = 5.0)
     var readerAutoscrollBoostMultiplier: Float
         get() = prefs.getFloatCompat(KEY_READER_AUTOSCROLL_BOOST, AUTOSCROLL_BOOST_DEFAULT, AUTOSCROLL_BOOST_MIN, AUTOSCROLL_BOOST_MAX)
@@ -1089,6 +1110,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_GRID_SIZE = "grid_size"
         const val KEY_FIXED_GRID_COLUMNS = "grid_fixed_columns"
         const val KEY_GRID_COLUMNS = "grid_columns"
+        const val KEY_WIDE_PAGE_ROTATION = "reader_wide_page_rotation"
         const val KEY_FAVORITES_CATEGORY_STRIP = "favorites_category_strip"
         const val KEY_NEW_CHAPTER_COUNTER = "new_chapter_counter"
         const val KEY_FAVORITES_DEFAULT_CATEGORIES = "favorites_default_order_categories"
@@ -1219,6 +1241,11 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_READER_AUTOSCROLL_SPEED = "as_speed"
         const val KEY_READER_AUTOSCROLL_FAB = "as_fab"
         const val KEY_READER_AUTOSCROLL_HOLD = "as_hold"
+        const val KEY_HOLD_SCROLL = "reader_hold_scroll"
+        const val KEY_HOLD_SCROLL_TOP = "reader_hold_top"
+        const val KEY_HOLD_SCROLL_LEFT = "reader_hold_left"
+        const val KEY_HOLD_SCROLL_RIGHT = "reader_hold_right"
+        const val KEY_HOLD_SCROLL_BOTTOM = "reader_hold_bottom"
         const val KEY_READER_AUTOSCROLL_BOOST = "as_boost"
         const val KEY_MIRROR_SWITCHING = "mirror_switching"
         const val KEY_PROXY = "proxy"
