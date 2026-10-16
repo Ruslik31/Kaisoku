@@ -41,6 +41,64 @@ class RecommendationStoreTest {
         assertEquals(1, library.getMangaDao().recommendationTaste().first().size)
     }
 
+    @Test fun newDetailsContextsReuseCompatibleSourceCandidatesWithoutProviderOrLibraryWrites() = fixture { library, store ->
+        val before = snapshot(library)
+        val source = Recommendation(RecommendationTarget.SourceTitle(title.toManga(emptySet(), null)))
+        val public = PublicRecommendationMetadata.anilistTitle(JSONObject(
+            """{"id":42,"format":"MANGA","title":{"english":"Public fixture"}}"""))!!
+        store.dao.saveCandidates(listOf(
+            RecommendationCandidateEntity(source.key, RecommendationCodec.encode(source).toString(), 10, "source-v1"),
+            RecommendationCandidateEntity(public.key, RecommendationCodec.encode(public).toString(), 11, "public-v1"),
+        ))
+        assertNull(store.dao.result("details:fixture:999"))
+        val cached = store.cachedCandidates(mapOf("fixture" to "source-v1"))
+        assertEquals(source.key, cached.single().key)
+        assertEquals(RecommendationProvenance.CACHE, cached.single().provenance)
+        assertTrue(store.cachedCandidates(mapOf("fixture" to "source-v2")).isEmpty())
+        assertEquals(before, snapshot(library))
+    }
+
+    @Test fun refreshClaimsPersistAcrossSettingsChangesAndResultEviction() = fixture { library, store ->
+        val before = snapshot(library)
+        val now = 1_800_000_000_000L
+        val key = "details:fixture:-88"
+        assertTrue(store.claimRefresh(key, false, now))
+        assertFalse(store.claimRefresh(key, true, now + 1))
+        store.dao.result(RecommendationResultEntity(key, "[]", now, "old-settings", "offline"))
+        store.dao.cooldown(RecommendationCooldown("refreshed:$key", now + RecommendationRefreshPolicy.INTERVAL))
+        assertFalse(store.claimRefresh(key, false, now + 60_000))
+        // Other titles can evict a result row, but not its refresh allowance.
+        repeat(40) { index ->
+            store.dao.result(RecommendationResultEntity("details:fixture:$index", "[]", now + index + 1, "other", null))
+        }
+        store.dao.trimResults()
+        assertNull(store.dao.result(key))
+        assertFalse(store.claimRefresh(key, false, now + 120_000))
+        assertTrue(store.claimRefresh(key, true, now + 120_000))
+        assertFalse(store.claimRefresh(key, true, now + 120_001))
+        store.dao.trimCooldowns(now + RecommendationRefreshPolicy.INTERVAL)
+        assertNull(store.dao.cooldown("refreshed:$key"))
+        assertTrue(store.claimRefresh(key, false, now + RecommendationRefreshPolicy.INTERVAL))
+        assertEquals(before, snapshot(library))
+    }
+
+    @Test fun actualSourceChangesRefreshOnceWithoutTreatingFilterChangesAsInvalidation() = fixture { _, store ->
+        val now = 1_800_000_000_000L
+        val card = Recommendation(RecommendationTarget.SourceTitle(title.toManga(emptySet(), null)))
+        val key = "details:fixture:-88"
+        store.dao.saveCandidates(listOf(RecommendationCandidateEntity(card.key,
+            RecommendationCodec.encode(card).toString(), now, "source-v1")))
+        val row = RecommendationResultEntity(key, JSONArray(listOf(card.key)).toString(), now, "old-settings", null)
+        store.dao.result(row)
+        assertFalse(store.claimRefresh(key, false, now + 60_000, mapOf("fixture" to "source-v1")))
+        assertTrue(store.claimRefresh(key, false, now + 60_000, mapOf("fixture" to "source-v2")))
+        assertFalse(store.claimRefresh(key, false, now + 60_001, mapOf("fixture" to "source-v2")))
+        store.dao.saveCandidates(listOf(RecommendationCandidateEntity(card.key,
+            RecommendationCodec.encode(card).toString(), now + 60_000, "source-v2")))
+        store.dao.result(row.copy(refreshed = now + 60_000, scope = "new-settings"))
+        assertFalse(store.claimRefresh(key, false, now + 120_000, mapOf("fixture" to "source-v2")))
+    }
+
     @Test fun feedbackUndoAndCacheTrimmingStayInThePrivateStore() = fixture { library, store ->
         val before = snapshot(library)
         val key = "source:fixture:-88"

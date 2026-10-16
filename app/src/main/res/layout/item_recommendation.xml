@@ -7,8 +7,10 @@
 	android:layout_height="wrap_content"
 	android:orientation="vertical">
 
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical">
     <com.google.android.material.chip.ChipGroup android:id="@+id/recommendation_filters"
-        android:layout_width="match_parent" android:layout_height="wrap_content" app:singleSelection="true"
+        android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" app:singleSelection="true"
         app:selectionRequired="true" android:visibility="gone">
         <com.google.android.material.chip.Chip android:id="@+id/recommendation_all"
             style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content"
@@ -20,6 +22,13 @@
             style="@style/Widget.Material3.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:text="@string/recommendation_novels" android:checkable="true" />
     </com.google.android.material.chip.ChipGroup>
+    <androidx.appcompat.widget.AppCompatImageButton android:id="@+id/recommendation_error_details"
+        android:layout_width="48dp" android:layout_height="48dp" android:layout_marginEnd="8dp"
+        android:background="?attr/selectableItemBackgroundBorderless" android:padding="12dp"
+        android:contentDescription="@string/recommendation_sources_with_errors" android:visibility="gone"
+        android:tooltipText="@string/recommendation_sources_with_errors"
+        app:srcCompat="@drawable/ic_alert_outline" app:tint="?attr/colorError" />
+    </LinearLayout>
     <TextView android:id="@+id/recommendation_message" android:layout_width="match_parent"
         android:layout_height="wrap_content" android:textAppearance="?attr/textAppearanceBodySmall"
         android:padding="8dp" android:visibility="gone" />

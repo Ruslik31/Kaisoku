@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.suggestions.local
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -24,6 +25,31 @@ class RecommendationStore internal constructor(val database: RecommendationDatab
 
     fun changed() { changes.update { it + 1 } }
 
+    suspend fun claimRefresh(key: String, force: Boolean, now: Long, versions: Map<String, String> = emptyMap()): Boolean = database.withTransaction {
+        val row = dao.result(key)
+        // Real adapter/source changes can invalidate cached URLs; ordinary filters cannot.
+        val sourceChanged = if (row == null || versions.isEmpty()) false else {
+            val keys = runCatching { org.json.JSONArray(row.payload).let { array ->
+                (0 until array.length()).map { array.getString(it) }
+            } }.getOrDefault(emptyList())
+            dao.candidates(keys).any { candidate ->
+                val title = runCatching { RecommendationCodec.decode(org.json.JSONObject(candidate.payload)) }.getOrNull()
+                title?.takeIf { it.target is RecommendationTarget.SourceTitle }?.manga?.source?.name?.let { source ->
+                    versions[source]?.let { it != candidate.sourceVersion }
+                } == true
+            }
+        }
+        val lastRefresh = if (sourceChanged) null else row?.refreshed ?: dao.cooldown("refreshed:$key")?.until
+            ?.minus(RecommendationRefreshPolicy.INTERVAL)
+        val retryKey = "refresh:$key"
+        val retryUntil = dao.cooldown(retryKey)?.until ?: 0
+        if (!RecommendationRefreshPolicy.shouldRefresh(lastRefresh, retryUntil, now, force)) false
+        else {
+            dao.cooldown(RecommendationCooldown(retryKey, now + RecommendationRefreshPolicy.RETRY_INTERVAL))
+            true
+        }
+    }
+
     suspend fun complete(row: RecommendationResultEntity): Boolean {
         val keys = runCatching { org.json.JSONArray(row.payload).let { array ->
             (0 until array.length()).map { array.getString(it) }
@@ -42,6 +68,13 @@ class RecommendationStore internal constructor(val database: RecommendationDatab
             value?.takeIf { versions == null || it.target is RecommendationTarget.PublicTitle || versions[it.manga.source.name] == row.sourceVersion }
         } }
     }
+
+    suspend fun cachedCandidates(versions: Map<String, String>, limit: Int = 500): List<Recommendation> =
+        dao.candidates().asSequence().mapNotNull { row ->
+            runCatching { RecommendationCodec.decode(org.json.JSONObject(row.payload)) }.getOrNull()
+                ?.takeIf { it.target is RecommendationTarget.SourceTitle && versions[it.manga.source.name] == row.sourceVersion }
+                ?.copy(provenance = RecommendationProvenance.CACHE, reason = RecommendationReason.DISCOVERY, because = null)
+        }.take(limit).toList()
 
     suspend fun recordChapters(manga: Manga, reading: Boolean = false, chapterId: Long? = null) {
         if (manga.chapters.isNullOrEmpty()) return

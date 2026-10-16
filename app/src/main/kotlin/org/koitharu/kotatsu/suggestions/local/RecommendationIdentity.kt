@@ -22,7 +22,8 @@ internal object RecommendationIdentity {
 
     fun deduplicate(values: List<Recommendation>): List<Recommendation> {
         val seen = mutableSetOf<String>()
-        return values.sortedWith(compareBy<Recommendation> { it.target is RecommendationTarget.PublicTitle }
+        return RecommendationContentPolicy.retainAdultMetadata(values)
+            .sortedWith(compareBy<Recommendation> { it.target is RecommendationTarget.PublicTitle }
             .thenBy { if (it.provenance == RecommendationProvenance.RELATED) 0 else 1 }
             .thenByDescending { it.manga.tags.size + it.manga.authors.orEmpty().size }
             .thenBy { if (it.provenance == RecommendationProvenance.CACHE) 1 else 0 }

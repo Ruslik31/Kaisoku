@@ -92,8 +92,12 @@ fun exploreRecommendationItemAD(
             }
             if (media != item.mediaFilter) mediaListener(media)
         }
-        binding.recommendationMessage.textAndVisible = if (item.error != null) context.getString(R.string.recommendation_cached_error, item.error)
-            else if (item.mediaFilter != null && item.manga.isEmpty()) context.getString(R.string.text_suggestion_holder) else null
+        binding.recommendationMessage.textAndVisible = if (item.mediaFilter != null && item.manga.isEmpty())
+            context.getString(R.string.text_suggestion_holder) else null
+        binding.recommendationErrorDetails.isVisible = !item.error.isNullOrBlank()
+        binding.recommendationErrorDetails.setOnClickListener {
+            item.error?.let { org.koitharu.kotatsu.suggestions.local.showRecommendationErrorDetails(context, it) }
+        }
         binding.pager.isVisible = item.manga.isNotEmpty()
         binding.dots.isVisible = item.manga.isNotEmpty()
 	}

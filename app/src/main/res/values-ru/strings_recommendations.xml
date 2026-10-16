@@ -32,6 +32,7 @@
     <string name="recommendation_all">Все</string>
     <string name="recommendation_manga">Манга</string>
     <string name="recommendation_novels">Новеллы</string>
-    <string name="recommendation_cached_error">Показаны сохранённые рекомендации. Ошибка обновления: %1$s</string>
+    <string name="recommendation_sources_with_errors">Источники с ошибками</string>
+    <string name="recommendation_copy_full_error">Копировать полную ошибку</string>
     <string name="recommendation_network_required">Для рекомендаций нужно соединение, разрешённое настройкой Wi-Fi.</string>
 </resources>

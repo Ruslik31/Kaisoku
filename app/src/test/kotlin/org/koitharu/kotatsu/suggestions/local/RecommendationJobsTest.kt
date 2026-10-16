@@ -83,7 +83,7 @@ class RecommendationJobsTest {
     }
 
     @Test fun operationLimitHoldsUnderRealConcurrency() {
-        for (limit in listOf(8, 16)) {
+        for (limit in listOf(1, 2, 8, 16)) {
             val budget = RecommendationBudget(limit)
             val executor = Executors.newFixedThreadPool(8)
             try {

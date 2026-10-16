@@ -11,8 +11,21 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.util.reverseAsync
+import org.koitharu.kotatsu.core.util.ext.copyToClipboard
 import org.koitharu.kotatsu.parsers.model.Manga
 import javax.inject.Inject
+
+fun showRecommendationErrorDetails(context: Context, details: String) {
+    MaterialAlertDialogBuilder(context)
+        .setTitle(R.string.recommendation_sources_with_errors)
+        .setMessage(RecommendationFailures.summary(details))
+        .setPositiveButton(R.string.close, null)
+        .setNeutralButton(R.string.recommendation_copy_full_error) { _, _ ->
+            context.copyToClipboard(context.getString(R.string.error_details), RecommendationFailures.fullDetails(details))
+        }
+        .show()
+        .findViewById<android.widget.TextView>(android.R.id.message)?.setTextIsSelectable(true)
+}
 
 fun recommendationReasonText(value: Recommendation, context: Context): String = when (value.reason) {
     RecommendationReason.BECAUSE_READ -> context.getString(R.string.recommendation_because, value.because.orEmpty())

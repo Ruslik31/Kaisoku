@@ -32,6 +32,7 @@
     <string name="recommendation_all">All</string>
     <string name="recommendation_manga">Manga</string>
     <string name="recommendation_novels">Novels</string>
-    <string name="recommendation_cached_error">Showing saved recommendations. Refresh failed: %1$s</string>
+    <string name="recommendation_sources_with_errors">Sources with errors</string>
+    <string name="recommendation_copy_full_error">Copy full error</string>
     <string name="recommendation_network_required">Recommendations need a connection allowed by your Wi-Fi preference.</string>
 </resources>

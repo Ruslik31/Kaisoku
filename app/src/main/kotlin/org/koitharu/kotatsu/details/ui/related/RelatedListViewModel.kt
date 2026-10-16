@@ -24,6 +24,7 @@ import org.koitharu.kotatsu.list.domain.MangaListMapper
 import org.koitharu.kotatsu.list.ui.MangaListViewModel
 import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.LoadingState
+import org.koitharu.kotatsu.suggestions.local.recommendationContent
 import org.koitharu.kotatsu.list.ui.model.toErrorState
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -49,7 +50,6 @@ class RelatedListViewModel @Inject constructor(
     private var loadingJob: Job? = null
     private val recommendations = relatedUseCase.observe(seed).onEach { snapshot ->
         mangaList.value = snapshot.results.map { it.manga }
-        listError.value = snapshot.error?.let { java.io.IOException(it) }
     }.shareRecommendations(viewModelScope + Dispatchers.Default, null)
 
     override val content = combine(
@@ -61,11 +61,11 @@ class RelatedListViewModel @Inject constructor(
         when {
             list.isNullOrEmpty() && error != null -> listOf(error.toErrorState(canRetry = true))
             list == null -> listOf(LoadingState)
-            list.isEmpty() -> listOf(createEmptyState())
+            list.isEmpty() -> recommendationContent(listOf(createEmptyState()), snapshot?.error)
             else -> buildList {
-                snapshot?.error?.let { add(java.io.IOException(it).toErrorState(canRetry = true)) }
-                if (settings.useLegacySuggestions) addAll(mangaListMapper.toListModelList(list, mode))
-                else addAll(mangaListMapper.toRecommendationModels(snapshot?.results.orEmpty(), mode))
+                val cards = if (settings.useLegacySuggestions) mangaListMapper.toListModelList(list, mode)
+                    else mangaListMapper.toRecommendationModels(snapshot?.results.orEmpty(), mode)
+                addAll(recommendationContent(cards, snapshot?.error))
             }
         }
     }.shareRecommendations(viewModelScope + Dispatchers.Default, listOf(LoadingState))

@@ -19,7 +19,6 @@ import org.koitharu.kotatsu.core.network.CloudFlareInterceptor
 import org.koitharu.kotatsu.core.network.FlareSolverrInterceptor
 import org.koitharu.kotatsu.core.network.RateLimitInterceptor
 import org.koitharu.kotatsu.core.prefs.AppSettings
-import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.parsers.model.ContentRating
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
@@ -55,19 +54,27 @@ class PublicRecommendationProviders @Inject constructor(
         }
     }
 
-    suspend fun withTrustedIdentities(values: List<Recommendation>): List<Recommendation> {
+    suspend fun withTrustedIdentities(values: List<Recommendation>, contentOverrides: Boolean = true): List<Recommendation> {
         val confirmations = store.dao.links().groupBy { it.key }
         val trackers = library.getScrobblingDao().observeAll(2).first().groupBy { it.mangaId }
-        val knownSources = library.getMangaDao().findAll(values.map { it.manga.id }.distinct().toLongArray())
-            .associate { it.manga.id to it.manga.source }
+        val sourceIds = values.filter { it.target is RecommendationTarget.SourceTitle }
+            .map { it.manga.id }.distinct().toLongArray()
+        val knownTitles = library.getMangaDao().findAll(sourceIds).associate { it.manga.id to it.toManga() }
+        val ratings = if (!contentOverrides) emptyMap() else library.getPreferencesDao().getOverrides(sourceIds).mapNotNull { pref ->
+            org.koitharu.kotatsu.core.db.entity.ContentRating(pref.contentRatingOverride)?.let { pref.mangaId to it }
+        }.toMap()
         return values.map { value ->
             val target = value.target
             val confirmed = confirmations[value.key].orEmpty().filter { it.kind == value.manga.recommendationKind().name }
                 .associate { it.provider to it.identifier }
             val ids = trackers[value.manga.id].orEmpty().map { it.targetId }.filter { it > 0 }.distinct()
-            val trusted = if (knownSources[value.manga.id] == value.manga.source.name) ids.singleOrNull()?.toString() else null
+            val known = knownTitles[value.manga.id]?.takeIf { it.source.name == value.manga.source.name }
+            val trusted = if (known != null) ids.singleOrNull()?.toString() else null
             val direct = Regex("https://anilist\\.co/manga/(\\d+)(?:/|$)").find(value.manga.publicUrl)?.groupValues?.get(1)
-            value.copy(trustedIdentifiers = confirmed + when {
+            value.copy(target = if (target is RecommendationTarget.SourceTitle) target.copy(
+                manga = RecommendationContentPolicy.withKnownRating(target.manga, known,
+                    ratings[value.manga.id].takeIf { known != null }),
+            ) else target, trustedIdentifiers = confirmed + when {
                 target is RecommendationTarget.PublicTitle -> mapOf(target.provider to target.identifier)
                 confirmed.containsKey("ANILIST") -> emptyMap()
                 direct != null || trusted != null -> mapOf("ANILIST" to (direct ?: trusted!!))
@@ -166,7 +173,7 @@ class PublicRecommendationProviders @Inject constructor(
     private fun enabled() = settings.publicRecommendations && !settings.useLegacySuggestions
     private fun allowedMatch(result: Recommendation, seed: Manga): Boolean =
         result.manga.recommendationKind() == seed.recommendationKind() &&
-            (!(settings.isNsfwContentDisabled || settings.isSuggestionsExcludeNsfw) || !result.manga.isNsfw()) &&
+            RecommendationContentPolicy.allowed(result.manga, settings.isNsfwContentDisabled || settings.isSuggestionsExcludeNsfw) &&
             result.manga.tags.none { tag -> settings.suggestionsTagsBlacklist.any {
                 RecommendationRanker.normalize(it) == RecommendationRanker.normalize(tag.title)
             } }

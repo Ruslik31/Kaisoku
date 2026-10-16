@@ -21,10 +21,10 @@ import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -56,7 +56,6 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.LocaleComparator
 import org.koitharu.kotatsu.core.util.ext.asArrayList
 import org.koitharu.kotatsu.core.util.ext.awaitUniqueWorkInfoByName
-import org.koitharu.kotatsu.core.util.ext.awaitWorkInfosByTag
 import org.koitharu.kotatsu.core.util.ext.checkNotificationPermission
 import org.koitharu.kotatsu.core.util.ext.flatten
 import org.koitharu.kotatsu.core.util.ext.getQuantityStringSafe
@@ -110,7 +109,8 @@ class SuggestionsWorker @AssistedInject constructor(
             return Result.success()
         }
         if (!appSettings.useLegacySuggestions) {
-            recommendationEngine.refresh(org.koitharu.kotatsu.suggestions.local.RecommendationRequest.Explore)
+            recommendationEngine.refresh(org.koitharu.kotatsu.suggestions.local.RecommendationRequest.Explore,
+                force = inputData.getBoolean(DATA_FORCE, false))
             val results = recommendationEngine.cachedExplore()
             if (!appSettings.useLegacySuggestions && appSettings.isSuggestionsNotificationAvailable &&
                 applicationContext.checkNotificationPermission(MANGA_CHANNEL_ID)) {
@@ -441,18 +441,19 @@ class SuggestionsWorker @AssistedInject constructor(
 				.any { !it.state.isFinished }
 		}
 
-		suspend fun startNow() {
-			if (workManager.awaitWorkInfosByTag(TAG_ONESHOT).any { !it.state.isFinished }) {
-				return
-			}
-			val constraints = createConstraints()
-			val request = OneTimeWorkRequestBuilder<SuggestionsWorker>()
-				.setConstraints(constraints)
-				.addTag(TAG_ONESHOT)
-				.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-				.build()
-			workManager.enqueue(request).await()
+		suspend fun startNow(force: Boolean = true) {
+            val request = createRefreshRequest(createConstraints(), force)
+            workManager.enqueueUniqueWork(TAG_ONESHOT, ExistingWorkPolicy.KEEP, request).await()
 		}
+
+        companion object {
+            internal fun createRefreshRequest(constraints: Constraints, force: Boolean) =
+                OneTimeWorkRequestBuilder<SuggestionsWorker>()
+                    .setConstraints(constraints)
+                    .addTag(TAG_ONESHOT)
+                    .setInputData(workDataOf(DATA_FORCE to force))
+                    .build()
+        }
 
 		private fun createConstraints() = Constraints.Builder()
 			.setRequiredNetworkType(if (settings.isSuggestionsWiFiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
@@ -465,6 +466,7 @@ class SuggestionsWorker @AssistedInject constructor(
 		const val TAG = "suggestions"
 		const val TAG_ONESHOT = "suggestions_oneshot"
 		const val DATA_COUNT = "count"
+        const val DATA_FORCE = "force_refresh"
 		const val WORKER_CHANNEL_ID = "suggestion_worker"
 		const val MANGA_CHANNEL_ID = "suggestions"
 		const val GROUP_SUGGESTION = "org.koitharu.kotatsu.SUGGESTIONS"

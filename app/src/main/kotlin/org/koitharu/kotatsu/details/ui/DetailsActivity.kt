@@ -226,7 +226,11 @@ class DetailsActivity :
         viewModel.localSize.observe(this, ::onLocalSizeChanged)
         viewModel.relatedManga.observe(this, ::onRelatedMangaChanged)
         viewModel.recommendationError.observe(this) { error ->
-            viewBinding.textViewRecommendationError?.textAndVisible = error?.let { getString(R.string.recommendation_cached_error, it) }
+            val details = error?.takeIf { it.isNotBlank() && settings.isRelatedMangaEnabled && !settings.useLegacySuggestions }
+            viewBinding.buttonRecommendationErrorDetails?.isVisible = details != null
+            viewBinding.buttonRecommendationErrorDetails?.setOnClickListener {
+                details?.let { org.koitharu.kotatsu.suggestions.local.showRecommendationErrorDetails(this, it) }
+            }
         }
         viewModel.favouriteCategories.observe(this, ::onFavoritesChanged)
         viewModel.favoriteDate.observe(this, ::onFavoriteDateChanged)

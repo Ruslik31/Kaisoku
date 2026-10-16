@@ -331,7 +331,7 @@
 					android:singleLine="true"
 					android:text="@string/related_manga"
 					android:textAppearance="?textAppearanceTitleSmall"
-					app:layout_constraintEnd_toStartOf="@id/button_related_more"
+					app:layout_constraintEnd_toStartOf="@id/button_recommendation_error_details"
 					app:layout_constraintStart_toStartOf="parent"
 					app:layout_constraintTop_toBottomOf="@id/recyclerView_scrobbling" />
 
@@ -346,17 +346,6 @@
 					app:layout_constraintBaseline_toBaselineOf="@id/textView_related_title"
 					app:layout_constraintEnd_toEndOf="parent" />
 
-                <TextView
-                    android:id="@+id/textView_recommendation_error"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:padding="@dimen/margin_small"
-                    android:textAppearance="?textAppearanceBodySmall"
-                    android:visibility="gone"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintTop_toBottomOf="@id/textView_related_title" />
-
 				<androidx.recyclerview.widget.RecyclerView
 					android:id="@+id/recyclerView_related"
 					android:layout_width="0dp"
@@ -370,8 +359,24 @@
 					app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
 					app:layout_constraintEnd_toEndOf="parent"
 					app:layout_constraintStart_toStartOf="parent"
-					app:layout_constraintTop_toBottomOf="@id/textView_recommendation_error"
+					app:layout_constraintTop_toBottomOf="@id/related_header_bottom"
 					tools:listitem="@layout/item_manga_grid" />
+
+                <androidx.appcompat.widget.AppCompatImageButton
+                    android:id="@+id/button_recommendation_error_details"
+                    android:layout_width="48dp" android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless" android:padding="12dp"
+                    android:contentDescription="@string/recommendation_sources_with_errors" android:visibility="gone"
+                    android:tooltipText="@string/recommendation_sources_with_errors"
+                    app:srcCompat="@drawable/ic_alert_outline" app:tint="?attr/colorError"
+                    app:layout_constraintEnd_toStartOf="@id/button_related_more"
+                    app:layout_constraintTop_toTopOf="@id/textView_related_title" />
+
+                <androidx.constraintlayout.widget.Barrier
+                    android:id="@+id/related_header_bottom"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    app:barrierDirection="bottom" app:barrierAllowsGoneWidgets="false"
+                    app:constraint_referenced_ids="textView_related_title,button_related_more,button_recommendation_error_details" />
 
 				<androidx.constraintlayout.widget.Group
 					android:id="@+id/group_related"

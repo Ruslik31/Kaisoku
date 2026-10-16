@@ -18,6 +18,7 @@ import org.koitharu.kotatsu.list.domain.QuickFilterListener
 import org.koitharu.kotatsu.list.ui.MangaListViewModel
 import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.LoadingState
+import org.koitharu.kotatsu.suggestions.local.recommendationContent
 import org.koitharu.kotatsu.list.ui.model.toErrorState
 import org.koitharu.kotatsu.suggestions.domain.SuggestionRepository
 import org.koitharu.kotatsu.suggestions.domain.SuggestionsListQuickFilter
@@ -49,36 +50,18 @@ class SuggestionsViewModel @Inject constructor(
         // Read at map time rather than combined in: the query above already re-runs on every filter
         // change, so a second input would render the chips one frame ahead of their results.
         val filters = quickFilter.appliedOptions.value
-        when {
-            list.isEmpty() && snapshot.error != null -> listOf(java.io.IOException(snapshot.error).toErrorState(canRetry = true))
-            list.isEmpty() -> if (filters.isEmpty()) {
-                listOf(
-                    EmptyState(
-                        icon = R.drawable.ic_empty_common,
-                        textPrimary = R.string.nothing_found,
-                        textSecondary = R.string.text_suggestion_holder,
-                        actionStringRes = 0,
-                    ),
-                )
-            } else {
-                listOfNotNull(
-                    quickFilter.filterItem(filters),
-                    EmptyState(
-                        icon = R.drawable.ic_empty_common,
-                        textPrimary = R.string.nothing_found,
-                        textSecondary = R.string.text_empty_holder_secondary_filtered,
-                        actionStringRes = 0,
-                    ),
-                )
-            }
-
-            else -> buildList(list.size + 1) {
-                quickFilter.filterItem(filters)?.let(::add)
-                snapshot.error?.let { add(java.io.IOException(it).toErrorState(canRetry = true)) }
-                if (settings.useLegacySuggestions) mangaListMapper.toListModelList(this, list, mode)
-                else addAll(mangaListMapper.toRecommendationModels(snapshot.results, mode))
-            }
+        val cards = when {
+            list.isEmpty() -> listOf(EmptyState(
+                icon = R.drawable.ic_empty_common,
+                textPrimary = R.string.nothing_found,
+                textSecondary = if (filters.isEmpty()) R.string.text_suggestion_holder
+                    else R.string.text_empty_holder_secondary_filtered,
+                actionStringRes = 0,
+            ))
+            settings.useLegacySuggestions -> mangaListMapper.toListModelList(list, mode)
+            else -> mangaListMapper.toRecommendationModels(snapshot.results, mode)
         }
+        listOfNotNull(quickFilter.filterItem(filters)) + recommendationContent(cards, snapshot.error)
     }.catch {
         emit(listOf(it.toErrorState(canRetry = false)))
     }.shareRecommendations(viewModelScope + Dispatchers.Default, listOf(LoadingState))

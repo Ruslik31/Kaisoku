@@ -53,6 +53,7 @@ interface RecommendationDao {
     @Upsert suspend fun link(row: RecommendationProviderLink)
     @Query("SELECT * FROM cooldowns WHERE operation = :operation") suspend fun cooldown(operation: String): RecommendationCooldown?
     @Upsert suspend fun cooldown(row: RecommendationCooldown)
+    @Query("DELETE FROM cooldowns WHERE until <= :now") suspend fun trimCooldowns(now: Long)
     @Query("DELETE FROM results WHERE context NOT IN (SELECT context FROM results ORDER BY refreshed DESC, context LIMIT 40)")
     suspend fun trimResults()
 }

@@ -29,7 +29,7 @@ class RelatedMangaUseCase @Inject constructor(
             } else engine.observe(org.koitharu.kotatsu.suggestions.local.RecommendationRequest.Details(seed))
         }
 
-    suspend fun refresh(seed: Manga) = engine.refresh(org.koitharu.kotatsu.suggestions.local.RecommendationRequest.Details(seed))
+    suspend fun refresh(seed: Manga) = engine.refresh(org.koitharu.kotatsu.suggestions.local.RecommendationRequest.Details(seed), force = true)
 
 	suspend operator fun invoke(seed: Manga) = runCatchingCancellable {
 		mangaRepositoryFactory.create(seed.source).getRelated(seed)
