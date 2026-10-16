@@ -13,6 +13,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.tabs.TabLayoutMediator
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.FlowCollector
 import org.koitharu.kotatsu.R
@@ -87,7 +88,15 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			}
 		})
 		viewModel.isEmpty.observe(viewLifecycleOwner, ::onEmptyStateChanged)
-		addMenuProvider(FavouritesContainerMenuProvider(router))
+		viewModel.showCategoryStrip.observe(viewLifecycleOwner) { visible ->
+			binding.tabs.isVisible = visible && !viewModel.isEmpty.value
+			requireActivity().invalidateOptionsMenu()
+		}
+		addMenuProvider(FavouritesContainerMenuProvider(
+			router,
+			{ !viewModel.showCategoryStrip.value && viewModel.categories.value.isNotEmpty() },
+			::chooseCategory,
+		))
 		viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.pager))
 	}
 
@@ -130,9 +139,28 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private fun onEmptyStateChanged(isEmpty: Boolean) {
 		viewBinding?.run {
 			pager.isGone = isEmpty
-			tabs.isGone = isEmpty
+			tabs.isGone = isEmpty || !viewModel.showCategoryStrip.value
 			stubEmpty.isVisible = isEmpty
 		}
+	}
+
+	private fun chooseCategory() {
+		val binding = viewBinding ?: return
+		val categories = viewModel.categories.value
+		if (categories.isEmpty()) return
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.choose_favorites_category)
+			.setSingleChoiceItems(
+				categories.map { it.title ?: getString(R.string.all_favourites) }.toTypedArray(),
+				binding.pager.currentItem,
+			) { dialog, position ->
+				val category = categories[position]
+				val current = viewModel.categories.value.indexOfFirst { it.id == category.id }
+				if (current >= 0 && viewBinding === binding) binding.pager.setCurrentItem(current, false)
+				dialog.dismiss()
+			}
+			.setNegativeButton(R.string.cancel, null)
+			.show()
 	}
 
 	private fun findCurrentFragment(): Fragment? {

@@ -31,6 +31,8 @@ class FavouritesCategoryEditViewModel @Inject constructor(
 
 	val onSaved = MutableEventFlow<Unit>()
 	val category = MutableStateFlow<FavouriteCategory?>(null)
+	val defaultOrder: ListSortOrder get() = settings.allFavoritesSortOrder
+	val usesDefaultOrder: Boolean get() = categoryId == NO_ID || settings.usesDefaultFavoritesOrder(categoryId)
 
 	val isTrackerEnabled = flow {
 		emit(settings.isTrackerEnabled && AppSettings.TRACK_FAVOURITES in settings.trackSources)
@@ -51,13 +53,17 @@ class FavouritesCategoryEditViewModel @Inject constructor(
 		sortOrder: ListSortOrder,
 		isTrackerEnabled: Boolean,
 		isVisibleOnShelf: Boolean,
+		useDefaultOrder: Boolean,
 	) {
 		launchLoadingJob(Dispatchers.Default) {
 			check(title.isNotEmpty())
 			if (categoryId == NO_ID) {
-				repository.createCategory(title, sortOrder, isTrackerEnabled, isVisibleOnShelf)
+				repository.createCategory(title, sortOrder, isTrackerEnabled, isVisibleOnShelf, useDefaultOrder)
 			} else {
-				repository.updateCategory(categoryId, title, sortOrder, isTrackerEnabled, isVisibleOnShelf)
+				repository.updateCategory(categoryId, title,
+					if (useDefaultOrder) category.value?.order ?: sortOrder else sortOrder,
+					isTrackerEnabled, isVisibleOnShelf)
+				settings.setUsesDefaultFavoritesOrder(categoryId, useDefaultOrder)
 			}
 			onSaved.call(Unit)
 		}

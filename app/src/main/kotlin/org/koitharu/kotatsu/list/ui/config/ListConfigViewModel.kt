@@ -48,6 +48,18 @@ class ListConfigViewModel @Inject constructor(
 			settings.gridSize = value
 		}
 
+	val usesFixedColumns: Boolean get() = settings.isFixedGridColumnsEnabled
+	var gridColumns: Int
+		get() = settings.gridColumns
+		set(value) { settings.gridColumns = value }
+
+	val supportsDefaultSort: Boolean get() = section is ListConfigSection.Favorites && section.categoryId != NO_ID
+	var usesDefaultSort: Boolean
+		get() = (section as? ListConfigSection.Favorites)?.let { settings.usesDefaultFavoritesOrder(it.categoryId) } == true
+		set(value) {
+			(section as? ListConfigSection.Favorites)?.let { settings.setUsesDefaultFavoritesOrder(it.categoryId, value) }
+		}
+
 	val isGroupingSupported: Boolean
 		get() = section == ListConfigSection.History || section == ListConfigSection.Updated
 
@@ -108,25 +120,26 @@ class ListConfigViewModel @Inject constructor(
 		saveSortOrder(ListSortOrder.from(current.type, isAscending))
 	}
 
-	private fun saveSortOrder(value: ListSortOrder) {
-		when (section) {
-			is ListConfigSection.Favorites -> launchJob {
-				if (section.categoryId == NO_ID) {
-					settings.allFavoritesSortOrder = value
-				} else {
-					favouritesRepository.setCategoryOrder(section.categoryId, value)
-				}
-			}
+    private fun saveSortOrder(value: ListSortOrder) {
+        if (getSelectedSortOrder() == value || (supportsDefaultSort && usesDefaultSort)) return
+        when (section) {
+            is ListConfigSection.Favorites -> launchJob {
+                if (section.categoryId == NO_ID) {
+                    settings.allFavoritesSortOrder = value
+                } else {
+                    favouritesRepository.setCategoryOrder(section.categoryId, value)
+                }
+            }
 
-			ListConfigSection.General -> Unit
-			ListConfigSection.History -> settings.historySortOrder = value
+            ListConfigSection.General -> Unit
+            ListConfigSection.History -> settings.historySortOrder = value
 
-			ListConfigSection.Suggestions -> Unit
-			ListConfigSection.Updated -> Unit
-		}
-	}
+            ListConfigSection.Suggestions -> Unit
+            ListConfigSection.Updated -> Unit
+        }
+    }
 
-	private fun getCategorySortOrder(id: Long): ListSortOrder = if (id == NO_ID) {
+	private fun getCategorySortOrder(id: Long): ListSortOrder = if (id == NO_ID || settings.usesDefaultFavoritesOrder(id)) {
 		settings.allFavoritesSortOrder
 	} else runBlocking {
 		runCatchingCancellable {

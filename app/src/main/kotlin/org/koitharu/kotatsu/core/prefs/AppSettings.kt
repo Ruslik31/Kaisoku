@@ -225,6 +225,29 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         get() = prefs.getInt(KEY_GRID_SIZE_PAGES, 100)
         set(value) = prefs.edit { putInt(KEY_GRID_SIZE_PAGES, value) }
 
+    val isFavoritesCategoryStripVisible: Boolean
+        get() = prefs.getBoolean(KEY_FAVORITES_CATEGORY_STRIP, true)
+
+    val isNewChapterCounterVisible: Boolean
+        get() = prefs.getBoolean(KEY_NEW_CHAPTER_COUNTER, true)
+
+    val isFixedGridColumnsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_FIXED_GRID_COLUMNS, false)
+
+    var gridColumns: Int
+        get() = prefs.getInt(KEY_GRID_COLUMNS, 3).coerceIn(2, 12)
+        set(value) = prefs.edit { putInt(KEY_GRID_COLUMNS, value.coerceIn(2, 12)) }
+
+    fun usesDefaultFavoritesOrder(categoryId: Long): Boolean =
+        categoryId.toString() in prefs.getStringSet(KEY_FAVORITES_DEFAULT_CATEGORIES, emptySet()).orEmpty()
+
+    @Synchronized
+    fun setUsesDefaultFavoritesOrder(categoryId: Long, enabled: Boolean) {
+        val ids = prefs.getStringSet(KEY_FAVORITES_DEFAULT_CATEGORIES, emptySet()).orEmpty().toMutableSet()
+        if (enabled) ids.add(categoryId.toString()) else ids.remove(categoryId.toString())
+        prefs.edit { putStringSet(KEY_FAVORITES_DEFAULT_CATEGORIES, ids) }
+    }
+
     val isQuickFilterEnabled: Boolean
         get() = prefs.getBoolean(KEY_QUICK_FILTER, true)
 
@@ -1064,6 +1087,11 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_SEARCH_HISTORY_CLEAR = "search_history_clear"
         const val KEY_UPDATES_FEED_CLEAR = "updates_feed_clear"
         const val KEY_GRID_SIZE = "grid_size"
+        const val KEY_FIXED_GRID_COLUMNS = "grid_fixed_columns"
+        const val KEY_GRID_COLUMNS = "grid_columns"
+        const val KEY_FAVORITES_CATEGORY_STRIP = "favorites_category_strip"
+        const val KEY_NEW_CHAPTER_COUNTER = "new_chapter_counter"
+        const val KEY_FAVORITES_DEFAULT_CATEGORIES = "favorites_default_order_categories"
         const val KEY_GRID_SIZE_PAGES = "grid_size_pages"
         const val KEY_REMOTE_SOURCES = "remote_sources"
         const val KEY_LOCAL_STORAGE = "local_storage"

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="show_favorites_category_strip">Показывать панель категорий избранного</string>
+    <string name="show_favorites_category_strip_summary">Если панель скрыта, переключайте категории свайпом или через «Выбрать категорию» в меню.</string>
+    <string name="choose_favorites_category">Выбрать категорию</string>
+    <string name="show_new_chapter_counters">Показывать счётчики новых глав</string>
+    <string name="show_new_chapter_counters_summary">Скрывает счётчики на карточках, сохраняя проверку обновлений.</string>
+    <string name="fixed_grid_columns">Фиксированное число столбцов</string>
+    <string name="fixed_grid_columns_summary">Выбор числа столбцов вместо размера обложек. Настройка миниатюр страниц не меняется.</string>
+    <string name="grid_columns">Число столбцов</string>
+    <string name="default_favorites_sort">Сортировка избранного по умолчанию</string>
+    <string name="default_favorites_sort_summary">Для всего избранного и новых категорий. Старые категории сохраняют порядок; включите «Сортировка по умолчанию» в параметрах их списка.</string>
+    <string name="use_default_favorites_sort">Сортировка по умолчанию</string>
+</resources>

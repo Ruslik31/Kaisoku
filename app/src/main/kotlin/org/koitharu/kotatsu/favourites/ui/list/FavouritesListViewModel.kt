@@ -75,9 +75,7 @@ class FavouritesListViewModel @Inject constructor(
 			allFavoritesSortOrder
 		}
 	} else {
-		repository.observeCategory(categoryId)
-			.withErrorHandling()
-			.map { it?.order }
+		repository.observeOrder(categoryId).withErrorHandling()
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
 	override val content = combine(

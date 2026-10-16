@@ -37,6 +37,7 @@ import org.koitharu.kotatsu.settings.utils.ActivityListPreference
 import org.koitharu.kotatsu.settings.utils.MultiSummaryProvider
 import org.koitharu.kotatsu.settings.utils.PercentSummaryProvider
 import org.koitharu.kotatsu.settings.utils.SliderPreference
+import org.koitharu.kotatsu.list.domain.ListSortOrder
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -53,6 +54,14 @@ class AppearanceSettingsFragment :
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_appearance)
         findPreference<SliderPreference>(AppSettings.KEY_GRID_SIZE)?.summaryProvider = PercentSummaryProvider()
+        findPreference<ListPreference>(AppSettings.KEY_FAVORITES_ORDER)?.run {
+            val orders = ListSortOrder.FAVORITES.sortedBy { it.ordinal }
+            entries = orders.map {
+                "${getString(it.titleResId)} (${getString(if (it.isAscending) R.string.sort_order_asc else R.string.sort_order_desc)})"
+            }.toTypedArray()
+            entryValues = orders.map { it.name }.toTypedArray()
+            setDefaultValueCompat(ListSortOrder.NEWEST.name)
+        }
         findPreference<ListPreference>(AppSettings.KEY_LIST_MODE)?.run {
             entryValues = ListMode.entries.names()
             setDefaultValueCompat(ListMode.GRID.name)

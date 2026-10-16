@@ -18,6 +18,7 @@ class GridSpanResolver(
 	private val gridWidth = resources.getDimension(R.dimen.preferred_grid_width)
 	private val spacing = resources.getDimension(R.dimen.grid_spacing)
 	private var cellWidth = -1f
+	private var fixedColumns = 0
 
 	override fun onLayoutChange(
 		v: View?,
@@ -34,7 +35,7 @@ class GridSpanResolver(
 			return
 		}
 		val rv = v as? RecyclerView ?: return
-		val width = abs(right - left)
+		val width = (abs(right - left) - rv.paddingStart - rv.paddingEnd).coerceAtLeast(0)
 		if (width == 0) {
 			return
 		}
@@ -42,7 +43,8 @@ class GridSpanResolver(
 		(rv.layoutManager as? GridLayoutManager)?.spanCount = spanCount
 	}
 
-	fun setGridSize(scaleFactor: Float, rv: RecyclerView) {
+	fun setGridSize(scaleFactor: Float, rv: RecyclerView, columns: Int = 0) {
+		fixedColumns = columns.takeIf { it in 2..12 } ?: 0
 		cellWidth = (gridWidth * scaleFactor) + spacing
 		val lm = rv.layoutManager as? GridLayoutManager ?: return
 		val innerWidth = lm.width - lm.paddingEnd - lm.paddingStart
@@ -53,6 +55,10 @@ class GridSpanResolver(
 	}
 
 	private fun resolveGridSpanCount(width: Int) {
+		if (fixedColumns > 0) {
+			spanCount = fixedColumns
+			return
+		}
 		val estimatedCount = (width / cellWidth).roundToInt()
 		spanCount = estimatedCount.coerceAtLeast(2)
 	}

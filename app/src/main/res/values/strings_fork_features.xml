@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="show_favorites_category_strip">Show favorites category strip</string>
+    <string name="show_favorites_category_strip_summary">When hidden, swipe between categories or use Choose category in the menu.</string>
+    <string name="choose_favorites_category">Choose category</string>
+    <string name="show_new_chapter_counters">Show new-chapter counters</string>
+    <string name="show_new_chapter_counters_summary">Hide or show counters on title cards without turning off update checks.</string>
+    <string name="fixed_grid_columns">Use a fixed number of grid columns</string>
+    <string name="fixed_grid_columns_summary">Choose columns instead of cover size. Page thumbnails keep their own setting.</string>
+    <string name="grid_columns">Grid columns</string>
+    <string name="default_favorites_sort">Default favorites sorting</string>
+    <string name="default_favorites_sort_summary">Used by All favorites and new categories. Existing categories keep their order; enable Use default sorting in their list options to follow this setting.</string>
+    <string name="use_default_favorites_sort">Use default sorting</string>
+</resources>

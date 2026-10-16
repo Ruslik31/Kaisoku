@@ -186,7 +186,7 @@ class MangaListMapper @Inject constructor(
 			return emptyMap()
 		}
 		return coroutineScope {
-			val countersDeferred = if (settings.isTrackerEnabled) {
+			val countersDeferred = if (settings.isTrackerEnabled && settings.isNewChapterCounterVisible) {
 				async { trackingRepository.getNewChaptersCountMap(ids) }
 			} else {
 				null
@@ -226,7 +226,7 @@ class MangaListMapper @Inject constructor(
 	}
 
 	private suspend fun getBadges(mangaId: Long, @Options options: Int): MangaBadges {
-		val counter = if (settings.isTrackerEnabled) {
+		val counter = if (settings.isTrackerEnabled && settings.isNewChapterCounterVisible) {
 			trackingRepository.getNewChaptersCount(mangaId)
 		} else {
 			0

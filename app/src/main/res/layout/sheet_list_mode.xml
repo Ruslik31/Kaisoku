@@ -159,6 +159,15 @@
 			</com.google.android.material.card.MaterialCardView>
 
 			<com.google.android.material.materialswitch.MaterialSwitch
+				android:id="@+id/switch_default_sort"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:minHeight="48dp"
+				android:paddingHorizontal="16dp"
+				android:text="@string/use_default_favorites_sort"
+				android:visibility="gone" />
+
+			<com.google.android.material.materialswitch.MaterialSwitch
 				android:id="@+id/switch_grouping"
 				android:layout_width="match_parent"
 				android:layout_height="?android:listPreferredItemHeightSmall"

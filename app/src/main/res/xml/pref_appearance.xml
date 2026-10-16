@@ -50,6 +50,39 @@
             app:defaultValue="100" />
 
         <SwitchPreferenceCompat
+            android:key="grid_fixed_columns"
+            android:defaultValue="false"
+            android:title="@string/fixed_grid_columns"
+            android:summary="@string/fixed_grid_columns_summary" />
+
+        <org.koitharu.kotatsu.settings.utils.SliderPreference
+            android:key="grid_columns"
+            android:dependency="grid_fixed_columns"
+            android:title="@string/grid_columns"
+            android:valueFrom="2"
+            android:valueTo="12"
+            android:stepSize="1"
+            app:defaultValue="3" />
+
+        <SwitchPreferenceCompat
+            android:key="favorites_category_strip"
+            android:defaultValue="true"
+            android:title="@string/show_favorites_category_strip"
+            android:summary="@string/show_favorites_category_strip_summary" />
+
+        <SwitchPreferenceCompat
+            android:key="new_chapter_counter"
+            android:defaultValue="true"
+            android:title="@string/show_new_chapter_counters"
+            android:summary="@string/show_new_chapter_counters_summary" />
+
+        <ListPreference
+            android:key="fav_order"
+            android:title="@string/default_favorites_sort"
+            android:dialogMessage="@string/default_favorites_sort_summary"
+            app:useSimpleSummaryProvider="true" />
+
+        <SwitchPreferenceCompat
             android:defaultValue="true"
             android:key="quick_filter"
             android:summary="@string/show_quick_filters_summary"

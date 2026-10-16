@@ -32,6 +32,9 @@ class FavouritesContainerViewModel @Inject constructor(
 ) : BaseViewModel() {
 
 	val onActionDone = MutableEventFlow<ReversibleAction>()
+	val showCategoryStrip = settings.observeAsFlow(AppSettings.KEY_FAVORITES_CATEGORY_STRIP) {
+		isFavoritesCategoryStripVisible
+	}.stateIn(viewModelScope, SharingStarted.Eagerly, settings.isFavoritesCategoryStripVisible)
 
 	private val categoriesStateFlow = favouritesRepository.observeCategoriesForLibrary()
 		.withErrorReporting(errorEvent)
