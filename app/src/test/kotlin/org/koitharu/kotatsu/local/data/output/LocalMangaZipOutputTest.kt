@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.local.data.output
 
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -11,7 +12,10 @@ import org.koitharu.kotatsu.local.data.MangaIndex
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
+import java.io.IOException
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 
 class LocalMangaZipOutputTest {
 
@@ -52,6 +56,43 @@ class LocalMangaZipOutputTest {
 
 		assertFalse(root.exists())
 		assertFalse(temporaryFolder.root.resolve("discard.cbz.tmp").exists())
+	}
+
+	@Test
+	fun filteringAnUnindexedArchiveReportsAnIoErrorAndPreservesIt() = runTest {
+		val file = temporaryFolder.newFile("unindexed.cbz")
+		ZipOutputStream(file.outputStream()).use { zip ->
+			zip.putNextEntry(ZipEntry("page.jpg"))
+			zip.write(byteArrayOf(1, 2, 3))
+			zip.closeEntry()
+		}
+		val original = file.readBytes()
+		try {
+			LocalMangaZipOutput.filterChapters(file, manga(listOf(chapter(1L, 1f))), setOf(1L))
+			throw AssertionError("Expected missing index error")
+		} catch (error: IOException) {
+			assertTrue(error.message.orEmpty().contains(LocalMangaOutput.ENTRY_NAME_INDEX))
+		}
+		assertArrayEquals(original, file.readBytes())
+		assertFalse(temporaryFolder.root.resolve("unindexed.cbz.tmp").exists())
+	}
+
+	@Test
+	fun filteringAnInvalidIndexPreservesTheArchive() = runTest {
+		val file = temporaryFolder.newFile("invalid-index.cbz")
+		ZipOutputStream(file.outputStream()).use { zip ->
+			zip.putNextEntry(ZipEntry(LocalMangaOutput.ENTRY_NAME_INDEX))
+			zip.write("{}".toByteArray())
+			zip.closeEntry()
+		}
+		val original = file.readBytes()
+		try {
+			LocalMangaZipOutput.filterChapters(file, manga(listOf(chapter(1L, 1f))), setOf(1L))
+			throw AssertionError("Expected invalid index error")
+		} catch (error: IOException) {
+			assertTrue(error.message.orEmpty().contains("No chapters"))
+		}
+		assertArrayEquals(original, file.readBytes())
 	}
 
 	private fun manga(chapters: List<MangaChapter>) = Manga(

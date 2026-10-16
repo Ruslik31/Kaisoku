@@ -189,14 +189,14 @@ class DownloadWorker @AssistedInject constructor(
 		val chaptersToSkip = excludedIds.toMutableSet()
 		val pausingReceiver = PausingReceiver(id, PausingHandle.current())
 		mangaLock.withLock(manga) {
+			val destination = localMangaRepository.getOutputDir(manga, task.destination)
+			checkNotNull(destination) { applicationContext.getString(R.string.cannot_find_available_storage) }
 			ContextCompat.registerReceiver(
 				applicationContext,
 				pausingReceiver,
 				PausingReceiver.createIntentFilter(id),
 				ContextCompat.RECEIVER_NOT_EXPORTED,
 			)
-			val destination = localMangaRepository.getOutputDir(manga, task.destination)
-			checkNotNull(destination) { applicationContext.getString(R.string.cannot_find_available_storage) }
 			val tempFiles = ConcurrentLinkedQueue<File>()
 			var output: LocalMangaOutput? = null
 			var isCompleted = false
@@ -352,15 +352,19 @@ class DownloadWorker @AssistedInject constructor(
 				throw e
 			} finally {
 				withContext(NonCancellable) {
-					applicationContext.unregisterReceiver(pausingReceiver)
-					output?.cleanup()
-					output?.closeQuietly()
-					if (!isCompleted && output != null && output.rootFile.exists()) {
-						runCatchingCancellable {
-							localStorageChanges.emit(LocalMangaParser(output.rootFile).getManga(withDetails = false))
-						}.onFailure(Throwable::printStackTraceDebug)
+					runCatching { applicationContext.unregisterReceiver(pausingReceiver) }
+						.onFailure(Throwable::printStackTraceDebug)
+					try {
+						output?.cleanup()
+					} finally {
+						output?.closeQuietly()
+						if (!isCompleted && output != null && output.rootFile.exists()) {
+							runCatchingCancellable {
+								localStorageChanges.emit(LocalMangaParser(output.rootFile).getManga(withDetails = false))
+							}.onFailure(Throwable::printStackTraceDebug)
+						}
+						tempFiles.forEach { it.deleteAwait() }
 					}
-					tempFiles.forEach { it.deleteAwait() }
 				}
 			}
 		}
