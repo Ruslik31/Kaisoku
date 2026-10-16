@@ -35,7 +35,14 @@ class DownloadTask(
 		.putLongArray(CHAPTERS, chaptersIds ?: LongArray(0))
 		.putString(DESTINATION, destination?.path)
 		.putString(FORMAT, format?.name)
+		.putBoolean(ALLOW_METERED, allowMeteredNetwork)
 		.build()
+
+    fun withMeteredNetwork(allowed: Boolean) =
+        DownloadTask(mangaId, isPaused, isSilent, chaptersIds?.copyOf(), destination, format, allowed)
+
+	fun forRetry(allowMeteredNetwork: Boolean = this.allowMeteredNetwork) =
+        DownloadTask(mangaId, false, isSilent, chaptersIds?.copyOf(), destination, format, allowMeteredNetwork)
 
 	override fun equals(other: Any?): Boolean {
 		if (this === other) return true

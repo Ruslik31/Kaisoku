@@ -96,6 +96,9 @@ import org.koitharu.kotatsu.parsers.util.mapToSet
 import org.koitharu.kotatsu.parsers.util.requireBody
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.io.File
+import kotlinx.coroutines.guava.await
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
@@ -599,6 +602,8 @@ class DownloadWorker @AssistedInject constructor(
 		private val workManager: WorkManager,
 	) {
 
+        private companion object { val retryMutex = Mutex() }
+
 		fun observeWorks(): Flow<List<WorkInfo>> = workManager
 			.getWorkInfosByTagFlow(TAG)
 
@@ -631,6 +636,21 @@ class DownloadWorker @AssistedInject constructor(
 			PausingReceiver.getResumeIntent(context, id),
 		)
 
+		/** Retry terminal failures only; the worker reuses chapters already stored in the output. */
+        suspend fun retry(id: UUID) = retryMutex.withLock {
+            val failed = workManager.getWorkInfoById(id).await() ?: return@withLock
+            if (failed.state != WorkInfo.State.FAILED) return@withLock
+            // Older builds omitted metering from input Data. WorkInfo still retains the effective constraint.
+            val task = getTask(id)?.forRetry(failed.constraints.requiredNetworkType != NetworkType.UNMETERED)
+                ?: return@withLock
+            val name = "download_retry_$id"
+            // A cancelled UI call may have queued its successor already. Never queue it twice.
+            if (workManager.getWorkInfosForUniqueWork(name).await().isEmpty()) {
+                workManager.enqueueUniqueWork(name, androidx.work.ExistingWorkPolicy.KEEP, createRequest(task)).await()
+            }
+            workManager.deleteWork(id)
+        }
+
 		fun skip(id: UUID) = context.sendBroadcast(
 			PausingReceiver.getSkipIntent(context, id),
 		)
@@ -654,22 +674,24 @@ class DownloadWorker @AssistedInject constructor(
 			workManager.deleteWorks(finishedWorks.mapToSet { it.id })
 		}
 
-		suspend fun updateConstraints(allowMeteredNetwork: Boolean) {
-			val constraints = createConstraints(allowMeteredNetwork)
-			val works = workManager.awaitWorkInfosByTag(TAG)
-			for (work in works) {
-				if (work.state.isFinished) {
-					continue
-				}
-				val request = OneTimeWorkRequestBuilder<DownloadWorker>()
-					.setConstraints(constraints)
-					.addTag(TAG)
-					.setId(work.id)
-					.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-					.build()
-				workManager.awaitUpdateWork(request)
-			}
-		}
+        suspend fun updateConstraints(allowMeteredNetwork: Boolean) {
+            val constraints = createConstraints(allowMeteredNetwork)
+            val works = workManager.awaitWorkInfosByTag(TAG)
+            for (work in works) {
+                if (work.state.isFinished) {
+                    continue
+                }
+                val task = getTask(work.id)?.withMeteredNetwork(allowMeteredNetwork) ?: continue
+                val request = OneTimeWorkRequestBuilder<DownloadWorker>()
+                    .setInputData(task.toData())
+                    .setConstraints(constraints)
+                    .addTag(TAG)
+                    .setId(work.id)
+                    .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                    .build()
+                workManager.awaitUpdateWork(request)
+            }
+        }
 
 		suspend fun schedule(tasks: Collection<Pair<Manga, DownloadTask>>) {
 			if (tasks.isEmpty()) {
@@ -677,17 +699,19 @@ class DownloadWorker @AssistedInject constructor(
 			}
 			val requests = tasks.map { (manga, task) ->
 				mangaDataRepository.storeManga(manga, replaceExisting = true)
-				OneTimeWorkRequestBuilder<DownloadWorker>()
-					.setConstraints(createConstraints(task.allowMeteredNetwork))
-					.addTag(TAG)
-					.keepResultsForAtLeast(30, TimeUnit.DAYS)
-					.setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
-					.setInputData(task.toData())
-					.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-					.build()
+				createRequest(task)
 			}
 			workManager.enqueue(requests).await()
 		}
+
+		private fun createRequest(task: DownloadTask) = OneTimeWorkRequestBuilder<DownloadWorker>()
+			.setConstraints(createConstraints(task.allowMeteredNetwork))
+			.addTag(TAG)
+			.keepResultsForAtLeast(30, TimeUnit.DAYS)
+			.setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
+			.setInputData(task.toData())
+			.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+			.build()
 
 		private fun createConstraints(allowMeteredNetwork: Boolean) = Constraints.Builder()
 			.setRequiredNetworkType(if (allowMeteredNetwork) NetworkType.CONNECTED else NetworkType.UNMETERED)

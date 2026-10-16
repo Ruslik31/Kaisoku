@@ -115,7 +115,7 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	}
 
 	override fun onResumeClick(item: DownloadItemModel) {
-		scheduler.resume(item.id)
+		if (item.workState == androidx.work.WorkInfo.State.FAILED) viewModel.retry(item.id) else scheduler.resume(item.id)
 	}
 
 	override fun onSkipClick(item: DownloadItemModel) {
