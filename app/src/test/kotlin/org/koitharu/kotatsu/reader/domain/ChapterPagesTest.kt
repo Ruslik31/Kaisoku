@@ -54,6 +54,39 @@ class ChapterPagesTest {
 	}
 
 	@Test
+	fun trimmingAnEmptyBufferIsSafe() {
+		val pages = ChapterPages()
+		pages.removeFirst()
+		pages.removeLast()
+		assertEquals(0, pages.size)
+		assertEquals(0, pages.chaptersSize)
+	}
+
+	@Test
+	fun removingTheOnlyFirstChapterClearsItsIndexAndAllowsReuse() {
+		val pages = ChapterPages()
+		pages.addLast(1L, List(3) { page(1L) })
+		pages.removeFirst()
+		assertTrue(pages.isEmpty())
+		assertEquals(0, pages.chaptersSize)
+		assertEquals(emptyList<ReaderPage>(), pages.subList(1L))
+		assertTrue(pages.addLast(1L, listOf(page(1L))))
+		assertEquals(1, pages.size(1L))
+	}
+
+	@Test
+	fun removingTheOnlyLastChapterClearsItsIndexAndAllowsReuse() {
+		val pages = ChapterPages()
+		pages.addFirst(1L, List(3) { page(1L) })
+		pages.removeLast()
+		assertTrue(pages.isEmpty())
+		assertEquals(0, pages.chaptersSize)
+		assertEquals(emptyList<ReaderPage>(), pages.subList(1L))
+		assertTrue(pages.addFirst(1L, listOf(page(1L))))
+		assertEquals(1, pages.size(1L))
+	}
+
+	@Test
 	fun subList() {
 		val pages = ChapterPages()
 		pages.addLast(1L, List(12) { page(1L) })

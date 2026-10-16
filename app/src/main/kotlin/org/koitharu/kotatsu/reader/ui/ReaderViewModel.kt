@@ -76,6 +76,7 @@ import org.koitharu.kotatsu.reader.domain.ChaptersLoader
 import org.koitharu.kotatsu.reader.domain.DetectReaderModeUseCase
 import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.reader.domain.itemsInReadingOrder
+import org.koitharu.kotatsu.reader.domain.boundedPrefetchPages
 import org.koitharu.kotatsu.reader.domain.nextChapterPrefetchPages
 import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
 import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
@@ -822,7 +823,7 @@ class ReaderViewModel @Inject constructor(
                 }
             }
             if (pageLoader.isPrefetchApplicable()) {
-                pageLoader.prefetch(pages.trySublist(upperPos + 1, upperPos + PREFETCH_LIMIT))
+                pageLoader.prefetch(pages.boundedPrefetchPages(upperPos + 1, upperPos + PREFETCH_LIMIT))
             }
         }
     }
@@ -1027,16 +1028,6 @@ class ReaderViewModel @Inject constructor(
                 generation = ++contentGeneration,
                 forceStateRestore = false,
             )
-        }
-    }
-
-    private fun <T> List<T>.trySublist(fromIndex: Int, toIndex: Int): List<T> {
-        val fromIndexBounded = fromIndex.coerceAtMost(lastIndex)
-        val toIndexBounded = toIndex.coerceIn(fromIndexBounded, lastIndex)
-        return if (fromIndexBounded == toIndexBounded) {
-            emptyList()
-        } else {
-            subList(fromIndexBounded, toIndexBounded)
         }
     }
 

@@ -5,8 +5,6 @@ import android.graphics.Rect
 import android.net.Uri
 import androidx.annotation.AnyThread
 import androidx.annotation.CheckResult
-import androidx.collection.LongSparseArray
-import androidx.collection.set
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import coil3.BitmapImage
@@ -99,7 +97,10 @@ class PageLoader @Inject constructor(
 
 	val loaderScope = lifecycle.lifecycleScope + InternalErrorHandler() + Dispatchers.Default
 
-	private val tasks = LongSparseArray<ProgressDeferred<Uri, Float>>()
+	private val tasks = PageLoadTaskCache<ProgressDeferred<Uri, Float>>(
+		isValid = { !it.isCancelled && it.isValid() },
+		cancel = { it.cancel() },
+	)
 	private val semaphore = Semaphore(3)
 	private val convertLock = Mutex()
 	private val prefetchLock = Mutex()
@@ -122,7 +123,7 @@ class PageLoader @Inject constructor(
 	fun prefetch(pages: List<ReaderPage>) = loaderScope.launch {
 		prefetchLock.withLock {
 			for (page in pages.asReversed()) {
-				if (tasks.containsKey(page.id)) {
+				if (tasks.contains(page.id)) {
 					continue
 				}
 				prefetchQueue.offerFirst(page.toMangaPage())
@@ -171,19 +172,10 @@ class PageLoader @Inject constructor(
 		return null
 	}
 
-	fun loadPageAsync(page: MangaPage, force: Boolean): ProgressDeferred<Uri, Float> {
-		var task = tasks[page.id]?.takeIf { it.isValid() }
-		if (force) {
-			task?.cancel()
-		} else if (task?.isCancelled == false) {
-			return task
+	fun loadPageAsync(page: MangaPage, force: Boolean): ProgressDeferred<Uri, Float> =
+		tasks.getOrCreate(page.id, force) {
+			loadPageAsyncImpl(page, skipCache = force, isPrefetch = false)
 		}
-		task = loadPageAsyncImpl(page, skipCache = force, isPrefetch = false)
-		synchronized(tasks) {
-			tasks[page.id] = task
-		}
-		return task
-	}
 
 	suspend fun loadPage(page: MangaPage, force: Boolean): Uri {
 		return loadPageAsync(page, force).await()
@@ -247,8 +239,8 @@ class PageLoader @Inject constructor(
 		prefetchLock.withLock {
 			while (prefetchQueue.isNotEmpty()) {
 				val page = prefetchQueue.pollFirst() ?: return@launch
-				synchronized(tasks) {
-					tasks[page.id] = loadPageAsyncImpl(page, skipCache = false, isPrefetch = true)
+				tasks.getOrCreate(page.id) {
+					loadPageAsyncImpl(page, skipCache = false, isPrefetch = true)
 				}
 			}
 		}
