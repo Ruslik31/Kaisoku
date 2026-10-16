@@ -119,7 +119,7 @@ private fun DocumentFile.looksLikeChapter(): Boolean {
  * the regular file-name based parsing.
  */
 @Blocking
-fun writeMihonIndex(dir: File): Boolean = runCatching {
+fun writeMihonIndex(dir: File, identityDir: File = dir): Boolean = runCatching {
 	if (File(dir, ENTRY_NAME_INDEX).exists()) {
 		// The folder came from this app (or a previous import) and already describes itself
 		return@runCatching false
@@ -133,10 +133,10 @@ fun writeMihonIndex(dir: File): Boolean = runCatching {
 	val series = chapterFiles.firstNotNullOfOrNull { it.readComicInfo() } ?: return@runCatching false
 	index.setMangaInfo(
 		Manga(
-			id = dir.absolutePath.longHashCode(),
+			id = identityDir.absolutePath.longHashCode(),
 			title = series.series ?: dir.name,
 			altTitles = emptySet(),
-			url = dir.toURI().toString(),
+			url = identityDir.toURI().toString(),
 			publicUrl = "",
 			rating = -1f,
 			contentRating = null,
@@ -162,7 +162,7 @@ fun writeMihonIndex(dir: File): Boolean = runCatching {
 			IndexedValue(
 				i,
 				MangaChapter(
-					id = "${dir.name}/${file.name}".longHashCode(),
+					id = "${identityDir.name}/${file.name}".longHashCode(),
 					title = info?.title ?: file.chapterNameFromFileName(),
 					number = info?.number ?: (i + 1).toFloat(),
 					volume = 0,

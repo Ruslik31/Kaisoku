@@ -11,6 +11,11 @@ import androidx.documentfile.provider.DocumentFile
 import dagger.Reusable
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import java.util.zip.ZipOutputStream
+import java.util.zip.ZipEntry
+import kotlin.math.sqrt
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
@@ -34,178 +39,160 @@ import javax.inject.Inject
 
 @Reusable
 class SingleMangaImporter @Inject constructor(
-	@ApplicationContext private val context: Context,
-	private val storageManager: LocalStorageManager,
-	@LocalStorageChanges private val localStorageChanges: MutableSharedFlow<LocalManga?>,
+    @ApplicationContext private val context: Context,
+    private val storageManager: LocalStorageManager,
+    @LocalStorageChanges private val localStorageChanges: MutableSharedFlow<LocalManga?>,
 ) {
 
-	private val contentResolver = context.contentResolver
+    private val contentResolver = context.contentResolver
 
-	suspend fun import(uri: Uri): List<LocalManga> {
-		val result = if (isDirectory(uri) || isPdfUri(contentResolver, uri)) {
-			importDirectory(uri)
-		} else {
-			listOf(importFile(uri))
-		}
-		for (manga in result) {
-			localStorageChanges.emit(manga)
-		}
-		return result
-	}
+    internal suspend fun import(uri: Uri): MangaImportResult<LocalManga> = withContext(Dispatchers.IO) {
+        if (isDirectory(uri) && !isPdfUri(contentResolver, uri)) {
+            val root = DocumentFile.fromTreeUri(context, uri) ?: throw IOException("Invalid document tree")
+            val roots = root.findMangaDirs(contentResolver).ifEmpty { listOf(root) }
+            importBatch(roots, { it.name.orEmpty() }, ::importMangaDirectory) { localStorageChanges.emit(it) }
+        } else {
+            importBatch(listOf(uri), { contentResolver.resolveName(it).orEmpty() }, ::importFile) { localStorageChanges.emit(it) }
+        }
+    }
 
-	private suspend fun importFile(uri: Uri): LocalManga = withContext(Dispatchers.IO) {
-		val contentResolver = storageManager.contentResolver
-		val name = contentResolver.resolveName(uri) ?: throw IOException("Cannot fetch name from uri: $uri")
-		val dest = when {
-			hasZipExtension(name) -> File(getOutputDir(), name).also { copyFile(uri, it) }
-			hasRarComicExtension(name) -> importCbr(uri, name)
-			else -> throw UnsupportedFileException("Unsupported file $name on $uri")
-		}
-		parseManga(dest)
-	}
+    private suspend fun importFile(uri: Uri): LocalManga {
+        val name = (contentResolver.resolveName(uri) ?: throw IOException("Cannot fetch import name")).safeName()
+        val pdf = hasPdfExtension(name) || isPdfUri(contentResolver, uri)
+        val finalName = when {
+            pdf -> name.substringBeforeLast('.').ifBlank { "PDF" }
+            hasRarComicExtension(name) -> name.substringBeforeLast('.') + ".cbz"
+            hasZipExtension(name) -> name
+            else -> throw UnsupportedFileException("Unsupported file $name")
+        }
+        return ImportTransaction.run(getOutputDir(), finalName, { staging ->
+            when {
+                pdf -> File(staging, finalName).also { dir ->
+                    if (!dir.mkdir()) throw IOException("Cannot create PDF directory")
+                    renderPdf(uri) { index, bitmap ->
+                        File(dir, "%04d.jpg".format(java.util.Locale.ROOT, index + 1)).outputStream().use { out ->
+                            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)) throw IOException("Cannot encode PDF page")
+                        }
+                    }
+                }
+                hasRarComicExtension(name) -> CbrImportTransaction.import(name, staging, copyInput = { copyFile(uri, it) })
+                else -> File(staging, name).also { copyFile(uri, it) }
+            }
+        }, ::parseManga)
+    }
 
-	private suspend fun importCbr(uri: Uri, sourceName: String): File {
-		return CbrImportTransaction.import(
-			sourceName = sourceName,
-			outputDir = getOutputDir(),
-			copyInput = { inputTemp -> copyFile(uri, inputTemp) },
-		)
-	}
+    private suspend fun copyFile(uri: Uri, dest: File) {
+        runInterruptible {
+            storageManager.contentResolver.openSource(uri)
+        }.use { source ->
+            dest.sink().buffer().use { output ->
+                output.writeAllCancellable(source)
+            }
+        }
+    }
 
-	private suspend fun copyFile(uri: Uri, dest: File) {
-		runInterruptible {
-			storageManager.contentResolver.openSource(uri)
-		}.use { source ->
-			dest.sink().buffer().use { output ->
-				output.writeAllCancellable(source)
-			}
-		}
-	}
+    private suspend fun renderPdf(uri: Uri, write: (Int, Bitmap) -> Unit) {
+        val coroutineContext = currentCoroutineContext()
+        runInterruptible(Dispatchers.IO) {
+            contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+                PdfRenderer(descriptor).use { renderer ->
+                    if (renderer.pageCount == 0) throw IOException("PDF has no pages")
+                    repeat(renderer.pageCount) { index ->
+                        coroutineContext.ensureActive()
+                        renderer.openPage(index).use { page ->
+                            val size = pdfPageSize(page.width, page.height)
+                            val bitmap = createBitmap(size.first, size.second)
+                            try {
+                                bitmap.eraseColor(Color.WHITE)
+                                val matrix = Matrix().apply { setScale(size.first.toFloat() / page.width, size.second.toFloat() / page.height) }
+                                page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                coroutineContext.ensureActive()
+                                write(index, bitmap)
+                            } finally { bitmap.recycle() }
+                        }
+                    }
+                }
+            } ?: throw IOException("Cannot open PDF")
+        }
+    }
 
-	private suspend fun importDirectory(uri: Uri): List<LocalManga> = withContext(Dispatchers.IO) {
-		val name = contentResolver.resolveName(uri) ?: throw IOException("Cannot fetch name from uri: $uri")
-		val dirs = when {
-			hasPdfExtension(name) || isPdfUri(contentResolver, uri) -> listOf(importPdf(uri, name))
-			else -> importDocumentTree(uri)
-		}
-		dirs.map { parseManga(it) }
-	}
+    private suspend fun importMangaDirectory(root: DocumentFile): LocalManga {
+        val name = root.requireName()
+        return ImportTransaction.run(getOutputDir(), name, { staging ->
+            File(staging, name).also { dest ->
+                if (!dest.mkdir()) throw IOException("Cannot create title directory")
+                for (file in root.listFiles()) file.copyTo(dest)
+            }
+        }, ::parseManga, preparePublish = { prepared, target ->
+            runInterruptible(Dispatchers.IO) { writeMihonIndex(prepared, target) }
+        })
+    }
 
-	private suspend fun importPdf(uri: Uri, name: String): File {
-		val outDir = File(getOutputDir(), name.substringBeforeLast('.')).also { it.mkdirs() }
-		runInterruptible(Dispatchers.IO) {
-			contentResolver.openFileDescriptor(uri, "r")?.use { pdf ->
-				PdfRenderer(pdf).use { renderer ->
-					repeat(renderer.pageCount) { i ->
-						renderer.openPage(i).use { page -> renderPdfPage(page, i, outDir) }
-					}
-				}
-			} ?: throw IOException("Cannot open descriptor: $uri")
-		}
-		return outDir
-	}
+    private suspend fun parseManga(file: File): LocalManga {
+        val parsed = LocalMangaParser(file).getManga(withDetails = true)
+        if (parsed.manga.chapters.isNullOrEmpty()) throw IOException("Imported title has no readable chapters")
+        return parsed.copy(manga = parsed.manga.copy(chapters = null))
+    }
 
-	private fun renderPdfPage(page: PdfRenderer.Page, index: Int, outDir: File) {
-		val scale = (TARGET_PAGE_WIDTH / page.width.toFloat()).coerceIn(1f, MAX_SCALE)
-		val bitmap = createBitmap((page.width * scale).toInt(), (page.height * scale).toInt())
-			.also { it.eraseColor(Color.WHITE) }
-		try {
-			val matrix = Matrix().apply { setScale(scale, scale) }
-			page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-			File(outDir, "%04d.jpg".format(index + 1)).outputStream().use { out ->
-				bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
-			}
-		} finally {
-			bitmap.recycle()
-		}
-	}
+    private suspend fun DocumentFile.copyTo(destDir: File) {
+        if (isImportJunk(name.orEmpty())) {
+            return
+        }
+        currentCoroutineContext().ensureActive()
+        if (!isDirectory && (hasPdfExtension(requireName()) || isPdfUri(contentResolver, uri))) {
+            val name = requireName().substringBeforeLast('.') + ".cbz"
+            val target = File(destDir, name)
+            if (target.exists()) throw IOException("Conflicting PDF chapter name: $name")
+            ZipOutputStream(target.outputStream().buffered()).use { zip ->
+                renderPdf(uri) { index, bitmap ->
+                    zip.putNextEntry(ZipEntry("%04d.jpg".format(java.util.Locale.ROOT, index + 1)))
+                    if (!bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, zip)) throw IOException("Cannot encode PDF page")
+                    zip.closeEntry()
+                }
+            }
+        } else if (isDirectory) {
+            val subDir = File(destDir, requireName())
+            if (!subDir.mkdir()) throw IOException("Conflicting chapter directory")
+            for (docFile in listFiles()) {
+                docFile.copyTo(subDir)
+            }
+        } else {
+            if (File(destDir, requireName()).exists()) throw IOException("Conflicting chapter name")
+            source().use { input ->
+                File(destDir, requireName()).sink().buffer().use { output ->
+                    output.writeAllCancellable(input)
+                }
+            }
+        }
+    }
 
-	private suspend fun importDocumentTree(uri: Uri): List<File> {
-		val root = DocumentFile.fromTreeUri(context, uri)
-			?: throw IllegalArgumentException("Provided uri $uri is not a tree")
-		// A Mihon downloads root or source folder holds many titles, each of which becomes its own manga
-		val mangaDirs = root.findMangaDirs(contentResolver)
-		if (mangaDirs.isNotEmpty()) {
-			// Two sources can hold the same title, so each one needs a folder of its own here
-			return mangaDirs.map { importMangaDirectory(it, unique = true) }
-		}
-		return listOf(importMangaDirectory(root, unique = false))
-	}
+    private suspend fun getOutputDir(): File {
+        return storageManager.getDefaultWriteableDir() ?: throw IOException("External files dir unavailable")
+    }
 
-	private suspend fun importMangaDirectory(root: DocumentFile, unique: Boolean): File {
-		val dest = destinationDir(root.requireName(), unique)
-		dest.mkdir()
-		for (docFile in root.listFiles()) {
-			docFile.copyTo(dest)
-		}
-		// No-op unless the folder came from Mihon and carries ComicInfo.xml
-		runInterruptible(Dispatchers.IO) { writeMihonIndex(dest) }
-		return dest
-	}
+    private suspend fun DocumentFile.source() = runInterruptible(Dispatchers.IO) {
+        contentResolver.openSource(uri)
+    }
 
-	/**
-	 * Re-importing the same folder keeps merging into it, as it always has. Only a batch import
-	 * sidesteps a folder that is already taken, so two same-named titles do not end up merged.
-	 */
-	private suspend fun destinationDir(name: String, unique: Boolean): File {
-		val outputDir = getOutputDir()
-		val dest = File(outputDir, name)
-		if (!unique || !dest.exists()) {
-			return dest
-		}
-		var i = 1
-		while (true) {
-			val candidate = File(outputDir, "${name}_$i")
-			if (!candidate.exists()) {
-				return candidate
-			}
-			i++
-		}
-	}
+    private fun DocumentFile.requireName(): String {
+        return (name ?: throw IOException("Cannot fetch import name")).safeName()
+    }
 
-	private suspend fun parseManga(file: File): LocalManga =
-		LocalMangaParser(file).getManga(withDetails = false)
+    private fun isDirectory(uri: Uri): Boolean {
+        return runCatching { DocumentFile.fromTreeUri(context, uri) != null }.getOrDefault(false)
+    }
 
-	private suspend fun DocumentFile.copyTo(destDir: File) {
-		if (isImportJunk(name.orEmpty())) {
-			return
-		}
-		if (isDirectory) {
-			val subDir = File(destDir, requireName())
-			subDir.mkdir()
-			for (docFile in listFiles()) {
-				docFile.copyTo(subDir)
-			}
-		} else {
-			source().use { input ->
-				File(destDir, requireName()).sink().buffer().use { output ->
-					output.writeAllCancellable(input)
-				}
-			}
-		}
-	}
+    private fun String.safeName(): String = also {
+        if (isBlank() || this == "." || this == ".." || '/' in this || '\\' in this) throw IOException("Invalid import name")
+    }
 
-	private suspend fun getOutputDir(): File {
-		return storageManager.getDefaultWriteableDir() ?: throw IOException("External files dir unavailable")
-	}
+    companion object { private const val JPEG_QUALITY = 85 }
+}
 
-	private suspend fun DocumentFile.source() = runInterruptible(Dispatchers.IO) {
-		contentResolver.openSource(uri)
-	}
-
-	private fun DocumentFile.requireName(): String {
-		return name ?: throw IOException("Cannot fetch name from uri: $uri")
-	}
-
-	private fun isDirectory(uri: Uri): Boolean {
-		return runCatching {
-			DocumentFile.fromTreeUri(context, uri)
-		}.isSuccess
-	}
-
-	companion object {
-		private const val TARGET_PAGE_WIDTH = 1200
-		private const val MAX_SCALE = 2f
-		private const val JPEG_QUALITY = 85
-	}
+/** Bounds a hostile PDF's dimensions to at most 4M pixels / 16MB for one temporary bitmap. */
+internal fun pdfPageSize(width: Int, height: Int): Pair<Int, Int> {
+    require(width > 0 && height > 0)
+    val scale = minOf((1200f / width).coerceAtMost(2f), sqrt(4_000_000.0 / width / height).toFloat(),
+        16_384f / width, 16_384f / height)
+    return (width * scale).toInt().coerceAtLeast(1) to (height * scale).toInt().coerceAtLeast(1)
 }

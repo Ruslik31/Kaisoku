@@ -24,4 +24,5 @@
     <string name="hold_scroll_bottom">Нижний ряд</string>
     <string name="hold_scroll_up">Прокрутка назад</string>
     <string name="hold_scroll_down">Прокрутка вперёд</string>
+    <string name="import_partial">Импортировано: %1$d; ошибок: %2$d</string>
 </resources>

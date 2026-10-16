@@ -5,6 +5,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.koitharu.kotatsu.parsers.util.longHashCode
+import org.koitharu.kotatsu.local.data.MangaIndex
+import org.koitharu.kotatsu.local.data.output.LocalMangaOutput.Companion.ENTRY_NAME_INDEX
 import java.io.File
 import java.nio.file.Files
 import java.util.zip.ZipEntry
@@ -75,6 +78,17 @@ class MihonDownloadsTest {
         archive("downloads/source/Unmarked/Chapter 1.cbz", metadata = false)
         archive("downloads/source/Incomplete/Chapter 1.cbz_tmp", metadata = true)
         assertEquals(listOf("Archived"), root.findTitles().map { it.name })
+    }
+
+    @Test
+    fun stagedMihonIndexUsesFinalDirectoryIdentity() = fixture { root ->
+        val staging = File(root, "temporary/Title").apply { mkdirs() }
+        chapter(staging, "Chapter 1")
+        val finalDirectory = File(root, "Final title")
+        assertTrue(writeMihonIndex(staging, finalDirectory))
+        val info = MangaIndex(File(staging, ENTRY_NAME_INDEX).readText()).getMangaInfo()!!
+        assertEquals(finalDirectory.absolutePath.longHashCode(), info.id)
+        assertEquals(finalDirectory.toURI().toString(), info.url)
     }
 
     private fun chapter(root: File, path: String) = File(root, path).apply {
