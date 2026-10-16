@@ -37,16 +37,15 @@ private const val COMIC_INFO_FILE = "ComicInfo.xml"
 /** Mihon's unfinished downloads: `Chapter_tmp` directories and `Chapter.cbz_tmp` archives. */
 private const val TMP_SUFFIX = "_tmp"
 
-/** `downloads/<source>/<manga>` — two levels above the manga folder is as deep as we look. */
-private const val CONTAINER_DEPTH = 2
+/** `Mihon/downloads/<source>/<manga>` — at most three levels above a marked title. */
+private const val CONTAINER_DEPTH = 3
 
 fun isImportJunk(name: String): Boolean =
 	name == ".nomedia" || name.endsWith(TMP_SUFFIX) || name.endsWith(".tmp")
 
 /**
- * The manga folders inside a picked directory, when that directory is a Mihon source folder or the
- * whole downloads root. Empty when the folder is itself a single title — the caller then imports it
- * as one manga, exactly as before.
+ * The manga folders inside a picked Mihon source folder, downloads root or Mihon root. Empty when
+ * the folder is itself a single title — the caller then imports it as one manga, exactly as before.
  *
  * A folder only counts as a title of its own when it is *marked*: it carries this app's own
  * `index.json`, or a chapter of it carries Mihon's `ComicInfo.xml`. Without that proof a nested
@@ -80,7 +79,7 @@ private fun DocumentFile.collectMangaDirs(
 
 /** A downloaded title, in either format: this app writes an index, Mihon writes a ComicInfo. */
 private fun DocumentFile.isMarkedMangaDir(contentResolver: ContentResolver): Boolean {
-	val children = listFiles()
+	val children = listFiles().filterNot { isImportJunk(it.name.orEmpty()) }
 	if (children.any { it.isFile && it.name == ENTRY_NAME_INDEX }) {
 		return true
 	}
