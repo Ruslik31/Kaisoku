@@ -25,4 +25,11 @@
     <string name="hold_scroll_up">Прокрутка назад</string>
     <string name="hold_scroll_down">Прокрутка вперёд</string>
     <string name="import_partial">Импортировано: %1$d; ошибок: %2$d</string>
+    <string name="local_diagnostics">Локальная запись диагностики</string>
+    <string name="local_diagnostics_summary">По умолчанию выключена. Небольшой локальный журнал экранов, операций и типов ошибок. Без названий, ссылок, паролей и содержимого запросов; ничего не отправляется.</string>
+    <string name="copy_local_diagnostics">Копировать локальную диагностику</string>
+    <string name="clear_local_diagnostics">Очистить локальную диагностику</string>
+    <string name="local_diagnostics_empty">Локальная диагностика не записана.</string>
+    <string name="local_diagnostics_copied">Локальная диагностика скопирована</string>
+    <string name="local_diagnostics_cleared">Локальная диагностика очищена</string>
 </resources>

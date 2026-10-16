@@ -17,6 +17,9 @@ internal class GlobalCrashHandler private constructor(
 
 	override fun uncaughtException(thread: Thread, throwable: Throwable) {
 		if (isHandling.compareAndSet(false, true)) {
+			runCatching { org.koitharu.kotatsu.core.diagnostics.LocalDiagnostics.error(throwable, crash = true)
+                org.koitharu.kotatsu.core.diagnostics.LocalDiagnostics.flushOnCrash()
+            }
 			showCollectingToast()
 			// buildSafe never throws/returns null, so the user is always offered a way to report —
 			// even when an OutOfMemoryError leaves the crashing process unable to build a full report.

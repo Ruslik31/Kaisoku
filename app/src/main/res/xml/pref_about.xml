@@ -52,6 +52,11 @@
 		android:summary="@string/url_discord"
 		android:title="@string/telegram_group" />
 
+    <SwitchPreferenceCompat android:key="local_diagnostics" android:defaultValue="false"
+        android:title="@string/local_diagnostics" android:summary="@string/local_diagnostics_summary" />
+    <Preference android:key="copy_local_diagnostics" android:persistent="false" android:title="@string/copy_local_diagnostics" />
+    <Preference android:key="clear_local_diagnostics" android:persistent="false" android:title="@string/clear_local_diagnostics" />
+
 	<PreferenceCategory
 		android:title="@string/donations"
 		app:allowDividerAbove="true">

@@ -225,6 +225,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         get() = prefs.getInt(KEY_GRID_SIZE_PAGES, 100)
         set(value) = prefs.edit { putInt(KEY_GRID_SIZE_PAGES, value) }
 
+    val isLocalDiagnosticsEnabled: Boolean
+        get() = prefs.getBoolean("local_diagnostics", false)
+
     val widePageRotation: Int
         get() = prefs.getString(KEY_WIDE_PAGE_ROTATION, null)?.toIntOrNull()?.takeIf { it == 90 || it == 270 } ?: 0
 

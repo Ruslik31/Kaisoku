@@ -25,4 +25,11 @@
     <string name="hold_scroll_up">Scroll backward</string>
     <string name="hold_scroll_down">Scroll forward</string>
     <string name="import_partial">Imported: %1$d; failed: %2$d</string>
+    <string name="local_diagnostics">Local diagnostic recording</string>
+    <string name="local_diagnostics_summary">Off by default. Keeps a small local record of screens, operations and error types. No titles, URLs, credentials or request bodies; nothing is uploaded.</string>
+    <string name="copy_local_diagnostics">Copy local diagnostics</string>
+    <string name="clear_local_diagnostics">Clear local diagnostics</string>
+    <string name="local_diagnostics_empty">No local diagnostics recorded.</string>
+    <string name="local_diagnostics_copied">Local diagnostics copied</string>
+    <string name="local_diagnostics_cleared">Local diagnostics cleared</string>
 </resources>

@@ -98,6 +98,7 @@ open class BaseApp : Application(), Configuration.Provider {
 			return
 		}
 		drivePreferenceVersions.start()
+		org.koitharu.kotatsu.core.diagnostics.LocalDiagnostics.start(this, settings)
 		PlatformRegistry.applicationContext = this // TODO replace with OkHttp.initialize
 		GlobalCrashHandler.install(this)
 		AppCompatDelegate.setDefaultNightMode(settings.theme)
