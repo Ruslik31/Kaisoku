@@ -145,6 +145,22 @@ class HistoryRepository @Inject constructor(
         return db.getHistoryDao().find(manga.id)?.recoverIfNeeded(manga)?.toMangaHistory()
     }
 
+    suspend fun updateNovelPosition(
+        manga: Manga, chapterId: Long, page: Int, scroll: Int, percent: Float, chapterCompleted: Boolean,
+    ) {
+        if (shouldSkip(manga)) return
+        val chapter = manga.chapters?.findById(chapterId)
+        val count = manga.chapters?.count { it.branch == chapter?.branch } ?: 0
+        val updated = if (chapter != null) db.getHistoryDao().updatePosition(
+            manga.id, chapterId, count, page, scroll.toFloat(), percent, System.currentTimeMillis(),
+        ) else 0
+        if (updated == 0) {
+            addOrUpdate(manga, chapterId, page, scroll, percent, force = false, chapterCompleted = chapterCompleted)
+        } else if (chapterCompleted) {
+            trackerSync.onChapterCompleted(manga, chapterId)
+        }
+    }
+
     /**
      * Fuzzy-find histories for *other* manga whose title (or any alt-title) is close to [manga]'s.
      * Used by the tracker to estimate how far the user has read the series via a parallel source

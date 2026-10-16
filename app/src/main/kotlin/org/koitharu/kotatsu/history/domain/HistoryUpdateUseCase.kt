@@ -29,7 +29,11 @@ class HistoryUpdateUseCase @Inject constructor(
         }
     }
 
-    suspend operator fun invoke(manga: Manga, readerState: ReaderState, percent: Float, chapterCompleted: Boolean = false) {
+    suspend operator fun invoke(manga: Manga, readerState: ReaderState, percent: Float, chapterCompleted: Boolean = false, positionOnly: Boolean = false) {
+        if (positionOnly) {
+            historyRepository.updateNovelPosition(manga, readerState.chapterId, readerState.page, readerState.scroll, percent, chapterCompleted)
+            return
+        }
         historyRepository.addOrUpdate(
             manga = manga,
             chapterId = readerState.chapterId,
@@ -47,6 +51,7 @@ class HistoryUpdateUseCase @Inject constructor(
         readerState: ReaderState,
         percent: Float,
         chapterCompleted: Boolean = false,
+        positionOnly: Boolean = false,
     ): Job {
         val previousUpdate = lastAsyncUpdate
         return processLifecycleScope.launch(Dispatchers.Default, CoroutineStart.ATOMIC) {
@@ -55,7 +60,7 @@ class HistoryUpdateUseCase @Inject constructor(
             previousUpdate?.join()
             runCatchingCancellable {
                 withContext(NonCancellable) {
-                    invoke(manga, readerState, percent, chapterCompleted)
+                    invoke(manga, readerState, percent, chapterCompleted, positionOnly)
                 }
             }.onFailure {
                 it.printStackTraceDebug()

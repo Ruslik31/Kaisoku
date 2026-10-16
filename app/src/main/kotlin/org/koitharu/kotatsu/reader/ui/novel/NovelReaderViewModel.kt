@@ -202,7 +202,7 @@ class NovelReaderViewModel @Inject constructor(
             lastSavedState = state
             lastSavedPercent = percent
             if (!isIncognitoMode) {
-                lastHistoryUpdate = historyUpdateUseCase.invokeAsync(target, state, percent.coerceIn(0f, 1f), chapterCompleted = ratio.isFinite() && ratio >= 1f)
+                lastHistoryUpdate = historyUpdateUseCase.invokeAsync(target, state, percent.coerceIn(0f, 1f), chapterCompleted = ratio.isFinite() && ratio >= 1f, positionOnly = true)
             }
         }
         if (displayPage != null) onReadingPositionChanged(chapterIndex, displayPage)
