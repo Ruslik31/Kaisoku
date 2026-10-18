@@ -17,6 +17,7 @@ import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.parser.mihon.repo.MihonExtensionRepo
 import org.koitharu.kotatsu.core.parser.mihon.repo.MihonExtensionRepoRepository
+import org.koitharu.kotatsu.core.parser.mihon.repo.MihonExtensionRepoStore
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
@@ -96,8 +97,7 @@ class MihonExtensionReposViewModel @Inject constructor(
 	}
 
 	companion object {
-		const val SUGGESTED_REPO_URL =
-			"https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.json"
+		const val SUGGESTED_REPO_URL = MihonExtensionRepoStore.KEIYOUSHI_INDEX_URL
 		private const val SUGGESTED_REPO_LEGACY_URL =
 			"https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json"
 		private const val CONTENT_STOP_TIMEOUT_MS = 5000L

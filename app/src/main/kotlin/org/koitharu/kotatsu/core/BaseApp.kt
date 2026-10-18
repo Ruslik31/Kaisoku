@@ -28,9 +28,11 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.NsfwOverridesLoader
 import org.koitharu.kotatsu.core.os.AppValidator
 import org.koitharu.kotatsu.core.os.RomCompat
+import org.koitharu.kotatsu.core.parser.BundledPluginsInstaller
 import org.koitharu.kotatsu.core.parser.DynamicParserManager
 import org.koitharu.kotatsu.core.parser.PluginFileLoader
 import org.koitharu.kotatsu.core.parser.lnreader.LnReaderSourceManager
+import org.koitharu.kotatsu.core.parser.mihon.repo.MihonExtensionRepoStore
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.work.AppWorkerFactory
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
@@ -84,6 +86,12 @@ open class BaseApp : Application(), Configuration.Provider {
     @Inject
     lateinit var drivePreferenceVersions: DrivePreferenceVersions
 
+	@Inject
+	lateinit var bundledPluginsInstaller: Provider<BundledPluginsInstaller>
+
+	@Inject
+	lateinit var mihonExtensionRepoStore: Provider<MihonExtensionRepoStore>
+
 	override val workManagerConfiguration: Configuration
 		get() = Configuration.Builder()
 			.setWorkerFactory(workerFactory)
@@ -119,7 +127,11 @@ open class BaseApp : Application(), Configuration.Provider {
 			localStorageChanges.collect(localMangaIndexProvider.get())
 		}
 		processLifecycleScope.launch(Dispatchers.IO) {
+			runCatching { bundledPluginsInstaller.get().install() }
 			DynamicParserManager.loadParsersFromDirectory(this@BaseApp, PluginFileLoader.pluginsDir(this@BaseApp))
+		}
+		processLifecycleScope.launch(Dispatchers.IO) {
+			runCatching { mihonExtensionRepoStore.get().seedDefaults() }
 		}
 		// Populate the LNReader source registry eagerly so novels resolve from history/
 		// shortcuts/DB on a cold start, before any Explore-side assimilation ran.
