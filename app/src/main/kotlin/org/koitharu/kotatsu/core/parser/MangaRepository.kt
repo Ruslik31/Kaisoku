@@ -13,6 +13,7 @@ import org.koitharu.kotatsu.core.model.MangaSourceInfo
 import org.koitharu.kotatsu.core.model.PluginMangaSource
 import org.koitharu.kotatsu.core.model.TestMangaSource
 import org.koitharu.kotatsu.core.model.UnknownMangaSource
+import org.koitharu.kotatsu.core.parser.tsuki.TsukiLoaderContext
 import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.network.CommonHeaders
@@ -142,6 +143,7 @@ interface MangaRepository {
 		private val lnReaderSourceManager: LnReaderSourceManager,
 		private val appSettings: AppSettings,
         private val recommendationStore: org.koitharu.kotatsu.suggestions.local.RecommendationStore,
+		private val tsukiLoaderContext: dagger.Lazy<TsukiLoaderContext>,
 	) {
 
 		private val cache = ArrayMap<MangaSource, WeakReference<MangaRepository>>()
@@ -267,10 +269,16 @@ interface MangaRepository {
 			// Resolve domain once now so an incompatible copy is detected before it reaches any screen.
 			val plugin = runCatchingCancellable {
 				PluginMangaRepository(
-					loadedParser = DynamicParserManager.createParser(source, loaderContext, context),
+					loadedParser = DynamicParserManager.createParser(
+						source = source,
+						loaderContext = loaderContext,
+						tsukiContext = if (source.isTsuki) tsukiLoaderContext.get() else null,
+						appContext = context,
+					),
 					settings = SourceSettings(context, source),
 					cache = contentCache,
 					appSettings = appSettings,
+					mirrorSwitcher = mirrorSwitcher,
 				)
 			}.onFailure { it.printStackTraceDebug() }.getOrNull()
 			val compatiblePlugin = plugin?.let { repository ->
