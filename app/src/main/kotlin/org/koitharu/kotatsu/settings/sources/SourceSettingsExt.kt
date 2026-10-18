@@ -1,28 +1,36 @@
 package org.koitharu.kotatsu.settings.sources
 
+import android.content.Context
 import android.view.inputmethod.EditorInfo
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
+import androidx.preference.PreferenceDataStore
 import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.PreferenceGroup
 import androidx.preference.SwitchPreferenceCompat
+import eu.kanade.tachiyomi.source.preferenceKey
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.parser.EmptyMangaRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.parser.ParserMangaRepository
 import org.koitharu.kotatsu.core.parser.PluginMangaRepository
+import org.koitharu.kotatsu.core.parser.mihon.MihonMangaRepository
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.mapToArray
 import org.koitharu.kotatsu.settings.utils.AutoCompleteTextViewPreference
 import org.koitharu.kotatsu.settings.utils.EditTextBindListener
 import org.koitharu.kotatsu.settings.utils.EditTextDefaultSummaryProvider
+import org.koitharu.kotatsu.settings.utils.SharedPreferencesDataStore
 import org.koitharu.kotatsu.settings.utils.validation.DomainValidator
 import org.koitharu.kotatsu.settings.utils.validation.HeaderValidator
 
 fun PreferenceFragmentCompat.addPreferencesFromRepository(repository: MangaRepository) = when (repository) {
 	is ParserMangaRepository -> addPreferencesFromParserRepository(repository)
 	is PluginMangaRepository -> addPreferencesFromPluginRepository(repository)
+	is MihonMangaRepository -> addPreferencesFromMihonRepository(repository)
 	is EmptyMangaRepository -> addPreferencesFromEmptyRepository()
 	else -> Unit
 }
@@ -33,6 +41,41 @@ private fun PreferenceFragmentCompat.addPreferencesFromParserRepository(reposito
 
 private fun PreferenceFragmentCompat.addPreferencesFromPluginRepository(repository: PluginMangaRepository) {
 	addPreferencesFromConfigKeys(repository.getConfigKeys())
+}
+
+/**
+ * Lets a configurable extension add its own settings. They are stored in the extension's
+ * preferences file, as in Mihon, while the rest of the screen keeps using the source settings.
+ */
+private fun PreferenceFragmentCompat.addPreferencesFromMihonRepository(repository: MihonMangaRepository) {
+	val configurable = repository.configurableSource ?: return
+	val screen = preferenceScreen
+	val existing = (0 until screen.preferenceCount).mapTo(HashSet()) { screen.getPreference(it) }
+	val hostPrefsName = preferenceManager.sharedPreferencesName
+	val extensionPrefsName = configurable.preferenceKey()
+	preferenceManager.sharedPreferencesName = extensionPrefsName
+	try {
+		configurable.setupPreferenceScreen(screen)
+	} catch (e: Throwable) {
+		e.printStackTraceDebug()
+	} finally {
+		preferenceManager.sharedPreferencesName = hostPrefsName
+	}
+	val dataStore = SharedPreferencesDataStore(
+		screen.context.getSharedPreferences(extensionPrefsName, Context.MODE_PRIVATE),
+	)
+	(0 until screen.preferenceCount).map { screen.getPreference(it) }
+		.filterNot { it in existing }
+		.forEach { it.useDataStore(dataStore) }
+}
+
+private fun Preference.useDataStore(dataStore: PreferenceDataStore) {
+	preferenceDataStore = dataStore
+	if (this is PreferenceGroup) {
+		for (i in 0 until preferenceCount) {
+			getPreference(i).useDataStore(dataStore)
+		}
+	}
 }
 
 private fun PreferenceFragmentCompat.addPreferencesFromConfigKeys(configKeys: List<ConfigKey<*>>) {

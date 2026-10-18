@@ -43,6 +43,7 @@ import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.list.ui.model.MangaCompactListModel
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.settings.sources.manage.plugins.UpdatePluginsProvider
 import org.koitharu.kotatsu.suggestions.domain.SuggestionRepository
 import org.koitharu.kotatsu.suggestions.local.shareRecommendations
 import javax.inject.Inject
@@ -50,6 +51,7 @@ import javax.inject.Inject
 @HiltViewModel
 class ExploreViewModel @Inject constructor(
 	private val settings: AppSettings,
+	private val updatePluginsProvider: UpdatePluginsProvider,
 	private val suggestionRepository: SuggestionRepository,
 	private val exploreRepository: ExploreRepository,
 	private val sourcesRepository: MangaSourcesRepository,
@@ -96,6 +98,9 @@ class ExploreViewModel @Inject constructor(
     ).shareRecommendations(viewModelScope + Dispatchers.Default, buildExploreLoadingStateList(false))
 
 	init {
+		launchJob(Dispatchers.Default) {
+			updatePluginsProvider.runAutoUpdate(settings)
+		}
 		if (shouldShowSuggestionsTip(settings)) {
 			onShowSuggestionsTip.call(Unit)
 		}

@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.core.parser.mihon
 
 import android.net.Uri
 import androidx.core.net.toUri
+import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.Page
@@ -10,9 +11,11 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
+import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.network.CommonHeaders
@@ -399,10 +402,28 @@ class MihonMangaRepository(
 
 	private fun stableId(rawValue: String): Long = mihonStableId(source.name, rawValue)
 
+	/** Extensions report a failed in-process challenge as text; offer the captcha browser instead. */
+	private fun mapCloudFlareFailure(error: Throwable): Throwable? {
+		val httpSource = mihonSource as? HttpSource ?: return null
+		val isBypassFailure = generateSequence(error) { it.cause?.takeIf { cause -> cause !== it } }.take(4).any {
+			it.message?.contains("cloudflare bypass failed", ignoreCase = true) == true
+		}
+		if (!isBypassFailure) return null
+		return CloudFlareProtectedException(
+			url = httpSource.baseUrl,
+			source = source,
+			headers = runCatching { httpSource.headers }.getOrDefault(Headers.headersOf()),
+		)
+	}
+
+	val configurableSource: ConfigurableSource?
+		get() = mihonSource as? ConfigurableSource
+
 	private fun mapHostedFailure(error: Throwable): Throwable {
 		if (error is AuthRequiredException) {
 			return error
 		}
+		mapCloudFlareFailure(error)?.let { return it }
 		val message = buildString {
 			appendLine(error.message.orEmpty())
 			error.cause?.message?.takeIf { it.isNotBlank() }?.let(::append)
@@ -421,6 +442,7 @@ class MihonMangaRepository(
 		if (error is AuthRequiredException) {
 			return error
 		}
+		mapCloudFlareFailure(error)?.let { return it }
 		val message = buildString {
 			appendLine(error.message.orEmpty())
 			error.cause?.message?.takeIf { it.isNotBlank() }?.let(::append)
