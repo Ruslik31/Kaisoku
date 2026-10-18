@@ -59,7 +59,7 @@ class BundledPluginsInstaller @Inject constructor(
 	companion object {
 
 		val BUNDLED = listOf(
-			BundledPlugin(fileName = "uma.jar", repository = "InvalidDavid/UMA", tag = "f207e8e"),
+			BundledPlugin(fileName = "uma.jar", repository = "InvalidDavid/UMA", tag = "08f814f"),
 		)
 
 		private const val PREFS_NAME = "bundled_plugins"
