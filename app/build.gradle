@@ -1,9 +1,3 @@
-import org.gradle.api.artifacts.transform.InputArtifact
-import org.gradle.api.artifacts.transform.TransformAction
-import org.gradle.api.artifacts.transform.TransformOutputs
-import org.gradle.api.artifacts.transform.TransformParameters
-import org.gradle.api.artifacts.type.ArtifactTypeDefinition
-import org.gradle.api.file.FileSystemLocation
 import java.time.LocalDateTime
 import java.security.SecureRandom
 import java.util.Arrays
@@ -149,52 +143,22 @@ internal object TokenData {
 // ---- Tsuki host core -------------------------------------------------------
 //
 // Tsuki also ships org.koitharu.kotatsu.core.parser.CSSBackground, which the parsers library
-// defines as well. Drop Tsuki's org.koitharu.* copies so every class is dexed once.
-abstract class StripTsukiHostDuplicates implements TransformAction<TransformParameters.None> {
-
-	@InputArtifact
-	abstract Provider<FileSystemLocation> getInputArtifact()
-
-	@Override
-	void transform(TransformOutputs outputs) {
-		File input = inputArtifact.get().asFile
-		if (!(input.name ==~ /Tsuki-[\d.]+\.jar/)) {
-			outputs.file(inputArtifact)
-			return
-		}
-		File output = outputs.file("host-${input.name}")
-		new java.util.zip.ZipFile(input).withCloseable { zip ->
-			new java.util.zip.ZipOutputStream(output.newOutputStream()).withCloseable { out ->
-				zip.entries().each { entry ->
-					if (entry.name.startsWith('org/koitharu/')) {
-						return
-					}
-					out.putNextEntry(new java.util.zip.ZipEntry(entry.name))
-					if (!entry.directory) {
-						zip.getInputStream(entry).withCloseable { out << it }
-					}
-					out.closeEntry()
-				}
-			}
-		}
+// defines as well. Depend on a copy without Tsuki's org.koitharu.* classes so each class is
+// dexed once. Tsuki's own dependencies are already part of the app.
+configurations {
+	tsukiCore {
+		transitive = false
 	}
 }
 
-def tsukiStripped = Attribute.of('kaisoku.tsukiStripped', Boolean)
-dependencies {
-	attributesSchema {
-		attribute(tsukiStripped)
+def stripTsukiHostDuplicates = tasks.register('stripTsukiHostDuplicates', Zip) {
+	from({ zipTree(configurations.tsukiCore.singleFile) }) {
+		exclude 'org/koitharu/**'
 	}
-	artifactTypes.maybeCreate('jar').attributes.attribute(tsukiStripped, false)
-	registerTransform(StripTsukiHostDuplicates) {
-		from.attribute(tsukiStripped, false).attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'jar')
-		to.attribute(tsukiStripped, true).attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, 'jar')
-	}
-}
-configurations.configureEach {
-	if (canBeResolved) {
-		attributes.attribute(tsukiStripped, true)
-	}
+	archiveFileName = 'tsuki-host.jar'
+	destinationDirectory = layout.buildDirectory.dir('tsuki')
+	preserveFileTimestamps = false
+	reproducibleFileOrder = true
 }
 
 android {
@@ -325,9 +289,8 @@ dependencies {
 		exclude group: 'org.json', module: 'json'
 	}
 	// Host core for tsuki.* parser plugins
-	implementation(libs.tsuki) {
-		exclude group: 'org.json', module: 'json'
-	}
+	tsukiCore libs.tsuki
+	implementation files(stripTsukiHostDuplicates)
 
 	coreLibraryDesugaring libs.desugar.jdk.libs
 	implementation libs.kotlin.stdlib
