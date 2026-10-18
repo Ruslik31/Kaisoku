@@ -347,6 +347,17 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     val isReaderOptimizationEnabled: Boolean
         get() = prefs.getBoolean(KEY_READER_OPTIMIZE, false)
 
+    val isSourceSwitchSuggestionEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SOURCE_SWITCH_SUGGEST, true)
+
+    fun isSourceSwitchSuggestionMuted(sourceName: String): Boolean =
+        sourceName in prefs.getStringSet(KEY_SOURCE_SWITCH_MUTED, emptySet()).orEmpty()
+
+    fun muteSourceSwitchSuggestion(sourceName: String) {
+        val muted = prefs.getStringSet(KEY_SOURCE_SWITCH_MUTED, emptySet()).orEmpty() + sourceName
+        prefs.edit { putStringSet(KEY_SOURCE_SWITCH_MUTED, muted) }
+    }
+
     val isReaderAnimatedPagesEnabled: Boolean
         get() = prefs.getBoolean(KEY_READER_ANIMATED_PAGES, true)
 
@@ -1215,6 +1226,8 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_SHORTCUTS = "dynamic_shortcuts"
         const val KEY_READER_TAP_ACTIONS = "reader_tap_actions"
         const val KEY_READER_OPTIMIZE = "reader_optimize"
+        const val KEY_SOURCE_SWITCH_SUGGEST = "source_switch_suggest"
+        const val KEY_SOURCE_SWITCH_MUTED = "source_switch_muted"
         const val KEY_READER_ANIMATED_PAGES = "reader_animated_pages"
         const val KEY_UPSCALE_STRENGTH = "reader_upscale_strength"
         const val KEY_UPSCALE_PASSES = "reader_upscale_passes"
