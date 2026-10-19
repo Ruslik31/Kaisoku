@@ -14,10 +14,11 @@ sealed interface PluginManageItem : ListModel {
 		val isTsuki: Boolean = false,
 		val loadError: String? = null,
 		val isSelected: Boolean = false,
+		val customName: String? = null,
 	) : PluginManageItem {
 
 		val displayName: String
-			get() = jarName.removeSuffix(".jar")
+			get() = customName?.takeIf { it.isNotBlank() } ?: jarName.removeSuffix(".jar")
 
 		val hasUpdate: Boolean
 			get() = !latestTag.isNullOrBlank() && latestTag != installedTag

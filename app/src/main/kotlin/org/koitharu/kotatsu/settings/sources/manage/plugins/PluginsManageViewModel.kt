@@ -118,20 +118,13 @@ class PluginsManageViewModel @Inject constructor(
 		isSuccess
 	}.also { refresh() }
 
+	/** The JAR name is part of every source identity; rename only its display label. */
 	suspend fun renamePlugin(item: PluginManageItem.Plugin, rawName: String): Boolean = withContext(Dispatchers.Default) {
-		val newName = sanitizeJarFileName(rawName)
-		if (newName == item.jarName) return@withContext true
-		val pluginsDir = PluginFileLoader.pluginsDir(context)
-		val source = File(pluginsDir, item.jarName)
-		val target = File(pluginsDir, newName)
-		if (target.exists() || !source.exists()) return@withContext false
-		runCatchingCancellable {
-			source.setWritable(true, true)
-			check(source.renameTo(target)) { "Cannot rename ${item.jarName}" }
-			target.setReadOnly()
-			updateMeta { meta -> meta.remove(item.jarName)?.let { meta[newName] = it } }
-			reloadPlugins(pluginsDir)
-		}.isSuccess
+		val label = rawName.trim().takeIf { it.isNotEmpty() && it.length <= 120 && it.none(Char::isISOControl) }
+			?: return@withContext false
+		if (!File(PluginFileLoader.pluginsDir(context), item.jarName).isFile) return@withContext false
+		prefs.edit { putString(KEY_PLUGIN_LABEL_PREFIX + item.jarName, label) }
+		true
 	}.also { if (it) refresh() }
 
 	fun setQuery(value: String?) {
@@ -288,6 +281,7 @@ class PluginsManageViewModel @Inject constructor(
 		}
 		val filtered = all.map { it.copy(isSelected = it.jarName in selected) }.filter { plugin ->
 			plugin.jarName.contains(q, ignoreCase = true) ||
+				plugin.displayName.contains(q, ignoreCase = true) ||
 				plugin.repository?.contains(q, ignoreCase = true) == true
 		}
 		content.value = filtered.ifEmpty {
@@ -308,6 +302,7 @@ class PluginsManageViewModel @Inject constructor(
 			val sources = loaded[fileName].orEmpty()
 			PluginManageItem.Plugin(
 				jarName = fileName,
+				customName = prefs.getString(KEY_PLUGIN_LABEL_PREFIX + fileName, null),
 				repository = itemMeta?.repository,
 				installedTag = itemMeta?.tag,
 				latestTag = null,
@@ -468,6 +463,7 @@ class PluginsManageViewModel @Inject constructor(
 	)
 
 	private companion object {
+		const val KEY_PLUGIN_LABEL_PREFIX = "display_name:"
 		const val PREFS_NAME = "plugins_manage"
 		const val PREFS_KEY_GITHUB_META = "github_meta"
 		const val JSON_KEY_REPOSITORY = "repository"
