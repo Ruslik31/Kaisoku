@@ -37,6 +37,7 @@ constructor(
     suspend operator fun invoke(
         oldManga: Manga,
         newManga: Manga,
+        onLocalMigration: (Manga) -> Unit = {},
     ): Manga {
         // Fetch old + new details in parallel — both are independent network calls and on slow
         // sources this halves the wait the user sees before the migration actually starts. The
@@ -66,6 +67,7 @@ constructor(
         val newDetails = newDetailsRaw
         mangaDataRepository.storeManga(newDetails, replaceExisting = true)
         if (oldDetails.id == newDetails.id) {
+            onLocalMigration(newDetails)
             progressUpdateUseCase(newDetails)
             return newDetails
         }
@@ -113,6 +115,7 @@ constructor(
             }
             MangaIdentityMerge.mergeManga(database.openHelper.writableDatabase, oldDetails.id, newDetails.id)
         }
+        onLocalMigration(newDetails)
         metadataRefreshSettings.copyMergedTitleFlags(mergedIds)
         // Scrobbling runs outside the DB transaction: each scrobbler hits the network and the
         // transaction shouldn't stay open for the whole thing. Each scrobbler runs in parallel so

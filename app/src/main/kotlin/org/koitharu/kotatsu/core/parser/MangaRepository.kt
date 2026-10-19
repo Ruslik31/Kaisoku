@@ -17,6 +17,7 @@ import org.koitharu.kotatsu.core.model.TestMangaSource
 import org.koitharu.kotatsu.core.model.UnknownMangaSource
 import org.koitharu.kotatsu.core.model.UnresolvedMangaSource
 import org.koitharu.kotatsu.core.model.unwrap
+import org.koitharu.kotatsu.core.parser.tsuki.TsukiLoaderContext
 import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MetadataRefreshSettings
@@ -160,6 +161,7 @@ interface MangaRepository {
         private val recommendationStore: org.koitharu.kotatsu.suggestions.local.RecommendationStore,
 		private val metadataRefreshSettings: MetadataRefreshSettings,
 		private val savedMangaMetadata: SavedMangaMetadata,
+		private val tsukiLoaderContext: dagger.Lazy<TsukiLoaderContext>,
 	) {
 
 		private val cache = ArrayMap<MangaSource, WeakReference<MangaRepository>>()
@@ -173,6 +175,13 @@ interface MangaRepository {
             }
             val resolved = resolveRepositorySource(source)
             if (resolved !== source) return create(resolved)
+            if (source is PluginMangaSource && !isInstalledPlugin(source)) {
+                return synchronized(cache) {
+                    cache.remove(source)
+                    contentCache.clear(source)
+                    emptyRepository(source)
+                }
+            }
             if (source is MihonMangaSource) {
                 // Resolve before consulting the repository cache: ignored, removed or replaced
                 // packages must not keep being served by an obsolete extension instance.
@@ -197,6 +206,14 @@ interface MangaRepository {
                 }
             }
             return synchronized(cache) {
+                if (source is PluginMangaSource) {
+                    // Registry replacement changes enum identity even when the JAR/name stay equal.
+                    cache.keys.filter { it is PluginMangaSource && it.name == source.name && it !== source }
+                        .forEach {
+                            cache.remove(it)
+                            contentCache.clear(it)
+                        }
+                }
                 cache[source]?.get()?.let { current ->
                     if (current !is EmptyMangaRepository || !hasRestoredAdapter(source)) return@synchronized current
                     cache.remove(source)
@@ -239,6 +256,7 @@ interface MangaRepository {
 
         private fun resolveRepositorySource(source: MangaSource): MangaSource = when (source) {
             is UnresolvedLnReaderSource -> lnReaderSourceManager.peekEntity(source.pluginId)?.toMangaSource() ?: source
+            is PluginMangaSource -> MangaSourceRegistry.entries.firstOrNull { it.name == source.name } ?: source
             is UnresolvedMangaSource -> MangaSourceRegistry.entries.firstOrNull { it.name == source.name } ?: source
             else -> source
         }
@@ -337,10 +355,16 @@ interface MangaRepository {
 			// Resolve domain once now so an incompatible copy is detected before it reaches any screen.
 			val plugin = runCatchingCancellable {
 				PluginMangaRepository(
-					loadedParser = DynamicParserManager.createParser(source, loaderContext, context),
+					loadedParser = DynamicParserManager.createParser(
+						source = source,
+						loaderContext = loaderContext,
+						tsukiContext = if (source.isTsuki) tsukiLoaderContext.get() else null,
+						appContext = context,
+					),
 					settings = SourceSettings(context, source),
 					cache = contentCache,
 					appSettings = appSettings,
+					mirrorSwitcher = mirrorSwitcher,
 				)
 			}.onFailure { it.printStackTraceDebug() }.getOrNull()
 			val compatiblePlugin = plugin?.let { repository ->

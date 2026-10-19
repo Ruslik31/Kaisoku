@@ -125,6 +125,13 @@ class SourceSettings(context: Context, source: MangaSource) : MangaSourceConfig 
 		}
 	}
 
+	/** Free-form values a plugin asks the user for, stored under the plugin's own key. */
+	fun getUserInput(key: String): String? = prefs.getString(key, null)?.takeIf { it.isNotEmpty() }
+
+	fun setUserInput(key: String, value: String?) = prefs.edit(commit = true) {
+		if (value.isNullOrEmpty()) remove(key) else putString(key, value)
+	}
+
 	fun subscribe(listener: OnSharedPreferenceChangeListener) {
 		prefs.registerOnSharedPreferenceChangeListener(listener)
 	}

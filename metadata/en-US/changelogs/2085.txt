@@ -1,0 +1,8 @@
+- Add category views and favorites ordering
+- Add source preferences and saved metadata controls
+- Add download pacing and reader options
+- Support Tsuki plugins and bundle UMA
+- Suggest source replacements on reader errors
+- Improve plugin management and recommendations
+- Repair Toonily and 3Hentai
+- Add CGBUM, Twokinds and Wurmz

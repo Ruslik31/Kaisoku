@@ -9,6 +9,8 @@ data class SourcesCatalogFilter(
 	val mihonMode: SourceCatalogFilterMode,
 	val pluginMode: SourceCatalogFilterMode,
 	val novelMode: SourceCatalogFilterMode = SourceCatalogFilterMode.NONE,
+	/** Only sources from this plugin jar; null for every source. */
+	val pluginJar: String? = null,
 )
 
 enum class SourceCatalogFilterMode {

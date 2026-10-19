@@ -140,6 +140,27 @@ internal object TokenData {
 	}
 }
 
+// ---- Tsuki host core -------------------------------------------------------
+//
+// Tsuki also ships org.koitharu.kotatsu.core.parser.CSSBackground, which the parsers library
+// defines as well. Depend on a copy without Tsuki's org.koitharu.* classes so each class is
+// dexed once. Tsuki's own dependencies are already part of the app.
+configurations {
+	tsukiCore {
+		transitive = false
+	}
+}
+
+def stripTsukiHostDuplicates = tasks.register('stripTsukiHostDuplicates', Zip) {
+	from({ zipTree(configurations.tsukiCore.singleFile) }) {
+		exclude 'org/koitharu/**'
+	}
+	archiveFileName = 'tsuki-host.jar'
+	destinationDirectory = layout.buildDirectory.dir('tsuki')
+	preserveFileTimestamps = false
+	reproducibleFileOrder = true
+}
+
 android {
 	compileSdk = 36
 	buildToolsVersion = '35.0.0'
@@ -156,8 +177,8 @@ android {
 		applicationId 'io.github.glitch228.kaisoku'
 		minSdk = 26
 		targetSdk = 36
-		versionCode = 2083
-		versionName = '9.8.7-beta3'
+		versionCode = 2085
+		versionName = '9.8.7-beta4'
 		generatedDensities = []
 		testInstrumentationRunner 'org.koitharu.kotatsu.HiltTestRunner'
 		ksp {
@@ -267,6 +288,9 @@ dependencies {
 	implementation("com.github.glitch-228:kaisoku-parsers:$parsersVersion") {
 		exclude group: 'org.json', module: 'json'
 	}
+	// Host core for tsuki.* parser plugins
+	tsukiCore libs.tsuki
+	implementation files(stripTsukiHostDuplicates)
 
 	coreLibraryDesugaring libs.desugar.jdk.libs
 	implementation libs.kotlin.stdlib

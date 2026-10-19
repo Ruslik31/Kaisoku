@@ -114,7 +114,7 @@ class ChaptersLoader internal constructor(
 	private suspend fun loadChapter(chapterId: Long): List<ReaderPage> {
 		val chapter = checkNotNull(chapters[chapterId]) { "Requested chapter not found" }
 		val repo = repositoryForSource(chapter.source)
-		return repo.getPages(manga, chapter).mapIndexed { index, page ->
+		return retryTransient { repo.getPages(manga, chapter) }.mapIndexed { index, page ->
 			ReaderPage(page, index, chapterId)
 		}
 	}

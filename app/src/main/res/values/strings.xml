@@ -1451,4 +1451,22 @@
     <string name="tracker_beta_risks">Similar titles can identify the wrong work, sequel or edition. Automatic matching is optional and off by default; only trusted IDs link automatically. Title suggestions and new remote entries need confirmation. You can correct or remove a link from Track. Completed chapters sync using source chapter numbers, which may differ from the tracker. A website progress edit during a sync can race the request; review progress after concurrent edits. Website changes never move your reader position or favorite categories. This build updates the local database: make a backup before downgrading to an older build. Old imported tracker links without account ownership need confirmation before automatic syncing.</string>
     <string name="details_chapters_inline">Show chapters on the details page</string>
     <string name="details_chapters_inline_summary">Keep the chapter sheet available for chapters, pages and bookmarks.</string>
+    <string name="source_switch_suggest">Suggest another source on errors</string>
+    <string name="source_switch_suggest_summary">When a source is slow or keeps failing, offer a plugin or extension for the same site</string>
+    <string name="source_switch_title_errors">%s is not responding</string>
+    <string name="source_switch_title_slow">%s is slow</string>
+    <string name="source_switch_to">Switch to %1$s (%2$s)</string>
+    <string name="source_switch_install">Install and switch to %1$s (%2$s)</string>
+    <string name="source_switch_kind_plugin">plugin %s</string>
+    <string name="source_switch_kind_builtin">built-in</string>
+    <string name="source_switch_kind_extension">extension</string>
+    <string name="source_switch_mute">Don\'t suggest for this source</string>
+    <string name="source_switch_slow">This source is slow</string>
+    <string name="source_switch_action">Switch source</string>
+    <string name="source_switch_progress">Moving to %s…</string>
+    <string name="source_switched">Moved to %s</string>
+    <string name="input_required">Input required</string>
+    <string name="plugin_load_error">Failed to load: %s</string>
+    <string name="plugin_select_file">Choose a plugin file</string>
+    <string name="plugins_deleted">Plugins deleted</string>
 </resources>

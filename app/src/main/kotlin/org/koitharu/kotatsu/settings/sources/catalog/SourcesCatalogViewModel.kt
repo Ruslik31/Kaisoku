@@ -23,6 +23,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.TABLE_SOURCES
 import org.koitharu.kotatsu.core.model.MangaSourceInfo
+import org.koitharu.kotatsu.core.model.MangaSourceRegistry
 import org.koitharu.kotatsu.core.model.PluginMangaSource
 import org.koitharu.kotatsu.core.model.isExternalSource
 import org.koitharu.kotatsu.core.model.unwrap
@@ -205,6 +206,13 @@ class SourcesCatalogViewModel @Inject constructor(
         appliedFilter.value = filter.copy(pluginMode = filter.pluginMode.next())
     }
 
+    val pluginJars: List<String>
+        get() = MangaSourceRegistry.entries.filterIsInstance<PluginMangaSource>().map { it.jarName }.distinct().sorted()
+
+    fun setPluginJar(jarName: String?) {
+        appliedFilter.value = appliedFilter.value.copy(pluginJar = jarName)
+    }
+
     fun cycleNovelMode() {
         val filter = appliedFilter.value
         appliedFilter.value = filter.copy(novelMode = filter.novelMode.next())
@@ -239,7 +247,10 @@ class SourcesCatalogViewModel @Inject constructor(
             excludeNovel = filter.novelMode == SourceCatalogFilterMode.EXCLUDE,
             sortOrder = SourcesSortOrder.ALPHABETIC,
             snapshot = snapshot,
-        )
+        ).let { list ->
+            val jarName = filter.pluginJar ?: return@let list
+            list.filter { (it.unwrap() as? PluginMangaSource)?.jarName == jarName }
+        }
         val hiddenExtensions = snapshot.any {
             it.isMihon && !settings.sourceContentPolicy.allows(it.source) && (!it.isEnabled || settings.isAllSourcesEnabled)
         }

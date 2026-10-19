@@ -107,7 +107,8 @@ class MetadataRefreshFactoryTest {
         val previousSources = LnReaderSourceRegistry.sources.toList()
         try {
             val factory = MangaRepository.Factory(context, local, loader, cache, mirrors, mihon, manager,
-                AppSettings(context), evidence, settings, SavedMangaMetadata(database))
+                AppSettings(context), evidence, settings, SavedMangaMetadata(database),
+                dagger.Lazy { error("Tsuki is not used by this fixture") })
             block(factory, settings, database, manager)
         } finally {
             LnReaderSourceRegistry.replaceAll(previousSources)

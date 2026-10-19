@@ -145,6 +145,12 @@
         android:title="@string/reader_optimize" />
 
     <SwitchPreferenceCompat
+        android:defaultValue="false"
+        android:key="source_switch_suggest"
+        android:summary="@string/source_switch_suggest_summary"
+        android:title="@string/source_switch_suggest" />
+
+    <SwitchPreferenceCompat
         android:defaultValue="true"
         android:key="reader_animated_pages"
         android:summary="@string/reader_animated_pages_summary"

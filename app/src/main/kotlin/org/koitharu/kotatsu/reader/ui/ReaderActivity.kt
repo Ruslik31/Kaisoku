@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.reader.ui
 
+import android.widget.Toast
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChangedBy
@@ -55,6 +56,7 @@ import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.resolve.DialogErrorObserver
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
+import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.nav.router
@@ -83,6 +85,7 @@ import org.koitharu.kotatsu.databinding.ActivityReaderBinding
 import org.koitharu.kotatsu.details.ui.pager.pages.PagesSavedObserver
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.reader.data.TapGridSettings
+import org.koitharu.kotatsu.reader.domain.SourceHealthMonitor
 import org.koitharu.kotatsu.reader.domain.TapGridArea
 import org.koitharu.kotatsu.reader.domain.UpscaleEffect
 import org.koitharu.kotatsu.reader.ui.ReaderState
@@ -273,6 +276,13 @@ class ReaderActivity :
                 onResolved = null,
             ),
         )
+        viewModel.onSourceSwitchSuggestion.observeEvent(this, ::onSourceSwitchSuggestion)
+        viewModel.onSourceSwitched.observeEvent(this) { manga ->
+            Toast.makeText(this, getString(R.string.source_switched, manga.source.getTitle(this)), Toast.LENGTH_SHORT)
+                .show()
+            router.openReader(manga)
+            finish()
+        }
         viewModel.onShowOcrSheet.observeEvent(this) {
             org.koitharu.kotatsu.reader.translate.OcrBottomSheet.show(supportFragmentManager)
         }
@@ -347,6 +357,12 @@ class ReaderActivity :
             ::Pair,
         ).flowOn(Dispatchers.Default)
             .observe(this, this::onLoadingStateChanged)
+        viewModel.isLoading.observe(this) { isLoading ->
+            if (!isLoading) {
+                slowSourceSnackbar?.dismiss()
+                slowSourceSnackbar = null
+            }
+        }
         viewModel.isKeepScreenOnEnabled.observe(this, this::setKeepScreenOn)
         viewModel.isInfoBarTransparent.observe(this) { viewBinding.infoBar.drawBackground = !it }
         viewModel.isInfoBarEnabled.observe(this, ::onReaderBarChanged)
@@ -445,6 +461,36 @@ class ReaderActivity :
         }
     }
 
+    private fun onSourceSwitchSuggestion(suggestion: SourceSwitchSuggestion) {
+        if (isFinishing || isDestroyed) return
+        val showDialog = {
+            SourceSwitchDialog.show(
+                context = this,
+                suggestion = suggestion,
+                onSwitch = { candidate ->
+                    viewModel.saveVisibleState(readerManager.currentReader?.getCurrentStateSnapshot())
+                    Toast.makeText(
+                        this,
+                        getString(R.string.source_switch_progress, candidate.title),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                    viewModel.switchSource(candidate)
+                },
+                onAlternatives = { router.openAlternatives(suggestion.manga) },
+                onMute = { viewModel.muteSourceSwitchSuggestion(suggestion.manga.source) },
+            )
+        }
+        if (suggestion.trigger == SourceHealthMonitor.Trigger.SLOW) {
+            slowSourceSnackbar = Snackbar.make(
+                viewBinding.container,
+                R.string.source_switch_slow,
+                Snackbar.LENGTH_INDEFINITE,
+            ).setAction(R.string.source_switch_action) { showDialog() }
+                .also { it.show() }
+        } else {
+            showDialog()
+        }
+    }
     private fun onInitReader(mode: ReaderMode?) {
         if (mode == null) {
             return
@@ -488,6 +534,7 @@ class ReaderActivity :
     }
 
     private var touchedActionPage: ReaderPage? = null
+    private var slowSourceSnackbar: Snackbar? = null
     private var actionTouchX = 0f
     private var actionTouchY = 0f
 

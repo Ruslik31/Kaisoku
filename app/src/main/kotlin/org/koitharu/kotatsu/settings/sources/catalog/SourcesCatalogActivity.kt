@@ -106,6 +106,7 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			SourcesCatalogChip.Mihon -> viewModel.cycleMihonMode()
 			SourcesCatalogChip.Plugin -> viewModel.cyclePluginMode()
 			SourcesCatalogChip.Novel -> viewModel.cycleNovelMode()
+			SourcesCatalogChip.PluginJar -> showPluginJarsMenu(chip)
 			else -> showLocalesMenu(chip)
 		}
 	}
@@ -169,6 +170,15 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			tint = appliedFilter.pluginMode.sourceKindTint(),
 			data = SourcesCatalogChip.Plugin,
 		)
+		if (viewModel.pluginJars.size > 1 || appliedFilter.pluginJar != null) {
+			chips += ChipModel(
+				title = appliedFilter.pluginJar?.removeSuffix(".jar") ?: getString(R.string.plugins),
+				icon = R.drawable.ic_services,
+				isChecked = appliedFilter.pluginJar != null,
+				isDropdown = true,
+				data = SourcesCatalogChip.PluginJar,
+			)
+		}
 		chips += ChipModel(
 			title = appliedFilter.novelMode.sourceKindTitle(
 				includedTitle = getString(R.string.content_type_novel),
@@ -192,7 +202,21 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 	private enum class SourcesCatalogChip {
 		Mihon,
 		Plugin,
+		PluginJar,
 		Novel,
+	}
+
+	private fun showPluginJarsMenu(anchor: View) {
+		val jars = listOf<String?>(null) + viewModel.pluginJars
+		val menu = PopupMenu(this, anchor)
+		for ((i, jar) in jars.withIndex()) {
+			menu.menu.add(Menu.NONE, Menu.NONE, i, jar?.removeSuffix(".jar") ?: getString(R.string.plugins))
+		}
+		menu.setOnMenuItemClickListener {
+			viewModel.setPluginJar(jars.getOrNull(it.order))
+			true
+		}
+		menu.show()
 	}
 
 	private fun showLocalesMenu(anchor: View) {
