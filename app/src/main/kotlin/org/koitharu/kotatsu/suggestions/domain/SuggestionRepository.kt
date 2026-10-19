@@ -7,6 +7,7 @@ import org.koitharu.kotatsu.core.db.entity.toEntities
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.entity.toManga
 import org.koitharu.kotatsu.core.db.entity.toMangaTagsList
+import org.koitharu.kotatsu.core.db.entity.toMangaTags
 import org.koitharu.kotatsu.core.model.toMangaSources
 import org.koitharu.kotatsu.core.util.ext.mapItems
 import org.koitharu.kotatsu.list.domain.ListFilterOption
@@ -17,6 +18,7 @@ import org.koitharu.kotatsu.suggestions.data.SuggestionEntity
 import org.koitharu.kotatsu.suggestions.data.SuggestionWithManga
 import javax.inject.Inject
 import org.koitharu.kotatsu.core.model.isNsfw
+import org.koitharu.kotatsu.core.model.isNsfwForFiltering
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
@@ -43,8 +45,8 @@ class SuggestionRepository @Inject constructor(
                         is ListFilterOption.Tag -> item.manga.tags.any { it.title.equals(filter.tag.title, true) }
                         is ListFilterOption.Source -> item.manga.source.name == filter.mangaSource.name
                         is ListFilterOption.State -> filter.state == null || item.manga.state == filter.state
-                        ListFilterOption.Macro.NSFW -> item.manga.isNsfw()
-                        is ListFilterOption.Inverted -> filter.option != ListFilterOption.Macro.NSFW || !item.manga.isNsfw()
+                        ListFilterOption.Macro.NSFW -> item.manga.isNsfwForFiltering(settings.useSeparateSourceContentClasses)
+                        is ListFilterOption.Inverted -> filter.option != ListFilterOption.Macro.NSFW || !item.manga.isNsfwForFiltering(settings.useSeparateSourceContentClasses)
                         else -> true
                     } }
                 }.let { if (limit > 0) it.take(limit) else it })
@@ -52,21 +54,31 @@ class SuggestionRepository @Inject constructor(
         }
 
     fun observeAll(): Flow<List<Manga>> {
-        return db.getSuggestionDao().observeAll().mapItems {
-            it.toManga()
-        }
+        return observeAll(0, emptySet())
     }
 
     fun observeAll(limit: Int, filterOptions: Set<ListFilterOption>): Flow<List<Manga>> {
-        return db.getSuggestionDao().observeAll(limit, filterOptions).mapItems {
-            it.toManga()
-        }
+        return db.getSuggestionDao().observeAll(0, filterOptions).mapItems {
+            it.toLegacyManga()
+        }.withRecommendationExclusions(
+            settings.observe(AppSettings.KEY_SUGGESTIONS_EXCLUDE_TAGS, AppSettings.KEY_DISABLE_NSFW,
+                AppSettings.KEY_SUGGESTIONS_EXCLUDE_NSFW, AppSettings.KEY_SOURCE_CONTENT_CLASSES_ENABLED,
+                    AppSettings.KEY_SOURCE_CONTENT_CLASSES).onStart { emit(null) }.map {
+                RecommendationExclusions(settings.suggestionsTagsBlacklist,
+                    settings.isNsfwContentDisabled || settings.isSuggestionsExcludeNsfw, settings.sourceContentPolicy)
+            }, limit,
+        )
     }
 
     suspend fun getRandomList(limit: Int): List<Manga> {
-        return db.getSuggestionDao().getRandom(limit).map {
+        val blacklist = TagsBlacklist(settings.suggestionsTagsBlacklist)
+        return db.getSuggestionDao().getRandom(Int.MAX_VALUE).map {
             it.toManga()
-        }
+        }.filterNot {
+            it in blacklist || !settings.sourceContentPolicy.allows(it.source) ||
+                ((settings.isNsfwContentDisabled || settings.isSuggestionsExcludeNsfw) &&
+                    it.isNsfwForFiltering(settings.useSeparateSourceContentClasses))
+        }.let { if (limit > 0) it.take(limit) else it }
     }
 
     suspend fun clear() {
@@ -109,5 +121,6 @@ class SuggestionRepository @Inject constructor(
         }
     }
 
-    private fun SuggestionWithManga.toManga() = manga.toManga(emptySet(), null)
 }
+
+internal fun SuggestionWithManga.toLegacyManga() = manga.toManga(tags.toMangaTags(), null)

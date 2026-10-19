@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recommendation_genre_exclude">Exclude from recommendations</string>
+    <string name="recommendation_genre_allow">Allow in recommendations</string>
+    <string name="recommendation_genre_invalid">This genre cannot be saved as an exclusion because its name is empty or contains a comma.</string>
+</resources>

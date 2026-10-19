@@ -20,10 +20,16 @@ class NovelArchiveTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "novel-test-${UUID.randomUUID()}").apply { mkdirs() }
         try {
-            for (format in listOf(DownloadFormat.SINGLE_CBZ, DownloadFormat.MULTIPLE_CBZ)) {
-                val source = MangaSource("lnreader:offline-test")
+            for ((number, fixture) in listOf(
+                "lnreader:offline-test" to DownloadFormat.SINGLE_CBZ,
+                "lnreader:offline-test" to DownloadFormat.MULTIPLE_CBZ,
+                "mihon:missing.novel.fixture/42" to DownloadFormat.SINGLE_CBZ,
+                "mihon:missing.novel.fixture/42" to DownloadFormat.MULTIPLE_CBZ,
+            ).withIndex()) {
+                val (sourceName, format) = fixture
+                val source = MangaSource(sourceName)
                 val chapter = MangaChapter(22L, "Chapter", 1f, 0, "book|||chapter", null, 0L, null, source)
-                val manga = Manga(id = 21L, title = format.name, altTitles = emptySet(), url = "book",
+                val manga = Manga(id = 21L, title = "${format.name}-$number", altTitles = emptySet(), url = "book",
                     publicUrl = "https://site/book", rating = 0f, contentRating = null, coverUrl = null,
                     tags = emptySet(), state = null, authors = emptySet(), chapters = listOf(chapter), source = source)
                 val text = File(root, "text.html").apply { writeText("<p>Offline text</p><img src='kaisoku-page:1'>") }

@@ -14,6 +14,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
+import org.koitharu.kotatsu.core.parser.chapterWebUrl
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.network.CommonHeaders
 import org.koitharu.kotatsu.parsers.model.ContentRating
@@ -49,7 +50,7 @@ internal fun List<SChapter>.toKaisokuChapterOrder(): List<OrderedMihonChapter> =
 	}
 	.sortedBy { it.number }
 
-class MihonMangaRepository(
+open class MihonMangaRepository(
 	private val loadedSource: MihonExtensionManager.LoadedSource,
 	cache: MemoryContentCache,
  	private val appSettings: AppSettings,
@@ -60,7 +61,7 @@ class MihonMangaRepository(
 	override val source: MihonMangaSource
 		get() = loadedSource.wrapper
 
-	private val mihonSource = loadedSource.catalogueSource
+	private val mihonSource = requireNotNull(loadedSource.catalogueSource) { "Source has preferences only" }
     private val mangaUpdates = MihonMangaUpdates(mihonSource, ::mapHostedFailure)
     private val discovery = MihonDiscovery(mihonSource)
     private val chapterCache = MihonChapterCache()
@@ -143,7 +144,7 @@ class MihonMangaRepository(
 
     override val supportsLightweightMetadata: Boolean get() = true
 
-    override suspend fun getLightweightMetadata(manga: Manga): Manga = withContext(Dispatchers.IO) {
+    override suspend fun getLightweightMetadataImpl(manga: Manga): Manga = withContext(Dispatchers.IO) {
         mangaUpdates.metadata(manga.toSManga()).toKaisokuManga().copy(id = manga.id)
     }
 
@@ -171,6 +172,12 @@ class MihonMangaRepository(
 				page.toKaisokuPage(index)
 			}
 		}.getOrElse { throw mapPageFailure(it) }
+
+    override suspend fun getChapterUrl(manga: Manga, chapter: MangaChapter): String? = withContext(Dispatchers.IO) {
+        val httpSource = mihonSource as? HttpSource ?: return@withContext null
+        val original = chapterCache.get(manga.url, chapter.url) ?: chapter.toSChapter()
+        chapterWebUrl(httpSource.getChapterUrl(original))
+    }
 
 	override suspend fun getPageUrl(page: MangaPage): String = withContext(Dispatchers.IO) {
 		val uri = page.url.toUri()
@@ -243,7 +250,7 @@ class MihonMangaRepository(
 			url = rawUrl,
 			publicUrl = publicUrl,
 			rating = RATING_UNKNOWN,
-			contentRating = if (source.isNsfwSource) ContentRating.ADULT else null,
+			contentRating = if (source.contentClass == org.koitharu.kotatsu.core.model.SourceContentClass.ADULT) ContentRating.ADULT else null,
 			coverUrl = rawThumbnail?.let(::absolutizeUrl),
 			tags = safeGenres().orEmpty().mapTo(LinkedHashSet()) { genre ->
 				MangaTag(title = genre, key = genre.lowercase(Locale.ROOT), source = source)

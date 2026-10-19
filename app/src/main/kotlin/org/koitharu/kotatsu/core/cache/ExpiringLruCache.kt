@@ -38,6 +38,10 @@ class ExpiringLruCache<T>(
 		cache.remove(key)
 	}
 
+    fun remove(key: CacheKey, expected: T) {
+        cache.removeIf { cachedKey, value -> cachedKey == key && value.get() === expected }
+    }
+
 	fun removeAll(source: MangaSource) {
 		cache.removeIf { key, _ -> key.source == source }
 	}

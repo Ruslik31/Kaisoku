@@ -43,7 +43,7 @@ import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
-import org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaSource
+import org.koitharu.kotatsu.core.parser.hasChapterText
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ReaderMode
@@ -900,7 +900,7 @@ class ReaderViewModel @Inject constructor(
                         // cannot display them (their only "page" is a data: URL). Details can come
                         // from any entry point (Read button, chapter list, bookmarks, shortcuts),
                         // so divert here rather than at each call site.
-                        val isNovel = manga.source.name.startsWith("lnreader:") ||
+                        val isNovel = manga.source.hasChapterText() ||
                             (manga.isLocal && org.koitharu.kotatsu.local.data.input.LocalMangaParser(
                                 android.net.Uri.parse(manga.url),
                             ).isNovel())

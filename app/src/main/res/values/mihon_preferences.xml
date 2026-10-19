@@ -1,0 +1,6 @@
+<resources>
+    <string name="mihon_source_preferences">Extension preferences</string>
+    <string name="mihon_source_preferences_summary">Settings supplied by this Mihon extension</string>
+    <string name="mihon_preferences_error">Extension preference error</string>
+    <string name="mihon_preferences_error_summary">Some extension controls could not be loaded. Tap for details and copy.</string>
+</resources>

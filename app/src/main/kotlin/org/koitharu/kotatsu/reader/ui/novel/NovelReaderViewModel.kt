@@ -296,9 +296,9 @@ class NovelReaderViewModel @Inject constructor(
         val chapter = chapters.value.getOrNull(index) ?: return null
         if (chapter.source.name == "LOCAL") return LocalMangaParser(chapter.url.toUri()).getChapterHtml(chapter)
         val repository = repositoryFactory.create(target.source)
-        val novelRepository = repository as? org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaRepository
+        val novelRepository = repository as? org.koitharu.kotatsu.core.parser.ChapterTextRepository
             ?: return null
-        return novelRepository.getChapterHtml(chapter).also { imageHeaders = novelRepository.imageHeaders }
+        return novelRepository.getChapterHtml(chapter).also { imageHeaders = novelRepository.getImageHeaders() }
     }
 
 }

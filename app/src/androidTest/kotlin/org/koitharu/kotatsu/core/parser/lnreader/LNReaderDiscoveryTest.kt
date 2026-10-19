@@ -30,7 +30,7 @@ class LNReaderDiscoveryTest {
 
     @Test fun metadataDoesNotFetchChapterPaginationPagesOrContent() = fixture { repository, storage ->
         val manga = repository.discover(SortOrder.POPULARITY, MangaListFilter()).single()
-        val metadata = repository.getLightweightMetadata(manga)
+        val metadata = requireNotNull(repository.getLightweightMetadata(manga))
         assertEquals(manga.id, metadata.id)
         assertEquals(manga.url, metadata.url)
         assertNull(metadata.chapters)

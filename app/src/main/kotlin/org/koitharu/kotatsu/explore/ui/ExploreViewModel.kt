@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.explore.ui
 
+import org.koitharu.kotatsu.core.parser.hasChapterText
+
 import androidx.collection.LongSet
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -35,7 +37,6 @@ import org.koitharu.kotatsu.explore.ui.model.BrowserSourceItem
 import org.koitharu.kotatsu.explore.ui.model.ExploreButtons
 import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
 import org.koitharu.kotatsu.explore.ui.model.RecommendationsItem
-import org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaSource
 import org.koitharu.kotatsu.list.ui.model.EmptyHint
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -172,7 +173,7 @@ class ExploreViewModel @Inject constructor(
 	private fun createContentFlow(): Flow<List<ListModel>> {
 		return createExploreContentFlow(
 			enabledSources = sourcesRepository.observeEnabledSources().combine(novelSourcesFirst) { sources, novelsFirst ->
-				if (novelsFirst) sources.sortedBy { it.mangaSource !is LnReaderMangaSource } else sources
+				if (novelsFirst) sources.sortedBy { !it.mangaSource.hasChapterText() } else sources
 			},
 			browserSources = customSourcesRepository.sources,
 			isSuggestionsEnabled = isSuggestionsEnabled,

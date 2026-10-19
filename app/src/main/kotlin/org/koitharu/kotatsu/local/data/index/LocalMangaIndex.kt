@@ -21,104 +21,114 @@ import javax.inject.Singleton
 
 @Singleton
 class LocalMangaIndex @Inject constructor(
-	private val mangaDataRepository: MangaDataRepository,
-	private val db: MangaDatabase,
-	@ApplicationContext context: Context,
-	private val localMangaRepositoryProvider: Provider<LocalMangaRepository>,
+    private val mangaDataRepository: MangaDataRepository,
+    private val db: MangaDatabase,
+    @ApplicationContext context: Context,
+    private val localMangaRepositoryProvider: Provider<LocalMangaRepository>,
 ) : FlowCollector<LocalManga?> {
 
-	private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-	private val mutex = Mutex()
+    private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    private val mutex = Mutex()
 
-	private var currentVersion: Int
-		get() = prefs.getInt(KEY_VERSION, 0)
-		set(value) = prefs.edit { putInt(KEY_VERSION, value) }
+    private var currentVersion: Int
+        get() = prefs.getInt(KEY_VERSION, 0)
+        set(value) = prefs.edit { putInt(KEY_VERSION, value) }
 
-	override suspend fun emit(value: LocalManga?) {
-		if (value != null) {
-			put(value)
-		}
-	}
+    override suspend fun emit(value: LocalManga?) {
+        if (value != null) {
+            put(value)
+        }
+    }
 
-	suspend fun update() = mutex.withLock {
-		db.withTransaction {
-			val dao = db.getLocalMangaIndexDao()
-			dao.clear()
-			localMangaRepositoryProvider.get()
-				.getRawListAsFlow()
-				.collect { upsert(it) }
-		}
-		currentVersion = VERSION
-	}
+    suspend fun update() = mutex.withLock {
+        db.withTransaction {
+            val dao = db.getLocalMangaIndexDao()
+            dao.clear()
+            localMangaRepositoryProvider.get()
+                .getRawListAsFlow()
+                .collect { upsert(it) }
+        }
+        currentVersion = VERSION
+    }
 
-	suspend fun updateIfRequired() {
-		if (isUpdateRequired()) {
-			update()
-		}
-	}
+    suspend fun updateIfRequired() {
+        if (isUpdateRequired()) {
+            update()
+        }
+    }
 
-	suspend fun get(mangaId: Long, withDetails: Boolean): LocalManga? {
-		updateIfRequired()
-		var path = db.getLocalMangaIndexDao().findPath(mangaId)
-		if (path == null && mutex.isLocked) { // wait for updating complete
-			path = mutex.withLock { db.getLocalMangaIndexDao().findPath(mangaId) }
-		}
-		if (path == null) {
-			return null
-		}
-		return runCatchingCancellable {
-			LocalMangaParser(File(path)).getManga(withDetails)
-		}.onFailure {
-			it.printStackTraceDebug()
-		}.getOrNull()
-	}
+    suspend fun get(mangaId: Long, withDetails: Boolean): LocalManga? {
+        updateIfRequired()
+        var path = db.getLocalMangaIndexDao().findPath(mangaId)
+        if (path == null && mutex.isLocked) { // wait for updating complete
+            path = mutex.withLock { db.getLocalMangaIndexDao().findPath(mangaId) }
+        }
+        if (path == null) {
+            return null
+        }
+        return readPath(path, withDetails)
+    }
 
-	suspend operator fun contains(mangaId: Long): Boolean {
-		return db.getLocalMangaIndexDao().findPath(mangaId) != null
-	}
+    /** Inspect only an already indexed archive; never start or wait for a storage-wide scan. */
+    suspend fun getIndexed(mangaId: Long, withDetails: Boolean): LocalManga? {
+        val path = db.getLocalMangaIndexDao().findPath(mangaId) ?: return null
+        return readPath(path, withDetails)
+    }
 
-	suspend fun getSavedIds(mangaIds: Collection<Long>): Set<Long> {
-		if (mangaIds.isEmpty()) {
-			return emptySet()
-		}
-		return db.getLocalMangaIndexDao().findExistingIds(mangaIds.toLongArray()).toSet()
-	}
+    private suspend fun readPath(path: String, withDetails: Boolean): LocalManga? {
+        return runCatchingCancellable {
+            LocalMangaParser(File(path)).getManga(withDetails)
+        }.onFailure {
+            it.printStackTraceDebug()
+        }.getOrNull()
+    }
 
-	suspend fun put(manga: LocalManga) = mutex.withLock {
-		db.withTransaction {
-			upsert(manga)
-		}
-	}
+    suspend operator fun contains(mangaId: Long): Boolean {
+        return db.getLocalMangaIndexDao().findPath(mangaId) != null
+    }
 
-	suspend fun delete(mangaId: Long) {
-		db.getLocalMangaIndexDao().delete(mangaId)
-	}
+    suspend fun getSavedIds(mangaIds: Collection<Long>): Set<Long> {
+        if (mangaIds.isEmpty()) {
+            return emptySet()
+        }
+        return db.getLocalMangaIndexDao().findExistingIds(mangaIds.toLongArray()).toSet()
+    }
 
-	suspend fun getAvailableTags(skipNsfw: Boolean): List<String> {
-		val dao = db.getLocalMangaIndexDao()
-		return if (skipNsfw) {
-			dao.findTags(isNsfw = false)
-		} else {
-			dao.findTags()
-		}
-	}
+    suspend fun put(manga: LocalManga) = mutex.withLock {
+        db.withTransaction {
+            upsert(manga)
+        }
+    }
 
-	private suspend fun upsert(manga: LocalManga) {
-		mangaDataRepository.storeManga(manga.manga, replaceExisting = true)
-		db.getLocalMangaIndexDao().upsert(manga.toEntity())
-	}
+    suspend fun delete(mangaId: Long) {
+        db.getLocalMangaIndexDao().delete(mangaId)
+    }
 
-	private fun LocalManga.toEntity() = LocalMangaIndexEntity(
-		mangaId = manga.id,
-		path = file.path,
-	)
+    suspend fun getAvailableTags(skipNsfw: Boolean): List<String> {
+        val dao = db.getLocalMangaIndexDao()
+        return if (skipNsfw) {
+            dao.findTags(isNsfw = false)
+        } else {
+            dao.findTags()
+        }
+    }
 
-	private fun isUpdateRequired() = currentVersion < VERSION
+    private suspend fun upsert(manga: LocalManga) {
+        mangaDataRepository.storeManga(manga.manga, replaceExisting = true)
+        db.getLocalMangaIndexDao().upsert(manga.toEntity())
+    }
 
-	companion object {
+    private fun LocalManga.toEntity() = LocalMangaIndexEntity(
+        mangaId = manga.id,
+        path = file.path,
+    )
 
-		private const val PREF_NAME = "_local_index"
-		private const val KEY_VERSION = "ver"
-		private const val VERSION = 1
-	}
+    private fun isUpdateRequired() = currentVersion < VERSION
+
+    companion object {
+
+        private const val PREF_NAME = "_local_index"
+        private const val KEY_VERSION = "ver"
+        private const val VERSION = 1
+    }
 }

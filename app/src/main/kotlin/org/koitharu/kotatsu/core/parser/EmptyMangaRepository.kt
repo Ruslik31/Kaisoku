@@ -13,6 +13,8 @@ import java.util.EnumSet
 
 open class EmptyMangaRepository(override val source: MangaSource) : MangaRepository {
 
+    internal var beforeDetails: (suspend (Manga) -> Manga?)? = null
+
 	override val sortOrders: Set<SortOrder>
 		get() = EnumSet.allOf(SortOrder::class.java)
 
@@ -25,7 +27,9 @@ open class EmptyMangaRepository(override val source: MangaSource) : MangaReposit
 
 	override suspend fun getList(offset: Int, order: SortOrder?, filter: MangaListFilter?): List<Manga> = stub(null)
 
-	override suspend fun getDetails(manga: Manga): Manga = stub(manga)
+    override suspend fun getDetails(manga: Manga): Manga = beforeDetails?.invoke(manga) ?: stub(manga)
+
+    override suspend fun refreshDetails(manga: Manga): Manga = stub(manga)
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> = stub(null)
 

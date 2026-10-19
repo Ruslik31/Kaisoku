@@ -8,6 +8,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.koitharu.kotatsu.core.db.entity.LnReaderSourceEntity
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
+import org.koitharu.kotatsu.core.parser.lnReaderChapterWebPath
+import org.koitharu.kotatsu.core.parser.resolveChapterWebUrl
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.MultiMutex
@@ -40,11 +42,18 @@ class LnReaderMangaRepository(
 	private val diskCacheDir: File? = null,
 	private val storage: LNReaderStorage = LNReaderStorage(),
 	private val appSettings: AppSettings? = null,
-) : CachingMangaRepository(cache) {
+) : CachingMangaRepository(cache), org.koitharu.kotatsu.core.parser.ChapterTextRepository {
 
 	override val source: LnReaderMangaSource = entity.toMangaSource()
 
 	override val sortOrders: Set<SortOrder> = setOf(SortOrder.POPULARITY, SortOrder.UPDATED)
+
+    override suspend fun getChapterUrl(manga: Manga, chapter: MangaChapter): String? {
+        val path = lnReaderChapterWebPath(chapter.url)
+        return executeInPluginContext(discovery = true) { bridge ->
+            resolveChapterWebUrl(entity.site.orEmpty(), bridge.resolveUrl(path, isNovel = false) ?: path)
+        }
+    }
 
 	private var sourceSelectedSortOrder: SortOrder? = null
 	override var defaultSortOrder: SortOrder
@@ -67,7 +76,7 @@ class LnReaderMangaRepository(
 	@Volatile private var imageHeadersLoaded = false
 	private val imageHeadersMutex = kotlinx.coroutines.sync.Mutex()
 
-	suspend fun getImageHeaders(): Map<String, String> {
+	override suspend fun getImageHeaders(): Map<String, String> {
 		if (!imageHeadersLoaded) imageHeadersMutex.withLock {
 			if (!imageHeadersLoaded) executeInPluginContext { }
 		}
@@ -159,7 +168,7 @@ class LnReaderMangaRepository(
 
     override val supportsLightweightMetadata: Boolean get() = true
 
-    override suspend fun getLightweightMetadata(manga: Manga): Manga = executeInPluginContext(discovery = true) { bridge ->
+    override suspend fun getLightweightMetadataImpl(manga: Manga): Manga = executeInPluginContext(discovery = true) { bridge ->
         val details = bridge.parseNovel(manga.url.substringBefore(CHAPTER_SEPARATOR))
         manga.copy(title = details.name.ifBlank { manga.title },
             tags = details.genres.mapTo(linkedSetOf()) { MangaTag(it, it.lowercase(Locale.ROOT), source) },
@@ -190,7 +199,7 @@ class LnReaderMangaRepository(
 	/**
 	 * Chapter HTML for the novel reader. Falls back to the data-URL page cache.
 	 */
-	suspend fun getChapterHtml(chapter: MangaChapter): String = loadChapterHtml(chapter)
+	override suspend fun getChapterHtml(chapter: MangaChapter): String = loadChapterHtml(chapter)
 
 	override suspend fun getPageUrl(page: MangaPage): String = page.url
 

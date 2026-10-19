@@ -95,6 +95,34 @@ class DriveReplicaBackupTest {
         }
     }
 
+    @Test fun globalAndCategoryManualOrdersRemainIndependentAcrossCategoryRemapping() {
+        withBackup(mapOf(
+            "categories" to """[{"category_id":2,"title":"Reading","sync_uid":"reading-uuid"}]""",
+            "favorite_order" to """[{"manga_id":42,"category_id":0,"rank":1,"updated_at":99,"revision":"a"},{"manga_id":42,"category_id":2,"rank":8,"updated_at":100,"revision":"b"}]""",
+        )) { file ->
+            val values = DriveReplicaBackup.read(file, { _, _ -> error("Known category/all must not invent a UID") })
+            val allKey = "42/${DriveReplicaBackup.ALL_FAVORITES_UID}"
+            assertEquals(1, values.getValue("favorite_order" to allKey).jsonObject.getValue("rank").toString().toInt())
+            assertEquals(8, values.getValue("favorite_order" to "42/reading-uuid").jsonObject.getValue("rank").toString().toInt())
+            val output = File.createTempFile("manual-order", ".zip")
+            try {
+                DriveReplicaBackup.write(output, values.map { (key, value) ->
+                    DriveReplicaRecord(key.first, key.second, 1, "device", value)
+                }) { uid -> assertEquals("reading-uuid", uid); 75 }
+                val restored = Json.parseToJsonElement(readEntries(output).getValue("favorite_order")) as JsonArray
+                assertEquals(setOf("0", "75"), restored.map { it.jsonObject.getValue("category_id").toString() }.toSet())
+                assertEquals("42:0", DriveReplicaBackup.rawKey("favorite_order", allKey) { error("No category 0") })
+                assertEquals("42:75", DriveReplicaBackup.rawKey("favorite_order", "42/reading-uuid") { 75 })
+            } finally { output.delete() }
+        }
+    }
+
+    @Test fun olderBackupsHaveNoImplicitManualOrderReset() {
+        withBackup(mapOf("favourites" to """[{"manga_id":42,"category_id":2}]""")) { file ->
+            assertTrue(DriveReplicaBackup.read(file, { _, _ -> "reading" }).keys.none { it.first == "favorite_order" })
+        }
+    }
+
     private fun withBackup(entries: Map<String, String>, block: (File) -> Unit) {
         val file = File.createTempFile("legacy-backup", ".zip")
         try {

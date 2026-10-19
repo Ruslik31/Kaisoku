@@ -15,6 +15,7 @@ import org.koitharu.kotatsu.core.network.imageproxy.ImageProxyInterceptor
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.download.ui.worker.DownloadChapterDispatcher
 import org.koitharu.kotatsu.download.ui.worker.DownloadNotificationFactory
 import org.koitharu.kotatsu.download.ui.worker.DownloadSlowdownDispatcher
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
@@ -56,6 +57,7 @@ class AppWorkerFactory @Inject constructor(
     private val settings: Provider<AppSettings>,
     @LocalStorageChanges private val localStorageChanges: Provider<MutableSharedFlow<LocalManga?>>,
     private val slowdownDispatcher: Provider<DownloadSlowdownDispatcher>,
+    private val chapterDispatcher: Provider<DownloadChapterDispatcher>,
     private val imageProxyInterceptor: Provider<ImageProxyInterceptor>,
     private val downloadNotificationFactoryFactory: Provider<DownloadNotificationFactory.Factory>,
     private val captchaHandler: Provider<CaptchaHandler>,
@@ -97,6 +99,7 @@ class AppWorkerFactory @Inject constructor(
             settings = settings.get(),
             localStorageChanges = localStorageChanges.get(),
             slowdownDispatcher = slowdownDispatcher.get(),
+            chapterDispatcher = chapterDispatcher.get(),
             imageProxyInterceptor = imageProxyInterceptor.get(),
             notificationFactoryFactory = downloadNotificationFactoryFactory.get(),
         )

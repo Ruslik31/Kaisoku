@@ -10,10 +10,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onStart
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
@@ -31,10 +33,7 @@ import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.MangaListMapper
-import org.koitharu.kotatsu.list.ui.model.ButtonFooter
-import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ListModel
-import org.koitharu.kotatsu.list.ui.model.LoadingFooter
 import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
@@ -56,6 +55,7 @@ class SearchViewModel @Inject constructor(
 	private val sourcesRepository: MangaSourcesRepository,
 	private val historyRepository: HistoryRepository,
 	private val favouritesRepository: FavouritesRepository,
+    settings: AppSettings,
 ) : BaseViewModel() {
 
 	var query = savedStateHandle.get<String>(AppRouter.KEY_QUERY).orEmpty()
@@ -71,35 +71,17 @@ class SearchViewModel @Inject constructor(
 	private var continuationJob: Job? = null
 	private val searchGeneration = AtomicLong()
 
-	val list: StateFlow<List<ListModel>> = combine(
-		results,
-		isLoading.dropWhile { !it },
+	val list: StateFlow<List<ListModel>> = observeSearchResults(
+        combine(results, favouritesRepository.observeMembershipChanges(),
+            settings.observe(AppSettings.KEY_SEARCH_FAVORITE_CATEGORIES, AppSettings.KEY_SOURCE_CONTENT_CLASSES_ENABLED,
+                AppSettings.KEY_SOURCE_CONTENT_CLASSES, AppSettings.KEY_DISABLE_NSFW).onStart { emit(null) }) { groups, _, _ ->
+            groups.filter { it.titleResId != 0 || settings.sourceContentPolicy.allows(it.source) }
+                .map { it.copy(list = mangaListMapper.withFavoriteCategories(it.list)) }
+        },
+		isLoading,
 		includeDisabledSources,
 		hideEmpty,
-	) { list, loading, includeDisabled, hideEmptyVal ->
-		val filteredList = if (hideEmptyVal) {
-			list.filter { it.list.isNotEmpty() }
-		} else {
-			list
-		}
-		when {
-			filteredList.isEmpty() -> listOf(
-				when {
-					loading -> LoadingState
-					else -> EmptyState(
-						icon = R.drawable.ic_empty_common,
-						textPrimary = R.string.nothing_found,
-						textSecondary = R.string.text_search_holder_secondary,
-						actionStringRes = 0,
-					)
-				},
-			)
-
-			loading -> filteredList + LoadingFooter()
-			includeDisabled -> filteredList
-			else -> filteredList + ButtonFooter(R.string.search_disabled_sources)
-		}
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
+	).stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
 	init {
 		doSearch()

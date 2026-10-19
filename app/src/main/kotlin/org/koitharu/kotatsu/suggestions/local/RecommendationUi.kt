@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.suggestions.local
 
+import org.koitharu.kotatsu.core.parser.hasChapterText
+
 import android.content.Context
 import android.view.View
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -63,7 +65,7 @@ class RecommendationUi @Inject constructor(
         scope.launch {
             try {
             val choices = engine.availableSources()
-                .filter { (it is org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaSource) == (manga.recommendationKind() == RecommendationKind.NOVEL) }
+                .filter { it.hasChapterText() == (manga.recommendationKind() == RecommendationKind.NOVEL) }
             MaterialAlertDialogBuilder(host.context).setTitle(R.string.recommendation_find_source)
                 .setMessage(if (choices.isEmpty()) host.context.getString(R.string.recommendation_no_sources) else null)
                 .setItems(choices.map { it.getTitle(host.context) }.toTypedArray()) { _, index -> router.openSearch(choices[index], manga.title) }

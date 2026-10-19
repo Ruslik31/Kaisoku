@@ -1,6 +1,6 @@
 package org.koitharu.kotatsu.suggestions.local
 
-import org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaSource
+import org.koitharu.kotatsu.core.parser.hasChapterText
 import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.parsers.model.Manga
 
@@ -36,8 +36,7 @@ enum class RecommendationReason { BECAUSE_READ, BECAUSE_FAVORITE, GENRES, AUTHOR
 fun Manga.recommendationKind(): RecommendationKind =
     when (val current = source.unwrap()) {
         is PublicRecommendationSource -> current.kind
-        is LnReaderMangaSource -> RecommendationKind.NOVEL
-        else -> RecommendationKind.MANGA
+        else -> if (current.hasChapterText()) RecommendationKind.NOVEL else RecommendationKind.MANGA
     }
 
 sealed interface RecommendationRequest {

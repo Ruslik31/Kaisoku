@@ -77,6 +77,9 @@ class ParserMangaRepository(
 		parser.getPages(chapter)
 	}
 
+    override suspend fun getChapterUrl(manga: Manga, chapter: MangaChapter): String? =
+        resolveChapterWebUrl(domain, chapter.url, mangaDex = source == MangaParserSource.MANGADEX)
+
 	override suspend fun getPageUrl(page: MangaPage): String = withMirrors {
 		parser.getPageUrl(page).also { result ->
 			check(result.isNotEmpty()) { "Page url is empty" }

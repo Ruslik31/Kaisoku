@@ -67,6 +67,11 @@
 -keep class org.koitharu.kotatsu.core.parser.mihon.** { *; }
 -keeppackagenames org.koitharu.kotatsu.core.parser.mihon.**
 
+# ConfigurableSource constructs and calls AndroidX preferences from dynamically loaded APKs.
+# Keep their real constructors/listeners, including methods that the app itself never calls.
+-keep class androidx.preference.** { *; }
+-keep interface androidx.preference.** { *; }
+
 -keep class rx.** { *; }
 -keep interface rx.** { *; }
 -dontwarn rx.**

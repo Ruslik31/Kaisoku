@@ -313,6 +313,21 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         get() = prefs.getBoolean(KEY_DISABLE_NSFW, true)
         set(value) = prefs.edit { putBoolean(KEY_DISABLE_NSFW, value) }
 
+    val useSeparateSourceContentClasses: Boolean
+        get() = try { prefs.getBoolean(KEY_SOURCE_CONTENT_CLASSES_ENABLED, false) } catch (_: ClassCastException) { false }
+
+    val sourceContentPolicy: org.koitharu.kotatsu.core.model.SourceContentPolicy
+        get() {
+            val restricted = isNsfwContentDisabled
+            val defaults = if (restricted) setOf(org.koitharu.kotatsu.core.model.SourceContentClass.SAFE)
+                else org.koitharu.kotatsu.core.model.SourceContentClass.entries.toSet()
+            val stored = try { prefs.getStringSet(KEY_SOURCE_CONTENT_CLASSES, null) } catch (_: ClassCastException) { null }
+            val selected = stored?.mapNotNullTo(linkedSetOf()) { name ->
+                org.koitharu.kotatsu.core.model.SourceContentClass.entries.find { it.name == name }
+            } ?: defaults
+            return org.koitharu.kotatsu.core.model.SourceContentPolicy(useSeparateSourceContentClasses, selected, restricted)
+        }
+
     var appLocales: LocaleListCompat
         get() {
             val raw = prefs.getString(KEY_APP_LOCALE, null)
@@ -686,7 +701,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     val isSuggestionsNotificationAvailable: Boolean
         get() = prefs.getBoolean(KEY_SUGGESTIONS_NOTIFICATIONS, false)
 
-    val suggestionsTagsBlacklist: Set<String>
+    var suggestionsTagsBlacklist: Set<String>
         get() {
             val string = prefs.getString(KEY_SUGGESTIONS_EXCLUDE_TAGS, null)?.trimEnd(' ', ',')
             if (string.isNullOrEmpty()) {
@@ -731,6 +746,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
                 contrast = prefs.getFloatCompat(
                     KEY_CF_CONTRAST,
                     ReaderColorFilter.EMPTY.contrast,
+        set(value) = prefs.edit { putString(KEY_SUGGESTIONS_EXCLUDE_TAGS, value.joinToString(", ")) }
                     -1f,
                     1f,
                 ),
@@ -1327,6 +1343,8 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         private const val KEY_DISCORD_RPC_INVISIBLE_LEGACY = "discord_rpc_invisible"
         const val DISCORD_STATUS_ONLINE = "online"
         const val DISCORD_STATUS_IDLE = "idle"
+        const val KEY_SOURCE_CONTENT_CLASSES_ENABLED = "source_content_classes_enabled"
+        const val KEY_SOURCE_CONTENT_CLASSES = "source_content_classes"
         const val DISCORD_STATUS_DND = "dnd"
         const val DISCORD_STATUS_INVISIBLE = "invisible"
         const val KEY_DISCORD_TOKEN = "discord_token"

@@ -9,8 +9,8 @@ import org.koitharu.kotatsu.core.network.CommonHeaders
 import org.koitharu.kotatsu.core.util.ext.mangaSourceKey
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
-import org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaSource
-import org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaRepository
+import org.koitharu.kotatsu.core.parser.ChapterTextRepository
+import org.koitharu.kotatsu.core.parser.hasChapterText
 import javax.inject.Inject
 import javax.inject.Provider
 
@@ -20,8 +20,8 @@ class MangaSourceHeaderInterceptor @Inject constructor(
 
 	override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
 		val mangaSource = chain.request.extras[mangaSourceKey]?.unwrap()
-		if (mangaSource is LnReaderMangaSource) {
-			val repo = repositoryFactory.get().create(mangaSource) as? LnReaderMangaRepository
+		if (mangaSource?.hasChapterText() == true) {
+			val repo = repositoryFactory.get().create(mangaSource) as? ChapterTextRepository
 				?: return chain.proceed()
 			val headers = chain.request.httpHeaders.newBuilder()
 			repo.getImageHeaders().forEach { (name, value) -> headers.set(name, value) }

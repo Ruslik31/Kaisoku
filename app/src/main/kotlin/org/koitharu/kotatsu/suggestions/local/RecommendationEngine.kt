@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.suggestions.local
 
+import org.koitharu.kotatsu.core.parser.hasChapterText
+
 import android.content.Context
 import android.net.ConnectivityManager
 import androidx.room.withTransaction
@@ -38,6 +40,7 @@ import org.koitharu.kotatsu.core.db.entity.toManga
 import org.koitharu.kotatsu.core.db.entity.toMangaTags
 import org.koitharu.kotatsu.core.model.getLocale
 import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.core.model.contentClass
 import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.core.parser.MangaRepository
@@ -130,7 +133,7 @@ class RecommendationEngine @Inject constructor(
             }
             val profile = taste.mapNotNull { title -> available[title.manga.source]?.let { source ->
                 title.manga.toManga(title.tags.toMangaTags(), null).copy(source = source)
-                    .takeUnless { excludeNsfw() && RecommendationContentPolicy.isNsfw(it) }
+                    .takeUnless { excludeNsfw() && RecommendationContentPolicy.isNsfw(it, settings.useSeparateSourceContentClasses) }
                     ?.let { TasteTitle(it, title.favorite, title.lastRead, title.durationMillis) }
             } }
             val ranked = RecommendationRanker.rank(candidates, profile, request, settings.recommendationDiversity,
@@ -204,7 +207,7 @@ class RecommendationEngine @Inject constructor(
                     setOf("public:ANILIST", "public:MANGAUPDATES") else emptySet())
                 val taste = tasteRows.mapNotNull { row -> permittedByName[row.manga.source]?.let { source ->
                     row.manga.toManga(row.tags.toMangaTags(), null).copy(source = source)
-                        .takeUnless { excludeNsfw() && RecommendationContentPolicy.isNsfw(it) }
+                        .takeUnless { excludeNsfw() && RecommendationContentPolicy.isNsfw(it, settings.useSeparateSourceContentClasses) }
                 } }
                 val ordered = permitted.sortedWith(compareBy<MangaSource> { it.name != seed?.source?.name }
                     .thenBy { source -> taste.indexOfFirst { it.source.name == source.name }.let { if (it < 0) Int.MAX_VALUE else it } }
@@ -283,7 +286,10 @@ class RecommendationEngine @Inject constructor(
                             }
                             // Only adapters with a metadata-only endpoint may enrich; never getDetails().
                             if (repository.supportsLightweightMetadata && sourceOrder.indexOf(source) < 2) local.firstOrNull { it.manga.tags.isEmpty() }?.let { item ->
-                                operation(source.name) { repository.getLightweightMetadata(item.manga) }?.let { metadata ->
+                                operation(source.name) {
+                                    if (repositories.isMetadataRefreshPaused(item.manga)) null
+                                    else repository.getLightweightMetadata(item.manga)
+                                }?.let { metadata ->
                                     val index = local.indexOf(item)
                                     local[index] = item.copy(target = RecommendationTarget.SourceTitle(metadata.copy(chapters = null)))
                                 }
@@ -297,7 +303,7 @@ class RecommendationEngine @Inject constructor(
                 if (settings.publicRecommendations) {
                     val publicSeed = if (seed != null) seed.takeIf {
                         it.source.name in permittedByName &&
-                            (!excludeNsfw() || !RecommendationContentPolicy.isNsfw(it))
+                            (!excludeNsfw() || !RecommendationContentPolicy.isNsfw(it, settings.useSeparateSourceContentClasses))
                     } else taste.firstOrNull {
                         settings.recommendationMedia == "ALL" || it.recommendationKind().name == settings.recommendationMedia
                     }
@@ -355,7 +361,7 @@ class RecommendationEngine @Inject constructor(
         if (RecommendationIdentity.feedbackKeys(item).any { it in dismissed } || (seed != null && (item.manga.source.name == seed.source.name && item.manga.id == seed.id))) return false
         if (seed != null && item.manga.recommendationKind() != seed.recommendationKind()) return false
         if (request == RecommendationRequest.Explore && settings.recommendationMedia != "ALL" && item.manga.recommendationKind().name != settings.recommendationMedia) return false
-        if (!RecommendationContentPolicy.allowed(item.manga, excludeNsfw())) return false
+        if (!RecommendationContentPolicy.allowed(item.manga, excludeNsfw(), settings.useSeparateSourceContentClasses)) return false
         val excluded = settings.suggestionsTagsBlacklist.map(RecommendationRanker::normalize).toSet()
         if (item.manga.tags.any { RecommendationRanker.normalize(it.title) in excluded }) return false
         return RecommendationEligibility.readingAllowed(item, progress[item.key].orEmpty(), baselines,
@@ -364,11 +370,13 @@ class RecommendationEngine @Inject constructor(
 
     suspend fun availableSources(): List<MangaSource> = sources.getRecommendationSources(settings.isSuggestionsIncludeDisabledSources)
         .map { it.unwrap() }.filter { source ->
-            (!(settings.isNsfwContentDisabled || settings.isSuggestionsExcludeNsfw) || !source.isNsfw()) &&
+            settings.sourceContentPolicy.allows(source) &&
+                (!settings.isSuggestionsExcludeNsfw || (if (settings.useSeparateSourceContentClasses)
+                    source.contentClass() != org.koitharu.kotatsu.core.model.SourceContentClass.ADULT else !source.isNsfw())) &&
                 (settings.recommendationLanguages.isEmpty() || source.getLocale()?.language in settings.recommendationLanguages || source.getLocale() == null)
         }
     private fun excludeNsfw() = settings.isNsfwContentDisabled || settings.isSuggestionsExcludeNsfw
-    private fun isNovelSource(source: MangaSource) = source is org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaSource
+    private fun isNovelSource(source: MangaSource) = source.hasChapterText()
     private fun sourceVersion(source: MangaSource): String = "v1:${BuildConfig.VERSION_CODE}:${source.name}:" + when (source) {
         is org.koitharu.kotatsu.core.parser.mihon.MihonMangaSource -> source.resolved().recommendationVersion
         is org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaSource -> source.recommendationVersion
@@ -390,7 +398,7 @@ class RecommendationEngine @Inject constructor(
     private fun discoveryFingerprint() = "v1:$sourceGeneration:${settings.publicRecommendations}:" +
         "${settings.isNsfwContentDisabled}:${settings.isSuggestionsExcludeNsfw}:${settings.isSuggestionsIncludeDisabledSources}:" +
         "${settings.recommendationMedia}:${settings.recommendationLanguages.sorted()}:${settings.useAndroidInstalledExtensions}:${settings.suggestionsTagsBlacklist.sorted()}:" +
-        "${settings.isAllSourcesEnabled}:${settings.isBrokenSourcesHidden}"
+        "${settings.isAllSourcesEnabled}:${settings.isBrokenSourcesHidden}:${settings.sourceContentPolicy}"
     private fun jobGeneration() = discoveryFingerprint() +
         ":${settings.useLegacySuggestions}:${settings.isSuggestionsEnabled}:${settings.isRelatedMangaEnabled}:${settings.isSuggestionsWiFiOnly}:" +
         if (settings.publicRecommendations) identityGeneration else ""
@@ -402,7 +410,8 @@ class RecommendationEngine @Inject constructor(
             AppSettings.KEY_SUGGESTIONS_LANGUAGES, AppSettings.KEY_SUGGESTIONS, AppSettings.KEY_RELATED_MANGA,
             AppSettings.KEY_SUGGESTIONS_EXCLUDE_NSFW, AppSettings.KEY_SUGGESTIONS_EXCLUDE_TAGS, AppSettings.KEY_DISABLE_NSFW,
             AppSettings.KEY_USE_ANDROID_EXTENSIONS, AppSettings.KEY_SUGGESTIONS_DISABLED_SOURCES, AppSettings.KEY_SUGGESTIONS_WIFI_ONLY,
-            AppSettings.KEY_SOURCES_ENABLED_ALL, AppSettings.KEY_SOURCES_HIDE_BROKEN)
+            AppSettings.KEY_SOURCES_ENABLED_ALL, AppSettings.KEY_SOURCES_HIDE_BROKEN,
+            AppSettings.KEY_SOURCE_CONTENT_CLASSES_ENABLED, AppSettings.KEY_SOURCE_CONTENT_CLASSES)
         fun contextKey(request: RecommendationRequest) = when (request) {
             RecommendationRequest.Explore -> "explore"
             is RecommendationRequest.Details -> "details:${request.seed.source.name}:${request.seed.id}"

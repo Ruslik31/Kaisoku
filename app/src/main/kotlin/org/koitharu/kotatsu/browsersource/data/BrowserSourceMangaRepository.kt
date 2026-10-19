@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.browsersource.data
 
 import org.koitharu.kotatsu.core.parser.EmptyMangaRepository
+import org.koitharu.kotatsu.core.parser.chapterWebUrl
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaListFilter
@@ -23,6 +24,8 @@ class BrowserSourceMangaRepository(source: MangaSource) : EmptyMangaRepository(s
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> =
 		BrowserSourcePageStore.getAndClear(chapter.id)
+
+    override suspend fun getChapterUrl(manga: Manga, chapter: MangaChapter): String? = chapterWebUrl(chapter.url)
 
 	override suspend fun getPageUrl(page: MangaPage): String = page.url
 

@@ -28,6 +28,8 @@ import org.koitharu.kotatsu.core.model.getPreferredBranch
 import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MetadataRefreshSettings
+import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.TriStateOption
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
@@ -79,6 +81,8 @@ class DetailsViewModel @Inject constructor(
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
 	private val readingTimeUseCase: ReadingTimeUseCase,
 	statsRepository: StatsRepository,
+    private val metadataRefreshSettings: MetadataRefreshSettings,
+    private val mangaDataRepository: MangaDataRepository,
 ) : ChaptersPagesViewModel(
 	appContext = context,
 	settings = settings,
@@ -94,6 +98,9 @@ class DetailsViewModel @Inject constructor(
 	private var loadingJob: Job
 	private val detailsLoadFinished = MutableStateFlow(false)
 	val mangaId = intent.mangaId
+
+    val isSavedMetadataOnly = metadataRefreshSettings.observeSavedMetadataOnly(mangaId)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, metadataRefreshSettings.isSavedMetadataOnly(mangaId))
 
 	init {
 		mangaDetails.value = intent.manga?.let { MangaDetails(it) }
@@ -217,10 +224,23 @@ class DetailsViewModel @Inject constructor(
 		}
 	}
 
-	fun reload() {
+	fun reload(force: Boolean = true) {
 		loadingJob.cancel()
-		loadingJob = doLoad(force = true)
+		loadingJob = doLoad(force)
 	}
+
+    fun setSavedMetadataOnly(enabled: Boolean) {
+        val seed = getMangaOrNull() ?: return
+        if (enabled) loadingJob.cancel()
+        launchJob(Dispatchers.IO) {
+            if (enabled) mangaDataRepository.storeManga(seed, replaceExisting = false)
+            metadataRefreshSettings.setSavedMetadataOnly(seed.id, enabled)
+            if (enabled) {
+                loadingJob.cancel()
+                loadingJob = doLoad(force = false)
+            }
+        }
+    }
 
 	fun updateScrobbling(index: Int, rating: Float, status: ScrobblingStatus?) {
 		val scrobbler = getScrobbler(index) ?: return

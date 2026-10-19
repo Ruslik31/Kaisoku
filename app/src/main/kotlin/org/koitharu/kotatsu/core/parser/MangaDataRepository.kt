@@ -25,6 +25,7 @@ import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.prefs.ReaderMode
+import org.koitharu.kotatsu.core.prefs.MetadataRefreshSettings
 import org.koitharu.kotatsu.core.ui.model.MangaOverride
 import org.koitharu.kotatsu.core.util.ext.toFileOrNull
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -40,6 +41,7 @@ class MangaDataRepository @Inject constructor(
 	private val db: MangaDatabase,
 	private val resolverProvider: Provider<MangaLinkResolver>,
 	private val appShortcutManagerProvider: Provider<AppShortcutManager>,
+    private val metadataRefreshSettings: MetadataRefreshSettings,
 ) {
 
 	suspend fun saveReaderMode(manga: Manga, mode: ReaderMode) {
@@ -184,7 +186,7 @@ class MangaDataRepository @Inject constructor(
 	}
 
 	suspend fun gcChaptersCache() {
-		db.getChaptersDao().gc()
+		db.getChaptersDao().gc(metadataRefreshSettings.retainedMangaIds())
 	}
 
 	suspend fun findTags(source: MangaSource): Set<MangaTag> {
@@ -204,7 +206,7 @@ class MangaDataRepository @Inject constructor(
 		db.withTransaction {
 			gcChaptersCache()
 			val idsFromShortcuts = appShortcutManagerProvider.get().getMangaShortcuts()
-			db.getMangaDao().cleanup(idsFromShortcuts)
+			db.getMangaDao().cleanup(idsFromShortcuts + metadataRefreshSettings.retainedMangaIds())
 		}
 	}
 

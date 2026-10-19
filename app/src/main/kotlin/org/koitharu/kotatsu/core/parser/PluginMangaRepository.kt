@@ -75,6 +75,9 @@ class PluginMangaRepository(
 	override suspend fun getPagesImpl(chapter: MangaChapter): List<MangaPage> =
 		callSuspend("getPages", chapter)
 
+    override suspend fun getChapterUrl(manga: Manga, chapter: MangaChapter): String? =
+        resolveChapterWebUrl(domain, chapter.url, mangaDex = source.sourceName == "MANGADEX")
+
 	override suspend fun getPageUrl(page: MangaPage): String =
 		callSuspend<String>("getPageUrl", page).also { result ->
 			check(result.isNotEmpty()) { "Page url is empty" }

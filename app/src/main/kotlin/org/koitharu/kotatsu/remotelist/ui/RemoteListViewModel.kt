@@ -207,7 +207,11 @@ open class RemoteListViewModel @Inject constructor(
 		destination: MutableCollection<in ListModel>,
 		manga: Collection<Manga>,
 		mode: ListMode
-	) = mangaListMapper.toListModelList(destination, manga, mode)
+    ) {
+        val mapped = mangaListMapper.toListModelList(manga, mode)
+        destination.addAll(if (!filterCoordinator.snapshot().listFilter.query.isNullOrEmpty())
+            mangaListMapper.withFavoriteCategories(mapped) else mapped)
+    }
 
 	protected open fun getFooter(): ButtonFooter? {
 		val filter = filterCoordinator.snapshot().listFilter

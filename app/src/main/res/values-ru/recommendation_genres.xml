@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recommendation_genre_exclude">Не рекомендовать этот жанр</string>
+    <string name="recommendation_genre_allow">Разрешить этот жанр в рекомендациях</string>
+    <string name="recommendation_genre_invalid">Нельзя сохранить исключение: название жанра пустое или содержит запятую.</string>
+</resources>

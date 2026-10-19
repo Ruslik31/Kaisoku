@@ -1,6 +1,6 @@
 package org.koitharu.kotatsu.suggestions.local
 
-import org.koitharu.kotatsu.core.model.isNsfw
+import org.koitharu.kotatsu.core.model.isNsfwForFiltering
 import org.koitharu.kotatsu.parsers.model.ContentRating
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.text.Normalizer
@@ -15,9 +15,11 @@ internal object RecommendationContentPolicy {
     )
     private val whitespace = Regex("[\\s_]+")
 
-    fun isNsfw(manga: Manga): Boolean = manga.isNsfw() || hasAdultMetadata(manga)
+    fun isNsfw(manga: Manga, separateSourceClasses: Boolean = false): Boolean =
+        manga.isNsfwForFiltering(separateSourceClasses) || hasAdultMetadata(manga)
 
-    fun allowed(manga: Manga, excludeNsfw: Boolean): Boolean = !excludeNsfw || !isNsfw(manga)
+    fun allowed(manga: Manga, excludeNsfw: Boolean, separateSourceClasses: Boolean = false): Boolean =
+        !excludeNsfw || !isNsfw(manga, separateSourceClasses)
 
     private fun hasAdultMetadata(manga: Manga): Boolean = manga.contentRating == ContentRating.ADULT ||
         manga.tags.any { tag -> normalize(tag.title) in adultTags || normalize(tag.key) in adultTags }
