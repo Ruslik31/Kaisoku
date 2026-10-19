@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A choice restored from Android 11 uses the existing native dynamic theme on Android 12+. -->
+    <style name="ThemeOverlay.Kotatsu.Wallpaper" parent="ThemeOverlay.Kotatsu.Monet" />
+</resources>

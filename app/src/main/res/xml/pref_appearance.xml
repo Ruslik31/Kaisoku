@@ -8,6 +8,11 @@
         android:key="color_theme"
         android:title="@string/color_theme" />
 
+    <Preference
+        android:key="wallpaper_palette_refresh"
+        android:persistent="false"
+        android:title="@string/wallpaper_palette_refresh" />
+
     <ListPreference
         android:defaultValue="-1"
         android:entries="@array/themes"
@@ -65,11 +70,6 @@
             app:defaultValue="3" />
 
         <SwitchPreferenceCompat
-            android:key="favorites_category_strip"
-            android:defaultValue="true"
-            android:title="@string/show_favorites_category_strip"
-            android:summary="@string/show_favorites_category_strip_summary" />
-        <SwitchPreferenceCompat
             android:key="favorites_overview"
             android:defaultValue="false"
             android:title="@string/favorites_overview"
@@ -103,6 +103,11 @@
             android:summary="@string/list_long_press_delay_summary"
             app:useSimpleSummaryProvider="true" />
 
+        <SwitchPreferenceCompat
+            android:key="favorites_category_strip"
+            android:defaultValue="true"
+            android:title="@string/show_favorites_category_strip"
+            android:summary="@string/show_favorites_category_strip_summary" />
 
         <SwitchPreferenceCompat
             android:key="new_chapter_counter"
@@ -144,6 +149,12 @@
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/details">
+
+        <SwitchPreferenceCompat
+            android:key="details_chapters_inline"
+            android:defaultValue="false"
+            android:title="@string/details_chapters_inline"
+            android:summary="@string/details_chapters_inline_summary" />
 
         <SwitchPreferenceCompat
             android:defaultValue="true"

@@ -334,6 +334,8 @@ dependencies {
 	implementation libs.coil.network
 	implementation libs.coil.gif
 	implementation libs.coil.svg
+	// Already present through Coil at runtime; expose its current version to the reader fallback.
+	implementation libs.androidx.exifinterface
 	implementation libs.avif.decoder
 	implementation libs.ssiv
 	implementation libs.disk.lru.cache

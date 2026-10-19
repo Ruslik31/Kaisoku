@@ -5,12 +5,15 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.ui.theme.WallpaperPaletteCompat
 
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface BaseActivityEntryPoint {
 
-	val settings: AppSettings
+    val settings: AppSettings
 
-	val exceptionResolverFactory: ExceptionResolver.Factory
+    val wallpaperPalette: WallpaperPaletteCompat
+
+    val exceptionResolverFactory: ExceptionResolver.Factory
 }

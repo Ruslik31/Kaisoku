@@ -558,6 +558,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     val isUnstableUpdatesAllowed: Boolean
         get() = prefs.getBoolean(KEY_UPDATES_UNSTABLE, false)
 
+    val isDetailsChaptersInline: Boolean
+        get() = try { prefs.getBoolean(KEY_DETAILS_CHAPTERS_INLINE, false) } catch (_: ClassCastException) { false }
+
     val isPagesTabEnabled: Boolean
         get() = prefs.getBoolean(KEY_PAGES_TAB, true)
 
@@ -675,9 +678,6 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     val preferredDownloadFormat: DownloadFormat
         get() = prefs.getEnumValue(KEY_DOWNLOADS_FORMAT, DownloadFormat.AUTOMATIC)
 
-    var isSuggestionsEnabled: Boolean
-        get() = prefs.getBoolean(KEY_SUGGESTIONS, false)
-        set(value) = prefs.edit { putBoolean(KEY_SUGGESTIONS, value) }
     val downloadRequestInterval: Long
         get() = DownloadControlValues.requestInterval(readDownloadControl(KEY_DOWNLOADS_REQUEST_INTERVAL))
 
@@ -712,6 +712,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         null
     }
 
+    var isSuggestionsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SUGGESTIONS, false)
+        set(value) = prefs.edit { putBoolean(KEY_SUGGESTIONS, value) }
 
     val isSuggestionsWiFiOnly: Boolean
         get() = prefs.getBoolean(KEY_SUGGESTIONS_WIFI_ONLY, false)
@@ -743,6 +746,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
             }
             return string.split(',').mapToSet { it.trim() }
         }
+        set(value) = prefs.edit { putString(KEY_SUGGESTIONS_EXCLUDE_TAGS, value.joinToString(", ")) }
 
     val isReaderBarEnabled: Boolean
         get() = prefs.getBoolean(KEY_READER_BAR, true)
@@ -765,6 +769,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     val isReaderChapterToastEnabled: Boolean
         get() = prefs.getBoolean(KEY_READER_CHAPTER_TOAST, true)
 
+    val isReaderChapterHapticsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_READER_CHAPTER_HAPTICS, false)
+
     val isReaderKeepScreenOn: Boolean
         get() = prefs.getBoolean(KEY_READER_SCREEN_ON, true)
 
@@ -780,7 +787,6 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
                 contrast = prefs.getFloatCompat(
                     KEY_CF_CONTRAST,
                     ReaderColorFilter.EMPTY.contrast,
-        set(value) = prefs.edit { putString(KEY_SUGGESTIONS_EXCLUDE_TAGS, value.joinToString(", ")) }
                     -1f,
                     1f,
                 ),
@@ -1179,6 +1185,11 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_GRID_SIZE = "grid_size"
         const val KEY_FIXED_GRID_COLUMNS = "grid_fixed_columns"
         const val KEY_GRID_COLUMNS = "grid_columns"
+        const val KEY_SEARCH_FAVORITE_CATEGORIES = "search_favorite_categories"
+        const val KEY_FAVORITES_OVERVIEW = "favorites_overview"
+        const val KEY_FAVORITES_CATEGORY_SORT = "favorites_category_sort"
+        const val KEY_FAVORITES_CATEGORY_SORT_ASCENDING = "favorites_category_sort_ascending"
+        const val KEY_LIST_LONG_PRESS_DELAY = "list_long_press_delay"
         const val KEY_WIDE_PAGE_ROTATION = "reader_wide_page_rotation"
         const val KEY_FAVORITES_CATEGORY_STRIP = "favorites_category_strip"
         const val KEY_NEW_CHAPTER_COUNTER = "new_chapter_counter"
@@ -1235,11 +1246,6 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_BACKUP_PERIODICAL_OUTPUT = "backup_periodic_output"
         const val KEY_BACKUP_PERIODICAL_LAST = "backup_periodic_last"
         const val KEY_HISTORY_GROUPING = "history_grouping"
-        const val KEY_SEARCH_FAVORITE_CATEGORIES = "search_favorite_categories"
-        const val KEY_FAVORITES_OVERVIEW = "favorites_overview"
-        const val KEY_FAVORITES_CATEGORY_SORT = "favorites_category_sort"
-        const val KEY_FAVORITES_CATEGORY_SORT_ASCENDING = "favorites_category_sort_ascending"
-        const val KEY_LIST_LONG_PRESS_DELAY = "list_long_press_delay"
         const val KEY_UPDATED_GROUPING = "updated_grouping"
         const val KEY_PROGRESS_INDICATORS = "progress_indicators"
         /** Global chapter-list display order, independent of source reading direction. */
@@ -1269,21 +1275,22 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_MANGABAKA = "mangabaka"
         const val KEY_DOWNLOADS_METERED_NETWORK = "downloads_metered_network"
         const val KEY_DOWNLOADS_FORMAT = "downloads_format"
+        const val KEY_DOWNLOADS_REQUEST_INTERVAL = "downloads_request_interval"
+        const val KEY_DOWNLOADS_CHAPTER_DELAY = "downloads_chapter_delay"
+        const val KEY_DOWNLOADS_CHAPTER_CONCURRENCY = "downloads_chapter_concurrency"
         const val KEY_ALL_FAVOURITES_VISIBLE = "all_favourites_visible"
         const val KEY_FAVORITES_LAST_CATEGORY = "favorites_last_category"
         const val KEY_DOH = "doh"
         const val KEY_EXIT_CONFIRM = "exit_confirm"
         const val KEY_INCOGNITO_MODE = "incognito"
         const val KEY_READER_MULTITASK = "reader_multitask"
-        const val KEY_DOWNLOADS_REQUEST_INTERVAL = "downloads_request_interval"
-        const val KEY_DOWNLOADS_CHAPTER_DELAY = "downloads_chapter_delay"
-        const val KEY_DOWNLOADS_CHAPTER_CONCURRENCY = "downloads_chapter_concurrency"
         const val KEY_READER_BAR = "reader_bar"
         const val KEY_READER_BAR_TRANSPARENT = "reader_bar_transparent"
         const val KEY_READER_TOP_BAR_OPACITY = "reader_top_bar_opacity"
         const val KEY_READER_BOTTOM_BAR_OPACITY = "reader_bottom_bar_opacity"
         const val KEY_READER_FLOAT_BAR = "reader_float_bar"
         const val KEY_READER_CHAPTER_TOAST = "reader_chapter_toast"
+        const val KEY_READER_CHAPTER_HAPTICS = "reader_chapter_haptics"
         const val KEY_READER_BACKGROUND = "reader_background"
         const val KEY_READER_SCREEN_ON = "reader_screen_on"
         const val KEY_SHORTCUTS = "dynamic_shortcuts"
@@ -1336,6 +1343,8 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_IMAGES_PROXY = "images_proxy_2"
         const val KEY_LOCAL_MANGA_DIRS = "local_manga_dirs"
         const val KEY_DISABLE_NSFW = "no_nsfw"
+        const val KEY_SOURCE_CONTENT_CLASSES_ENABLED = "source_content_classes_enabled"
+        const val KEY_SOURCE_CONTENT_CLASSES = "source_content_classes"
         const val KEY_RELATED_MANGA = "related_manga"
         const val KEY_NAV_MAIN = "nav_main"
         const val KEY_NAV_LABELS = "nav_labels"
@@ -1354,6 +1363,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_CF_INVERTED = "cf_inverted"
         const val KEY_CF_GRAYSCALE = "cf_grayscale"
         const val KEY_CF_BOOK = "cf_book"
+        const val KEY_DETAILS_CHAPTERS_INLINE = "details_chapters_inline"
         const val KEY_PAGES_TAB = "pages_tab"
         const val KEY_DETAILS_TAB = "details_tab"
         const val KEY_DETAILS_LAST_TAB = "details_last_tab"
@@ -1380,8 +1390,6 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         private const val KEY_DISCORD_RPC_INVISIBLE_LEGACY = "discord_rpc_invisible"
         const val DISCORD_STATUS_ONLINE = "online"
         const val DISCORD_STATUS_IDLE = "idle"
-        const val KEY_SOURCE_CONTENT_CLASSES_ENABLED = "source_content_classes_enabled"
-        const val KEY_SOURCE_CONTENT_CLASSES = "source_content_classes"
         const val DISCORD_STATUS_DND = "dnd"
         const val DISCORD_STATUS_INVISIBLE = "invisible"
         const val KEY_DISCORD_TOKEN = "discord_token"

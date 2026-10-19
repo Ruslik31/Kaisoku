@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="ThemeOverlay.Kotatsu.Wallpaper" parent="ThemeOverlay.Kotatsu.Totoro" />
+    <string name="theme_name_wallpaper">Wallpaper colors</string>
+    <string name="wallpaper_palette_refresh">Refresh wallpaper colors</string>
+    <string name="wallpaper_palette_ready">Uses the current wallpaper palette on Android 11.</string>
+    <string name="wallpaper_palette_choose">Choose Wallpaper colors to prepare a palette. Android 11 only.</string>
+    <string name="wallpaper_palette_pending">Preparing wallpaper colors…</string>
+    <string name="wallpaper_palette_unavailable">Wallpaper colors are unavailable. The current fallback theme is kept. Tap to retry.</string>
+    <string name="wallpaper_palette_override_unavailable">This device could not apply wallpaper colors. The fallback theme is kept. Tap to retry.</string>
+    <string name="wallpaper_palette_preview_pending">Choose to prepare wallpaper colors</string>
+</resources>

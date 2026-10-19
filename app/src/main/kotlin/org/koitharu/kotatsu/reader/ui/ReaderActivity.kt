@@ -61,6 +61,7 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ReaderMode
+import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.ui.BaseFullscreenActivity
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.dialog.setCheckbox
@@ -115,6 +116,9 @@ class ReaderActivity :
     lateinit var settings: AppSettings
 
     @Inject
+    lateinit var mangaRepositoryFactory: MangaRepository.Factory
+
+    @Inject
     lateinit var tapGridSettings: TapGridSettings
 
     @Inject
@@ -141,6 +145,7 @@ class ReaderActivity :
     private lateinit var controlDelegate: ReaderControlDelegate
     private var gestureInsets: Insets = Insets.NONE
     private lateinit var readerManager: ReaderManager
+    private lateinit var chapterBrowser: ReaderChapterBrowser
     private val hideUiRunnable = Runnable { setUiIsVisible(false) }
     private val hideEInkFlashRunnable = Runnable { einkFlashView.isVisible = false }
     private lateinit var einkFlashView: View
@@ -182,6 +187,12 @@ class ReaderActivity :
         )
         setContentView(ActivityReaderBinding.inflate(layoutInflater))
         readerManager = ReaderManager(supportFragmentManager, viewBinding.container, settings)
+        chapterBrowser = ReaderChapterBrowser(this, viewBinding.root, mangaRepositoryFactory, ::chapterBrowserTarget)
+        ReaderChapterHaptics(viewBinding.root, lifecycle, { settings.isReaderChapterHapticsEnabled }) {
+            val chapter = confirmedVisibleChapter() ?: return@ReaderChapterHaptics null
+            val mangaId = viewModel.mangaDetails.value?.id ?: return@ReaderChapterHaptics null
+            PresentedChapter(mangaId, chapter.id)
+        }
         einkFlashView = createEInkFlashView()
         setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
         touchHelper = TapGridDispatcher(viewBinding.root, this)
@@ -352,7 +363,7 @@ class ReaderActivity :
         viewModel.isZoomControlsEnabled.observe(this) {
             viewBinding.zoomControl.isVisible = it
         }
-        addMenuProvider(ReaderMenuProvider())
+        addMenuProvider(ReaderMenuProvider({ chapterBrowser.isAvailable }, chapterBrowser::open))
 
         observeWindowLayout()
 
@@ -797,6 +808,20 @@ class ReaderActivity :
 
     private fun onReaderBarChanged(isBarEnabled: Boolean) {
         viewBinding.infoBar.isVisible = isBarEnabled && viewBinding.appbarTop.isGone
+    }
+
+    private fun confirmedVisibleChapter(): MangaChapter? {
+        val reader = readerManager.currentReader?.takeIf { it.isResumed } ?: return null
+        if (reader.view?.isLayoutRequested != false) return null
+        val state = reader.getModeSwitchStateSnapshot().stateForGeneration(viewModel.content.value.generation)
+            ?: return null
+        return viewModel.uiState.value?.chapter?.takeIf { it.id == state.chapterId }
+    }
+
+    private fun chapterBrowserTarget(): ChapterBrowserTarget? {
+        val chapter = confirmedVisibleChapter() ?: return null
+        val manga = viewModel.getMangaOrNull() ?: return null
+        return ChapterBrowserTarget(manga, chapter)
     }
 
     private fun onUiStateChanged(pair: Pair<ReaderUiState?, ReaderUiState?>) {

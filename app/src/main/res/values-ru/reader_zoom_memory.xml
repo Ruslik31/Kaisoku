@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_remember_zoom">Запоминать масштаб чтения</string>
+    <string name="reader_remember_zoom_summary">Применять выбранный масштаб к новым страницам отдельно для каждого режима чтения. Текущая страница и позиция сохраняются.</string>
+</resources>

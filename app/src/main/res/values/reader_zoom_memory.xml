@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_remember_zoom">Remember reader zoom</string>
+    <string name="reader_remember_zoom_summary">Reuse your chosen zoom on new pages, separately for each reader mode. The current page and reading position are kept.</string>
+</resources>

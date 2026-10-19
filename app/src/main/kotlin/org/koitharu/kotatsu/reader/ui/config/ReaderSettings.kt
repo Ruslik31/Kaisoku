@@ -5,9 +5,6 @@ import android.view.View
 import androidx.annotation.CheckResult
 import androidx.collection.scatterSetOf
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
-import com.davemorrissey.labs.subscaleview.decoder.SkiaImageDecoder
-import com.davemorrissey.labs.subscaleview.decoder.SkiaImageRegionDecoder
-import com.davemorrissey.labs.subscaleview.decoder.SkiaPooledImageRegionDecoder
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -19,13 +16,13 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import org.koitharu.kotatsu.core.image.ReaderImageDecoders
 import org.koitharu.kotatsu.core.model.ZoomMode
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ReaderBackground
 import org.koitharu.kotatsu.core.prefs.ReaderMode
 import org.koitharu.kotatsu.core.util.MediatorStateFlow
-import org.koitharu.kotatsu.core.util.ext.isLowRamDevice
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import org.koitharu.kotatsu.reader.domain.ReaderColorFilter
 
@@ -80,24 +77,14 @@ data class ReaderSettings(
 
     @CheckResult
     fun applyBitmapConfig(ssiv: SubsamplingScaleImageView): Boolean {
-        val config = bitmapConfig
-        return if (ssiv.regionDecoderFactory.bitmapConfig != config) {
-            ssiv.regionDecoderFactory = if (ssiv.context.isLowRamDevice()) {
-                SkiaImageRegionDecoder.Factory(config)
-            } else {
-                SkiaPooledImageRegionDecoder.Factory(config)
-            }
-            ssiv.bitmapDecoderFactory = SkiaImageDecoder.Factory(config)
-            true
-        } else {
-            false
-        }
+        return ReaderImageDecoders.install(ssiv, bitmapConfig)
     }
 
     class Producer @AssistedInject constructor(
         @Assisted private val mangaId: Flow<Long>,
         private val settings: AppSettings,
         private val mangaDataRepository: MangaDataRepository,
+        val zoomMemory: ReaderZoomMemory,
     ) : MediatorStateFlow<ReaderSettings>(ReaderSettings(settings, null)) {
 
         private val settingsKeys = scatterSetOf(
@@ -119,6 +106,8 @@ data class ReaderSettings(
             AppSettings.KEY_READER_CROP,
         )
         private var job: Job? = null
+
+        val isWebtoonZoomEnabled: Boolean get() = settings.isWebtoonZoomEnabled
 
         override fun onActive() {
             assert(job?.isActive != true)

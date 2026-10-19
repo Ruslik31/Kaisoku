@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.view.View
+import android.view.MotionEvent
 import androidx.annotation.CallSuper
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
@@ -143,6 +144,7 @@ abstract class BasePageHolder<B : ViewBinding>(
             applyUpscale()
             return
         }
+        if (previous != null && viewModel.settingsProducer.zoomMemory.isEnabled) viewportToRestore = captureViewport()
         if (previous != null && previous.widePageRotation != settings.widePageRotation) {
             onPagePresentationChanging()
             viewportToRestore = captureViewport()
@@ -203,17 +205,30 @@ abstract class BasePageHolder<B : ViewBinding>(
         val rotation = PageRotation.orientation(ssiv.sWidth, ssiv.sHeight, settings.widePageRotation)
         if (ssiv.orientation != rotation) ssiv.orientation = rotation
         onPageReady()
-        viewportToRestore?.let { viewport ->
+        val viewport = viewportToRestore
+        if (viewport != null) {
             val (x, y) = PageRotation.toDisplay(viewport.x, viewport.y, rotation)
             val fit = minOf(ssiv.width.toFloat() / ssiv.displaySourceWidth, ssiv.height.toFloat() / ssiv.displaySourceHeight)
             ssiv.setScaleAndCenter((viewport.zoom * fit).coerceIn(ssiv.minScale, ssiv.maxScale.coerceAtLeast(ssiv.minScale)),
                 PointF(x * ssiv.displaySourceWidth, y * ssiv.displaySourceHeight))
-        }
+        } else restoreNewPageZoom()
         viewportToRestore = null
         ssiv.post { applyUpscale() }
     }
 
     protected abstract fun onPageReady()
+
+    protected open fun restoreNewPageZoom() = Unit
+
+    protected open fun onPageTouch(event: MotionEvent) = Unit
+
+    private fun listenToPageTouches() {
+        ssiv.setOnTouchListener { _, event ->
+            onPageTouch(event)
+            if (translatedPage?.overflow?.isNotEmpty() == true) translationMarkers?.invalidate()
+            false
+        }
+    }
 
     private fun applyAnimatedRotation() {
         val view = animatedView ?: return
@@ -233,12 +248,7 @@ abstract class BasePageHolder<B : ViewBinding>(
             (context.findActivity() as? org.koitharu.kotatsu.reader.ui.ReaderActivity)
                 ?.showTranslatedText(boundData?.id ?: return@showMarkers, number)
         }
-        ssiv.setOnTouchListener(
-            if (state.overflow.isEmpty()) null else View.OnTouchListener { _, _ ->
-                translationMarkers?.invalidate()
-                false
-            },
-        )
+        listenToPageTouches()
         showStaticPage(ImageSource.cachedBitmap(state.rendered), preserveState = true)
     }
 
@@ -257,7 +267,7 @@ abstract class BasePageHolder<B : ViewBinding>(
         stopAnimation()
         translatedPage = null
         translationMarkers?.showMarkers(ssiv, emptyList()) {}
-        ssiv.setOnTouchListener(null)
+        listenToPageTouches()
         viewModel.onBind(data.toMangaPage())
         onBind(data)
         observeTranslationState(data)
@@ -280,7 +290,7 @@ abstract class BasePageHolder<B : ViewBinding>(
                         if (translatedPage != null) {
                             translatedPage = null
                             translationMarkers?.showMarkers(ssiv, emptyList()) {}
-                            ssiv.setOnTouchListener(null)
+                            listenToPageTouches()
                             reloadImage(preserveState = true)
                         }
                     }

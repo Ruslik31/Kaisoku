@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.details.ui.pager
 
+import android.os.Bundle
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
@@ -22,132 +23,185 @@ import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import java.lang.ref.WeakReference
 
 class ChapterPagesMenuProvider(
-	private val viewModel: ChaptersPagesViewModel,
-	private val sheet: BaseAdaptiveSheet<*>,
-	private val pager: ViewPager2,
-	private val settings: AppSettings,
+    private val viewModel: ChaptersPagesViewModel,
+    private val settings: AppSettings,
+    private val currentTab: () -> Int,
+    private val expandHost: () -> Unit = {},
+    private val unlockHost: () -> Unit = {},
+    private val reverseReadingOrder: (Boolean) -> Unit = viewModel::setReadingOrderReversed,
 ) : OnBackPressedCallback(false), MenuProvider, SearchView.OnQueryTextListener, MenuItem.OnActionExpandListener,
-	Slider.OnChangeListener {
+    Slider.OnChangeListener {
 
-	private var expandedItemRef: WeakReference<MenuItem>? = null
+    constructor(viewModel: ChaptersPagesViewModel, sheet: BaseAdaptiveSheet<*>, pager: ViewPager2,
+        settings: AppSettings) : this(
+        viewModel = viewModel,
+        settings = settings,
+        currentTab = {
+            val page = pager.currentItem
+            if (page > 0 && pager.adapter?.itemCount == 2) page + 1 else page
+        },
+        expandHost = sheet::expandAndLock,
+        unlockHost = sheet::unlock,
+        reverseReadingOrder = { reversed ->
+            val reader = sheet.activity as? ReaderActivity
+            if (reader != null) reader.setReadingOrderReversed(reversed)
+            else viewModel.setReadingOrderReversed(reversed)
+        },
+    )
 
-	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-		val tab = getCurrentTab()
-		when (tab) {
-			TAB_CHAPTERS -> {
-				menuInflater.inflate(R.menu.opt_chapters, menu)
-				menu.findItem(R.id.action_search)?.run {
-					setOnActionExpandListener(this@ChapterPagesMenuProvider)
-					(actionView as? SearchView)?.setupChaptersSearchView()
-				}
-				menu.findItem(R.id.action_search)?.isVisible = viewModel.emptyReason.value == null
-				menu.findItem(R.id.action_reverse_chapter_list)?.isChecked = viewModel.isGlobalChaptersReversed.value == true
-				menu.findItem(R.id.action_reverse_reading_order)?.isChecked = viewModel.isReadingOrderReversed.value
-				menu.findItem(R.id.action_sort_by_name)?.isChecked = viewModel.isChaptersSortedByName.value
-				menu.findItem(R.id.action_grid_view)?.isChecked = viewModel.isChaptersInGridView.value == true
-				menu.findItem(R.id.action_downloaded)?.let { menuItem ->
-					menuItem.isVisible = viewModel.mangaDetails.value?.local != null
-					menuItem.isChecked = viewModel.isDownloadedOnly.value == true
-				}
-			}
+    private var expandedItemRef: WeakReference<MenuItem>? = null
+    private var chapterQuery = ""
+    private var restoreExpandedSearch = false
+    private var expandedChapterSearch = false
 
-			TAB_PAGES, TAB_BOOKMARKS -> {
-				menuInflater.inflate(R.menu.opt_pages, menu)
-				menu.findItem(R.id.action_grid_size)?.run {
-					setOnActionExpandListener(this@ChapterPagesMenuProvider)
-					(actionView as? Slider)?.setupPagesSizeSlider()
-				}
-			}
-		}
-	}
+    fun saveSearchState() = Bundle().apply {
+        putBoolean("expanded", expandedChapterSearch && currentTab() == TAB_CHAPTERS)
+        putString("query", chapterQuery)
+    }
 
-	override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
-		R.id.action_reverse_chapter_list -> {
-			settings.isChaptersReverse = !settings.isChaptersReverse
-			true
-		}
+    fun restoreSearchState(state: Bundle?) {
+        if (state == null) return
+        restoreExpandedSearch = state.getBoolean("expanded", false)
+        chapterQuery = state.getString("query").orEmpty().takeIf { restoreExpandedSearch }.orEmpty()
+        if (restoreExpandedSearch) viewModel.performChapterSearch(chapterQuery)
+    }
 
-		R.id.action_reverse_reading_order -> {
-			val reversed = !viewModel.isReadingOrderReversed.value
-			val reader = sheet.activity as? ReaderActivity
-			if (reader != null) reader.setReadingOrderReversed(reversed)
-			else viewModel.setReadingOrderReversed(reversed)
-			true
-		}
+    fun collapseSearch() {
+        if (isEnabled && expandedItemRef?.get()?.collapseActionView() != true) {
+            expandedItemRef = null
+            restoreExpandedSearch = false
+            expandedChapterSearch = false
+            chapterQuery = ""
+            isEnabled = false
+            viewModel.performChapterSearch(null)
+            unlockHost()
+        }
+    }
 
-		R.id.action_sort_by_name -> {
-			viewModel.setChaptersSortedByName(!viewModel.isChaptersSortedByName.value)
-			true
-		}
+    override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+        val tab = currentTab()
+        when (tab) {
+            TAB_CHAPTERS -> {
+                menuInflater.inflate(R.menu.opt_chapters, menu)
+                menu.findItem(R.id.action_search)?.run {
+                    setOnActionExpandListener(this@ChapterPagesMenuProvider)
+                    (actionView as? SearchView)?.setupChaptersSearchView()
+                    if (restoreExpandedSearch || expandedChapterSearch) {
+                        restoreExpandedSearch = false
+                        expandActionView()
+                    }
+                }
+                updateMenu(menu)
+            }
 
-		R.id.action_grid_view -> {
-			viewModel.setChaptersInGridView(!menuItem.isChecked)
-			true
-		}
+            TAB_PAGES, TAB_BOOKMARKS -> {
+                menuInflater.inflate(R.menu.opt_pages, menu)
+                menu.findItem(R.id.action_grid_size)?.run {
+                    setOnActionExpandListener(this@ChapterPagesMenuProvider)
+                    (actionView as? Slider)?.setupPagesSizeSlider()
+                }
+            }
+        }
+    }
 
-		R.id.action_downloaded -> {
-			viewModel.isDownloadedOnly.value = !menuItem.isChecked
-			true
-		}
+    override fun onPrepareMenu(menu: Menu) = updateMenu(menu)
 
-		else -> false
-	}
+    fun updateMenu(menu: Menu) {
+        if (currentTab() != TAB_CHAPTERS) return
+        menu.findItem(R.id.action_search)?.isVisible = viewModel.emptyReason.value == null
+        menu.findItem(R.id.action_reverse_chapter_list)?.isChecked = viewModel.isGlobalChaptersReversed.value == true
+        menu.findItem(R.id.action_reverse_reading_order)?.isChecked = viewModel.isReadingOrderReversed.value
+        menu.findItem(R.id.action_sort_by_name)?.isChecked = viewModel.isChaptersSortedByName.value
+        menu.findItem(R.id.action_grid_view)?.isChecked = viewModel.isChaptersInGridView.value == true
+        menu.findItem(R.id.action_downloaded)?.let { menuItem ->
+            menuItem.isVisible = viewModel.mangaDetails.value?.local != null
+            menuItem.isChecked = viewModel.isDownloadedOnly.value == true
+    }
+    }
 
-	override fun handleOnBackPressed() {
-		expandedItemRef?.get()?.collapseActionView()
-	}
+    override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
+        R.id.action_reverse_chapter_list -> {
+            settings.isChaptersReverse = !settings.isChaptersReverse
+            true
+        }
 
-	override fun onMenuItemActionExpand(item: MenuItem): Boolean {
-		expandedItemRef = WeakReference(item)
-		sheet.expandAndLock()
-		isEnabled = true
-		return true
-	}
+        R.id.action_reverse_reading_order -> {
+            reverseReadingOrder(!viewModel.isReadingOrderReversed.value)
+            true
+        }
 
-	override fun onMenuItemActionCollapse(item: MenuItem): Boolean {
-		expandedItemRef = null
-		isEnabled = false
-		(item.actionView as? SearchView)?.setQuery("", false)
-		viewModel.performChapterSearch(null)
-		sheet.unlock()
-		return true
-	}
+        R.id.action_sort_by_name -> {
+            viewModel.setChaptersSortedByName(!viewModel.isChaptersSortedByName.value)
+            true
+        }
 
-	override fun onQueryTextSubmit(query: String?): Boolean = false
+        R.id.action_grid_view -> {
+            viewModel.setChaptersInGridView(!menuItem.isChecked)
+            true
+        }
 
-	override fun onQueryTextChange(newText: String?): Boolean {
-		viewModel.performChapterSearch(newText)
-		return true
-	}
+        R.id.action_downloaded -> {
+            viewModel.isDownloadedOnly.value = !menuItem.isChecked
+            true
+        }
 
-	override fun onValueChange(slider: Slider, value: Float, fromUser: Boolean) {
-		if (fromUser) {
-			settings.gridSizePages = value.toInt()
-		}
-	}
+        else -> false
+    }
 
-	private fun SearchView.setupChaptersSearchView() {
-		setOnQueryTextListener(this@ChapterPagesMenuProvider)
-		setIconifiedByDefault(false)
-		queryHint = context.getString(R.string.search_chapters)
-	}
+    override fun handleOnBackPressed() {
+        collapseSearch()
+    }
 
-	private fun Slider.setupPagesSizeSlider() {
-		valueFrom = 50f
-		valueTo = 150f
-		stepSize = 5f
-		tickVisibilityMode = TickVisibilityMode.TICK_VISIBILITY_HIDDEN
-		labelBehavior = LabelFormatter.LABEL_FLOATING
-		setLabelFormatter(IntPercentLabelFormatter(context))
-		setValueRounded(settings.gridSizePages.toFloat())
-		addOnChangeListener(this@ChapterPagesMenuProvider)
-	}
+    override fun onMenuItemActionExpand(item: MenuItem): Boolean {
+        expandedItemRef = WeakReference(item)
+        expandedChapterSearch = item.actionView is SearchView
+        expandHost()
+        isEnabled = true
+        return true
+    }
 
-	private fun getCurrentTab(): Int {
-		var page = pager.currentItem
-		if (page > 0 && pager.adapter?.itemCount == 2) { // no Pages page
-			page++ // shift
-		}
-		return page
-	}
+    override fun onMenuItemActionCollapse(item: MenuItem): Boolean {
+        expandedItemRef = null
+        restoreExpandedSearch = false
+        expandedChapterSearch = false
+        chapterQuery = ""
+        isEnabled = false
+        (item.actionView as? SearchView)?.setQuery("", false)
+        viewModel.performChapterSearch(null)
+        unlockHost()
+        return true
+    }
+
+    override fun onQueryTextSubmit(query: String?): Boolean = false
+
+    override fun onQueryTextChange(newText: String?): Boolean {
+        chapterQuery = newText.orEmpty()
+        viewModel.performChapterSearch(newText)
+        return true
+    }
+
+    override fun onValueChange(slider: Slider, value: Float, fromUser: Boolean) {
+        if (fromUser) {
+            settings.gridSizePages = value.toInt()
+        }
+    }
+
+    private fun SearchView.setupChaptersSearchView() {
+        setIconifiedByDefault(false)
+        queryHint = context.getString(R.string.search_chapters)
+        setQuery(chapterQuery, false)
+        setOnQueryTextListener(this@ChapterPagesMenuProvider)
+    }
+
+    private fun Slider.setupPagesSizeSlider() {
+        valueFrom = 50f
+        valueTo = 150f
+        stepSize = 5f
+        tickVisibilityMode = TickVisibilityMode.TICK_VISIBILITY_HIDDEN
+        labelBehavior = LabelFormatter.LABEL_FLOATING
+        setLabelFormatter(IntPercentLabelFormatter(context))
+        setValueRounded(settings.gridSizePages.toFloat())
+        addOnChangeListener(this@ChapterPagesMenuProvider)
+    }
+
 }

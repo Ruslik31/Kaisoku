@@ -18,176 +18,204 @@ import androidx.core.app.ActivityCompat
 import androidx.core.view.OnApplyWindowInsetsListener
 import androidx.core.view.ViewCompat
 import androidx.fragment.app.FragmentManager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.viewbinding.ViewBinding
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.prefs.ColorScheme
+import org.koitharu.kotatsu.core.ui.theme.WallpaperPaletteCompat
+import org.koitharu.kotatsu.core.ui.theme.WallpaperSeed
 import org.koitharu.kotatsu.core.ui.util.ActionModeDelegate
 import org.koitharu.kotatsu.core.util.ext.isWebViewUnavailable
 import org.koitharu.kotatsu.main.ui.protect.ScreenshotPolicyHelper
 import androidx.appcompat.R as appcompatR
 
 abstract class BaseActivity<B : ViewBinding> :
-	AppCompatActivity(),
-	OnApplyWindowInsetsListener,
-	ScreenshotPolicyHelper.ContentContainer {
+    AppCompatActivity(),
+    OnApplyWindowInsetsListener,
+    ScreenshotPolicyHelper.ContentContainer {
 
-	private var isAmoledTheme = false
+    private var isAmoledTheme = false
+    private var wallpaperSeedApplied: WallpaperSeed? = null
 
-	lateinit var viewBinding: B
-		private set
+    lateinit var viewBinding: B
+        private set
 
-	protected lateinit var exceptionResolver: ExceptionResolver
-		private set
+    protected lateinit var exceptionResolver: ExceptionResolver
+        private set
 
-	@JvmField
-	val actionModeDelegate = ActionModeDelegate()
+    @JvmField
+    val actionModeDelegate = ActionModeDelegate()
 
-	private lateinit var entryPoint: BaseActivityEntryPoint
+    private lateinit var entryPoint: BaseActivityEntryPoint
 
-	override fun attachBaseContext(newBase: Context) {
-		entryPoint = EntryPointAccessors.fromApplication<BaseActivityEntryPoint>(newBase.applicationContext)
-		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-			AppCompatDelegate.setApplicationLocales(entryPoint.settings.appLocales)
-		}
-		super.attachBaseContext(newBase)
-	}
+    override fun attachBaseContext(newBase: Context) {
+        entryPoint = EntryPointAccessors.fromApplication<BaseActivityEntryPoint>(newBase.applicationContext)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            AppCompatDelegate.setApplicationLocales(entryPoint.settings.appLocales)
+        }
+        val base = if (applyColorSchemeTheme && entryPoint.settings.colorScheme == ColorScheme.WALLPAPER) {
+            WallpaperPaletteCompat.isolateContext(newBase)
+        } else newBase
+        super.attachBaseContext(base)
+    }
 
-	/**
-	 * If true (default), apply the app's color-scheme theme overlay on top of the manifest theme.
-	 * Override to false for activities whose manifest theme must be preserved as-is — e.g.
-	 * `CloudFlareHiddenActivity`, which needs its translucent theme intact.
-	 */
-	protected open val applyColorSchemeTheme: Boolean = true
+    /**
+     * If true (default), apply the app's color-scheme theme overlay on top of the manifest theme.
+     * Override to false for activities whose manifest theme must be preserved as-is — e.g.
+     * `CloudFlareHiddenActivity`, which needs its translucent theme intact.
+     */
+    protected open val applyColorSchemeTheme: Boolean = true
 
-	override fun onCreate(savedInstanceState: Bundle?) {
-		val settings = entryPoint.settings
-		isAmoledTheme = settings.isAmoledTheme
-		if (applyColorSchemeTheme) {
-			setTheme(settings.colorScheme.styleResId)
-			if (isAmoledTheme) {
-				setTheme(R.style.ThemeOverlay_Kotatsu_Amoled)
-			}
-		}
-		putDataToExtras(intent)
-		exceptionResolver = entryPoint.exceptionResolverFactory.create(this)
-		if (applyColorSchemeTheme) {
-			enableEdgeToEdge()
-		}
-		super.onCreate(savedInstanceState)
-	}
+    override fun onCreate(savedInstanceState: Bundle?) {
+        val settings = entryPoint.settings
+        isAmoledTheme = settings.isAmoledTheme
+        if (applyColorSchemeTheme) {
+            setTheme(settings.colorScheme.styleResId)
+            if (settings.colorScheme == ColorScheme.WALLPAPER && WallpaperPaletteCompat.isSupported) {
+                wallpaperSeedApplied = entryPoint.wallpaperPalette.apply(this)
+            }
+            if (isAmoledTheme) {
+                setTheme(R.style.ThemeOverlay_Kotatsu_Amoled)
+            }
+        }
+        putDataToExtras(intent)
+        exceptionResolver = entryPoint.exceptionResolverFactory.create(this)
+        if (applyColorSchemeTheme) {
+            enableEdgeToEdge()
+        }
+        super.onCreate(savedInstanceState)
+    }
 
-	override fun onPostCreate(savedInstanceState: Bundle?) {
-		super.onPostCreate(savedInstanceState)
-		onBackPressedDispatcher.addCallback(actionModeDelegate)
-	}
+    override fun onPostCreate(savedInstanceState: Bundle?) {
+        super.onPostCreate(savedInstanceState)
+        onBackPressedDispatcher.addCallback(actionModeDelegate)
+    }
 
-	override fun onNewIntent(intent: Intent) {
-		putDataToExtras(intent)
-		super.onNewIntent(intent)
-	}
+    override fun onPostResume() {
+        super.onPostResume()
+        if (!applyColorSchemeTheme || !WallpaperPaletteCompat.isSupported ||
+            entryPoint.settings.colorScheme != ColorScheme.WALLPAPER) return
+        lifecycleScope.launch {
+            val palette = entryPoint.wallpaperPalette
+            palette.refresh()
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !isFinishing && !isDestroyed &&
+                entryPoint.settings.colorScheme == ColorScheme.WALLPAPER &&
+                palette.availableSeed?.let { it != wallpaperSeedApplied } == true) {
+                ActivityCompat.recreate(this@BaseActivity)
+            }
+        }
+    }
 
-	@Deprecated("Use ViewBinding", level = DeprecationLevel.ERROR)
-	override fun setContentView(layoutResID: Int) = throw UnsupportedOperationException()
+    override fun onNewIntent(intent: Intent) {
+        putDataToExtras(intent)
+        super.onNewIntent(intent)
+    }
 
-	@Deprecated("Use ViewBinding", level = DeprecationLevel.ERROR)
-	override fun setContentView(view: View?) = throw UnsupportedOperationException()
+    @Deprecated("Use ViewBinding", level = DeprecationLevel.ERROR)
+    override fun setContentView(layoutResID: Int) = throw UnsupportedOperationException()
 
-	protected fun setContentView(binding: B) {
-		this.viewBinding = binding
-		super.setContentView(binding.root)
-		ViewCompat.setOnApplyWindowInsetsListener(binding.root, this)
-		val toolbar = (binding.root.findViewById<View>(R.id.toolbar) as? Toolbar)
-		toolbar?.let(this::setSupportActionBar)
-	}
+    @Deprecated("Use ViewBinding", level = DeprecationLevel.ERROR)
+    override fun setContentView(view: View?) = throw UnsupportedOperationException()
 
-	protected fun setDisplayHomeAsUp(isEnabled: Boolean, showUpAsClose: Boolean) {
-		supportActionBar?.run {
-			setDisplayHomeAsUpEnabled(isEnabled)
-			if (showUpAsClose) {
-				setHomeAsUpIndicator(appcompatR.drawable.abc_ic_clear_material)
-			}
-		}
-	}
+    protected fun setContentView(binding: B) {
+        this.viewBinding = binding
+        super.setContentView(binding.root)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root, this)
+        val toolbar = (binding.root.findViewById<View>(R.id.toolbar) as? Toolbar)
+        toolbar?.let(this::setSupportActionBar)
+    }
 
-	override fun onSupportNavigateUp(): Boolean {
-		val fm = supportFragmentManager
-		if (fm.isStateSaved) {
-			return false
-		}
-		if (fm.backStackEntryCount > 0) {
-			fm.popBackStack()
-		} else {
-			dispatchNavigateUp()
-		}
-		return true
-	}
+    protected fun setDisplayHomeAsUp(isEnabled: Boolean, showUpAsClose: Boolean) {
+        supportActionBar?.run {
+            setDisplayHomeAsUpEnabled(isEnabled)
+            if (showUpAsClose) {
+                setHomeAsUpIndicator(appcompatR.drawable.abc_ic_clear_material)
+            }
+        }
+    }
 
-	override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-		if (BuildConfig.DEBUG) {
-			if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-				ActivityCompat.recreate(this)
-				return true
-			} else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-				throw RuntimeException("Test crash")
-			}
-		}
-		return super.onKeyDown(keyCode, event)
-	}
+    override fun onSupportNavigateUp(): Boolean {
+        val fm = supportFragmentManager
+        if (fm.isStateSaved) {
+            return false
+        }
+        if (fm.backStackEntryCount > 0) {
+            fm.popBackStack()
+        } else {
+            dispatchNavigateUp()
+        }
+        return true
+    }
 
-	protected fun isDarkAmoledTheme(): Boolean {
-		val uiMode = resources.configuration.uiMode
-		val isNight = uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-		return isNight && isAmoledTheme
-	}
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (BuildConfig.DEBUG) {
+            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                ActivityCompat.recreate(this)
+                return true
+            } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                throw RuntimeException("Test crash")
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
 
-	@CallSuper
-	override fun onSupportActionModeStarted(mode: ActionMode) {
-		super.onSupportActionModeStarted(mode)
-		actionModeDelegate.onSupportActionModeStarted(mode, window)
-	}
+    protected fun isDarkAmoledTheme(): Boolean {
+        val uiMode = resources.configuration.uiMode
+        val isNight = uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        return isNight && isAmoledTheme
+    }
 
-	@CallSuper
-	override fun onSupportActionModeFinished(mode: ActionMode) {
-		super.onSupportActionModeFinished(mode)
-		actionModeDelegate.onSupportActionModeFinished(mode, window)
-	}
+    @CallSuper
+    override fun onSupportActionModeStarted(mode: ActionMode) {
+        super.onSupportActionModeStarted(mode)
+        actionModeDelegate.onSupportActionModeStarted(mode, window)
+    }
 
-	protected open fun dispatchNavigateUp() {
-		val upIntent = parentActivityIntent
-		if (upIntent != null) {
-			if (!navigateUpTo(upIntent)) {
-				startActivity(upIntent)
-			}
-		} else {
-			finishAfterTransition()
-		}
-	}
+    @CallSuper
+    override fun onSupportActionModeFinished(mode: ActionMode) {
+        super.onSupportActionModeFinished(mode)
+        actionModeDelegate.onSupportActionModeFinished(mode, window)
+    }
 
-	override fun isNsfwContent(): Flow<Boolean> = flowOf(false)
+    protected open fun dispatchNavigateUp() {
+        val upIntent = parentActivityIntent
+        if (upIntent != null) {
+            if (!navigateUpTo(upIntent)) {
+                startActivity(upIntent)
+            }
+        } else {
+            finishAfterTransition()
+        }
+    }
 
-	private fun putDataToExtras(intent: Intent?) {
-		intent?.putExtra(AppRouter.KEY_DATA, intent.data)
-	}
+    override fun isNsfwContent(): Flow<Boolean> = flowOf(false)
 
-	protected fun setContentViewWebViewSafe(viewBindingProducer: () -> B): Boolean {
-		return try {
-			setContentView(viewBindingProducer())
-			true
-		} catch (e: Exception) {
-			if (e.isWebViewUnavailable()) {
-				Toast.makeText(applicationContext, R.string.web_view_unavailable, Toast.LENGTH_LONG).show()
-				finishAfterTransition()
-				false
-			} else {
-				throw e
-			}
-		}
-	}
+    private fun putDataToExtras(intent: Intent?) {
+        intent?.putExtra(AppRouter.KEY_DATA, intent.data)
+    }
 
-	protected fun hasViewBinding() = ::viewBinding.isInitialized
+    protected fun setContentViewWebViewSafe(viewBindingProducer: () -> B): Boolean {
+        return try {
+            setContentView(viewBindingProducer())
+            true
+        } catch (e: Exception) {
+            if (e.isWebViewUnavailable()) {
+                Toast.makeText(applicationContext, R.string.web_view_unavailable, Toast.LENGTH_LONG).show()
+                finishAfterTransition()
+                false
+            } else {
+                throw e
+            }
+        }
+    }
+
+    protected fun hasViewBinding() = ::viewBinding.isInitialized
 }

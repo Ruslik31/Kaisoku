@@ -30,6 +30,12 @@
         android:title="@string/reader_zoom_buttons" />
 
     <SwitchPreferenceCompat
+        android:defaultValue="false"
+        android:key="reader_remember_zoom"
+        android:summary="@string/reader_remember_zoom_summary"
+        android:title="@string/reader_remember_zoom" />
+
+    <SwitchPreferenceCompat
         android:defaultValue="true"
         android:key="webtoon_zoom"
         android:summary="@string/webtoon_zoom_summary"
@@ -265,6 +271,12 @@
         android:key="reader_chapter_toast"
         android:summary="@string/reader_chapter_toast_summary"
         android:title="@string/reader_chapter_toast" />
+
+    <SwitchPreferenceCompat
+        android:defaultValue="false"
+        android:key="reader_chapter_haptics"
+        android:summary="@string/reader_chapter_haptics_summary"
+        android:title="@string/reader_chapter_haptics" />
 
     <ListPreference
         android:entries="@array/reader_backgrounds"

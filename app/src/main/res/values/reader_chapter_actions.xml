@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_open_chapter_browser">Open chapter in browser</string>
+    <string name="reader_chapter_browser_unavailable">This chapter has no website link.</string>
+    <string name="reader_chapter_haptics">Haptic feedback at chapter boundaries</string>
+    <string name="reader_chapter_haptics_summary">Give a short haptic response when entering another chapter.</string>
+</resources>
