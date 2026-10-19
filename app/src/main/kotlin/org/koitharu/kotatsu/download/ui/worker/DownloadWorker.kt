@@ -117,6 +117,7 @@ class DownloadWorker @AssistedInject constructor(
 	private val settings: AppSettings,
 	@LocalStorageChanges private val localStorageChanges: MutableSharedFlow<LocalManga?>,
 	private val slowdownDispatcher: DownloadSlowdownDispatcher,
+	private val chapterDispatcher: DownloadChapterDispatcher,
 	private val imageProxyInterceptor: ImageProxyInterceptor,
 	notificationFactoryFactory: DownloadNotificationFactory.Factory,
 ) : CoroutineWorker(appContext, params) {
@@ -238,103 +239,110 @@ class DownloadWorker @AssistedInject constructor(
 						publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
 						continue
 					}
-					val pages = runFailsafe {
-						if (repo is org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaRepository) {
-							val images = mutableListOf<Pair<File, MimeType>>()
-							val html = org.koitharu.kotatsu.local.data.NovelChapterArchive.prepare(
-								repo.getChapterHtml(chapter.value),
-							) { url, number ->
-								val file = downloadFile(url, destination, repo.source, tempFiles, repo,
-									MangaPage(number.toLong(), url, null, repo.source))
-								val type = getMediaType(url, file)
-								if (type?.isImage != true) throw IOException("Invalid novel image: $url")
-								images += file to type
+					val chapterPermit = chapterDispatcher.acquire()
+					try {
+						chapterDispatcher.awaitStart()
+						checkIsPaused()
+						val pages = runFailsafe {
+							if (repo is org.koitharu.kotatsu.core.parser.ChapterTextRepository) {
+								val images = mutableListOf<Pair<File, MimeType>>()
+								val html = org.koitharu.kotatsu.local.data.NovelChapterArchive.prepare(
+									repo.getChapterHtml(chapter.value),
+								) { url, number ->
+									val file = downloadFile(url, destination, repo.source, tempFiles, repo,
+										MangaPage(number.toLong(), url, null, repo.source))
+									val type = getMediaType(url, file)
+									if (type?.isImage != true) throw IOException("Invalid novel image: $url")
+									images += file to type
+								}
+								if (html.isBlank()) throw IOException("Chapter returned no text: ${chapter.value.title}")
+								val file = destination.createTempFile("html").also { tempFiles += it }
+								withContext(Dispatchers.IO) { file.writeText(html) }
+								for ((index, image) in images.withIndex()) {
+									output.addPage(chapter, image.first, index + 1, image.second)
+									image.first.deleteAwait()
+								}
+								output.addPage(chapter, file, 0, "text/html".toMimeTypeOrNull())
+								file.deleteAwait()
+								publishState(currentState.copy(
+									totalChapters = chapters.size, currentChapter = chapterIndex,
+									totalPages = 1, currentPage = 0, isIndeterminate = false,
+								))
+								// The text and image entries are already stored; no image pages remain to fetch.
+								emptyList()
+							} else {
+							repo.getPages(mangaDetails, chapter.value)
 							}
-							if (html.isBlank()) throw IOException("Chapter returned no text: ${chapter.value.title}")
-							val file = destination.createTempFile("html").also { tempFiles += it }
-							withContext(Dispatchers.IO) { file.writeText(html) }
-							for ((index, image) in images.withIndex()) {
-								output.addPage(chapter, image.first, index + 1, image.second)
-								image.first.deleteAwait()
-							}
-							output.addPage(chapter, file, 0, "text/html".toMimeTypeOrNull())
-							file.deleteAwait()
-							publishState(currentState.copy(
-								totalChapters = chapters.size, currentChapter = chapterIndex,
-								totalPages = 1, currentPage = 0, isIndeterminate = false,
-							))
-							// The text and image entries are already stored; no image pages remain to fetch.
-							emptyList()
-						} else {
-						repo.getPages(mangaDetails, chapter.value)
-						}
-					} ?: continue
-					val pageCounter = AtomicInteger(0)
-					val successfulPages = AtomicInteger(0)
-					channelFlow {
-						val semaphore = Semaphore(MAX_PAGES_PARALLELISM)
-						for ((pageIndex, page) in pages.withIndex()) {
-							checkIsPaused()
-							launch {
-								semaphore.withPermit {
-								val downloaded = runFailsafe {
-										val url = repo.getPageUrl(page)
-										val file = cache[url]
-											?: downloadFile(
-												url = url,
-												destination = destination,
-												source = repo.source,
-												tempFiles = tempFiles,
-												repository = repo,
-												page = page,
+						} ?: continue
+						val pageCounter = AtomicInteger(0)
+						val successfulPages = AtomicInteger(0)
+						channelFlow {
+							val semaphore = Semaphore(MAX_PAGES_PARALLELISM)
+							for ((pageIndex, page) in pages.withIndex()) {
+								checkIsPaused()
+								launch {
+									semaphore.withPermit {
+									val downloaded = runFailsafe {
+											val url = repo.getPageUrl(page)
+											val file = cache[url]
+												?: downloadFile(
+													url = url,
+													destination = destination,
+													source = repo.source,
+													tempFiles = tempFiles,
+													repository = repo,
+													page = page,
+												)
+											output.addPage(
+												chapter = chapter,
+												file = file,
+												pageNumber = pageIndex,
+												type = getMediaType(url, file),
 											)
-										output.addPage(
-											chapter = chapter,
-											file = file,
-											pageNumber = pageIndex,
-											type = getMediaType(url, file),
-										)
-									if (file.extension == "tmp") {
-										file.deleteAwait()
+										if (file.extension == "tmp") {
+											file.deleteAwait()
+										}
+										true
 									}
-									true
-								}
-								if (downloaded == true) {
-									successfulPages.incrementAndGet()
-									send(pageIndex)
-								}
+									if (downloaded == true) {
+										successfulPages.incrementAndGet()
+										send(pageIndex)
+									}
+									}
 								}
 							}
+						}.map {
+							DownloadProgress(
+								totalChapters = chapters.size,
+								currentChapter = chapterIndex,
+								totalPages = pages.size,
+								currentPage = pageCounter.getAndIncrement(),
+							)
+						}.withTicker(2L, TimeUnit.SECONDS).collect { progress ->
+							publishState(
+								currentState.copy(
+									totalChapters = progress.totalChapters,
+									currentChapter = progress.currentChapter,
+									totalPages = progress.totalPages,
+									currentPage = progress.currentPage,
+									isIndeterminate = false,
+									eta = etaEstimator.getEta(),
+									isStuck = etaEstimator.isStuck(),
+								),
+							)
 						}
-					}.map {
-						DownloadProgress(
-							totalChapters = chapters.size,
-							currentChapter = chapterIndex,
-							totalPages = pages.size,
-							currentPage = pageCounter.getAndIncrement(),
-						)
-					}.withTicker(2L, TimeUnit.SECONDS).collect { progress ->
-						publishState(
-							currentState.copy(
-								totalChapters = progress.totalChapters,
-								currentChapter = progress.currentChapter,
-								totalPages = progress.totalPages,
-								currentPage = progress.currentPage,
-								isIndeterminate = false,
-								eta = etaEstimator.getEta(),
-								isStuck = etaEstimator.isStuck(),
-							),
-						)
+						if (successfulPages.get() != pages.size) {
+							continue
+						}
+						if (output.flushChapter(chapter.value)) {
+							runCatchingCancellable {
+								localStorageChanges.emit(LocalMangaParser(output.rootFile).getManga(withDetails = false))
+							}.onFailure(Throwable::printStackTraceDebug)
+						}
+						publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
+					} finally {
+						chapterPermit.close()
 					}
-					if (successfulPages.get() != pages.size) {
-						continue
-					}
-					if (output.flushChapter(chapter.value)) {
-						runCatchingCancellable {
-							localStorageChanges.emit(LocalMangaParser(output.rootFile).getManga(withDetails = false))
-						}.onFailure(Throwable::printStackTraceDebug)
-					}
-					publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
 				}
 				publishState(currentState.copy(isIndeterminate = true, eta = -1L, isStuck = false))
 				output.mergeWithExisting()

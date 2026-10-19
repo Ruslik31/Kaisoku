@@ -678,6 +678,40 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     var isSuggestionsEnabled: Boolean
         get() = prefs.getBoolean(KEY_SUGGESTIONS, false)
         set(value) = prefs.edit { putBoolean(KEY_SUGGESTIONS, value) }
+    val downloadRequestInterval: Long
+        get() = DownloadControlValues.requestInterval(readDownloadControl(KEY_DOWNLOADS_REQUEST_INTERVAL))
+
+    val downloadChapterDelay: Long
+        get() = DownloadControlValues.chapterDelay(readDownloadControl(KEY_DOWNLOADS_CHAPTER_DELAY))
+
+    val downloadChapterConcurrency: Int
+        get() = DownloadControlValues.chapterConcurrency(readDownloadControl(KEY_DOWNLOADS_CHAPTER_CONCURRENCY))
+
+    /** Repair only damaged new values before ListPreference reads their persisted strings. */
+    fun sanitizeDownloadControls() {
+        val values = prefs.all
+        val normalized = mapOf(
+            KEY_DOWNLOADS_REQUEST_INTERVAL to DownloadControlValues.requestInterval(
+                values[KEY_DOWNLOADS_REQUEST_INTERVAL],
+            ).toString(),
+            KEY_DOWNLOADS_CHAPTER_DELAY to DownloadControlValues.chapterDelay(
+                values[KEY_DOWNLOADS_CHAPTER_DELAY],
+            ).toString(),
+            KEY_DOWNLOADS_CHAPTER_CONCURRENCY to DownloadControlValues.chapterConcurrency(
+                values[KEY_DOWNLOADS_CHAPTER_CONCURRENCY],
+            ).toString(),
+        ).filter { (key, value) -> key in values && values[key] != value }
+        if (normalized.isNotEmpty()) {
+            prefs.edit { normalized.forEach { (key, value) -> putString(key, value) } }
+        }
+    }
+
+    private fun readDownloadControl(key: String): String? = try {
+        prefs.getString(key, null)
+    } catch (_: ClassCastException) {
+        null
+    }
+
 
     val isSuggestionsWiFiOnly: Boolean
         get() = prefs.getBoolean(KEY_SUGGESTIONS_WIFI_ONLY, false)
@@ -1241,6 +1275,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_EXIT_CONFIRM = "exit_confirm"
         const val KEY_INCOGNITO_MODE = "incognito"
         const val KEY_READER_MULTITASK = "reader_multitask"
+        const val KEY_DOWNLOADS_REQUEST_INTERVAL = "downloads_request_interval"
+        const val KEY_DOWNLOADS_CHAPTER_DELAY = "downloads_chapter_delay"
+        const val KEY_DOWNLOADS_CHAPTER_CONCURRENCY = "downloads_chapter_concurrency"
         const val KEY_READER_BAR = "reader_bar"
         const val KEY_READER_BAR_TRANSPARENT = "reader_bar_transparent"
         const val KEY_READER_TOP_BAR_OPACITY = "reader_top_bar_opacity"

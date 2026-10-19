@@ -41,6 +41,42 @@
 		app:allowDividerAbove="true"
 		app:isPreferenceVisible="false" />
 
+	<PreferenceCategory android:title="@string/download_pacing">
+
+		<ListPreference
+			android:defaultValue="0"
+			android:dialogMessage="@string/download_request_interval_info"
+			android:entries="@array/download_request_intervals"
+			android:entryValues="@array/download_request_interval_values"
+			android:key="downloads_request_interval"
+			android:title="@string/download_request_interval"
+			app:useSimpleSummaryProvider="true" />
+
+		<ListPreference
+			android:defaultValue="0"
+			android:dialogMessage="@string/download_chapter_delay_info"
+			android:entries="@array/download_chapter_delays"
+			android:entryValues="@array/download_chapter_delay_values"
+			android:key="downloads_chapter_delay"
+			android:title="@string/download_chapter_delay"
+			app:useSimpleSummaryProvider="true" />
+
+		<ListPreference
+			android:defaultValue="0"
+			android:dialogMessage="@string/download_chapter_concurrency_info"
+			android:entries="@array/download_chapter_concurrency_options"
+			android:entryValues="@array/download_chapter_concurrency_values"
+			android:key="downloads_chapter_concurrency"
+			android:title="@string/download_chapter_concurrency"
+			app:useSimpleSummaryProvider="true" />
+
+		<Preference
+			android:persistent="false"
+			android:selectable="false"
+			android:summary="@string/download_controls_info" />
+
+	</PreferenceCategory>
+
 	<PreferenceCategory android:title="@string/pages_saving">
 
 		<Preference

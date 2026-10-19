@@ -50,6 +50,7 @@ class DownloadsSettingsFragment :
 	}
 
 	override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+		settings.sanitizeDownloadControls()
 		addPreferencesFromResource(R.xml.pref_downloads)
 		findPreference<ListPreference>(AppSettings.KEY_DOWNLOADS_FORMAT)?.run {
 			entryValues = DownloadFormat.entries.names()

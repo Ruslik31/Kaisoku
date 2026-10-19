@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_pacing">Темп загрузки</string>
+    <string name="download_request_interval">Минимальный интервал запросов изображений</string>
+    <string name="download_request_interval_info">Минимальный интервал между запросами изображений к одному источнику. Включённое замедление источника может добавить задержку.</string>
+    <string name="download_chapter_delay">Интервал запуска глав</string>
+    <string name="download_chapter_delay_info">Интервал между началами загрузки глав для всех загрузок. Первая глава запускается сразу.</string>
+    <string name="download_chapter_concurrency">Одновременные главы</string>
+    <string name="download_chapter_concurrency_info">Предел числа глав для всех загрузок. Порядок глав каждого произведения сохраняется. Приостановленная глава занимает место до продолжения, пропуска или отмены.</string>
+    <string name="download_controls_info">Интервал глав и предел одновременных глав действуют на все загрузки. Приостановленная глава занимает место до продолжения, пропуска или отмены.</string>
+    <string name="download_source_pacing">Настройки источника</string>
+    <string name="download_no_added_delay">Без дополнительной задержки</string>
+    <string name="download_no_added_limit">Без дополнительного предела</string>
+    <string name="download_interval_1000">1 секунда</string>
+    <string name="download_interval_1600">1,6 секунды</string>
+    <string name="download_interval_3000">3 секунды</string>
+    <string name="download_interval_5000">5 секунд</string>
+    <string name="download_interval_10000">10 секунд</string>
+    <string name="download_interval_30000">30 секунд</string>
+</resources>
