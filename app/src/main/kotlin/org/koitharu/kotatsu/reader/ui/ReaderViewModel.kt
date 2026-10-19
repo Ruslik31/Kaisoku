@@ -177,7 +177,8 @@ class ReaderViewModel @Inject constructor(
     private var pendingReaderReplacement: PendingReaderReplacement? = null
     private val lifecycleStateGuard = ReaderLifecycleStateGuard()
     private val sourceHealth = SourceHealthMonitor()
-    @Volatile private var isHistoryFrozen = false
+    val sourceSwitchTarget = MutableStateFlow<SourceSwitchCandidate?>(null)
+    private var sourceSwitchJob: Job? = null
     private var sourceSuggestionJob: Job? = null
 
     init {
@@ -347,7 +348,7 @@ class ReaderViewModel @Inject constructor(
     fun onPause() {
         getMangaOrNull()?.let {
             statsCollector.onPause(it.id)
-            if (isIncognitoMode.value == false && !isHistoryFrozen) {
+            if (isIncognitoMode.value == false && sourceSwitchTarget.value == null) {
                 historyUpdateUseCase.finishReadingSession(it, readingState.value?.chapterId)
             }
         }
@@ -481,7 +482,7 @@ class ReaderViewModel @Inject constructor(
             }
             savedStateHandle[ReaderIntent.EXTRA_STATE] = state
         }
-        if (isIncognitoMode.value != false || isHistoryFrozen) {
+        if (isIncognitoMode.value != false || sourceSwitchTarget.value != null) {
             return
         }
         val readerState = state ?: readingState.value ?: return
@@ -971,7 +972,7 @@ class ReaderViewModel @Inject constructor(
                         mangaDetails.value = details.filterChapters(selectedBranch.value)
 
                         // save state
-                        if (!isIncognitoMode.firstNotNull() && !isHistoryFrozen) {
+                        if (!isIncognitoMode.firstNotNull() && sourceSwitchTarget.value == null) {
                             readingState.value?.let {
                                 val percent = computePercent(it.chapterId, it.page)
                                 historyUpdateUseCase.invokeAsync(manga, it, percent).join()
@@ -1019,20 +1020,21 @@ class ReaderViewModel @Inject constructor(
 
     /** Moves the open title to another implementation of its site; the reader reopens on success. */
     fun switchSource(candidate: SourceSwitchCandidate) {
-        if (isHistoryFrozen) return
+        if (sourceSwitchTarget.value != null) return
         val manga = mangaDetails.value?.toManga() ?: return
         val state = readingState.value
         // The migration moves this title's history; later writes for the old title would bring it back.
-        isHistoryFrozen = true
-        launchLoadingJob(Dispatchers.Default) {
+        sourceSwitchTarget.value = candidate
+        sourceSwitchJob = launchLoadingJob(Dispatchers.Default) {
             var migrated: Manga? = null
             try {
                 val replacement = sourceSwitchHandoff(
                     readerJobs = listOf(loadingJob, preloadJob, stateChangeJob),
                     saveState = {
+                        // Include saves queued before an incognito toggle or an empty load.
+                        historyUpdateUseCase.awaitPendingUpdates()
                         if (state != null && isIncognitoMode.value == false) {
-                            // This also joins saves already queued before the explicit handoff.
-                            historyUpdateUseCase.invokeAsync(manga, state, computePercent(state.chapterId, state.page)).join()
+                            historyUpdateUseCase(manga, state, computePercent(state.chapterId, state.page))
                         }
                     },
                     migrate = { sourceSwitchUseCase(manga, candidate) { migrated = it } },
@@ -1041,7 +1043,7 @@ class ReaderViewModel @Inject constructor(
             } catch (e: Throwable) {
                 val replacement = migrated
                 if (replacement == null) {
-                    isHistoryFrozen = false
+                    sourceSwitchTarget.value = null
                     throw e
                 }
                 // The DB commit already moved history. A later cancellation/remote failure must
@@ -1051,6 +1053,10 @@ class ReaderViewModel @Inject constructor(
                 e.printStackTraceDebug()
             }
         }
+    }
+
+    fun cancelSourceSwitch() {
+        sourceSwitchJob?.cancel()
     }
 
     fun muteSourceSwitchSuggestion(source: MangaSource) {

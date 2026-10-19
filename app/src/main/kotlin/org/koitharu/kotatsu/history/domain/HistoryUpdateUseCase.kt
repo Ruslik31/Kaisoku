@@ -20,6 +20,12 @@ class HistoryUpdateUseCase @Inject constructor(
 ) {
     private var lastAsyncUpdate: Job? = null
 
+    /** Drain this reader's queued saves before an explicit identity handoff. */
+    suspend fun awaitPendingUpdates() {
+        val pending = synchronized(this) { lastAsyncUpdate }
+        pending?.join()
+    }
+
     @Synchronized
     fun finishReadingSession(manga: Manga, chapterId: Long?) {
         val historyUpdate = lastAsyncUpdate ?: return

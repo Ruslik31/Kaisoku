@@ -277,7 +277,21 @@ class ReaderActivity :
             ),
         )
         viewModel.onSourceSwitchSuggestion.observeEvent(this, ::onSourceSwitchSuggestion)
+        viewModel.sourceSwitchTarget.observe(this) { candidate ->
+            val dialog = supportFragmentManager.findFragmentByTag(SourceSwitchProgressDialog.TAG)
+                as? SourceSwitchProgressDialog
+            if (candidate == null) {
+                dialog?.dismissAllowingStateLoss()
+            } else if (dialog == null && !supportFragmentManager.isStateSaved) {
+                scrollTimer.stopHold()
+                scrollTimer.setActive(false)
+                SourceSwitchProgressDialog.newInstance(candidate.title)
+                    .show(supportFragmentManager, SourceSwitchProgressDialog.TAG)
+            }
+        }
         viewModel.onSourceSwitched.observeEvent(this) { manga ->
+            (supportFragmentManager.findFragmentByTag(SourceSwitchProgressDialog.TAG) as? SourceSwitchProgressDialog)
+                ?.dismissAllowingStateLoss()
             Toast.makeText(this, getString(R.string.source_switched, manga.source.getTitle(this)), Toast.LENGTH_SHORT)
                 .show()
             router.openReader(manga)
@@ -462,7 +476,9 @@ class ReaderActivity :
     }
 
     private fun onSourceSwitchSuggestion(suggestion: SourceSwitchSuggestion) {
-        if (isFinishing || isDestroyed) return
+        if (isFinishing || isDestroyed || !settings.isSourceSwitchSuggestionEnabled ||
+            viewModel.sourceSwitchTarget.value != null
+        ) return
         val showDialog = {
             SourceSwitchDialog.show(
                 context = this,
@@ -859,7 +875,9 @@ class ReaderActivity :
 
     private fun confirmedVisibleChapter(): MangaChapter? {
         val reader = readerManager.currentReader?.takeIf { it.isResumed } ?: return null
-        if (reader.view?.isLayoutRequested != false) return null
+        if (reader.view?.isLayoutRequested != false) {
+            return null
+        }
         val state = reader.getModeSwitchStateSnapshot().stateForGeneration(viewModel.content.value.generation)
             ?: return null
         return viewModel.uiState.value?.chapter?.takeIf { it.id == state.chapterId }
