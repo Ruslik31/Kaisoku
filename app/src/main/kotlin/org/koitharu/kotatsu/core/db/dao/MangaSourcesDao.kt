@@ -32,8 +32,8 @@ abstract class MangaSourcesDao {
 	@Query("SELECT * FROM sources WHERE added_in >= :version")
 	abstract suspend fun findAllFromVersion(version: Int): List<MangaSourceEntity>
 
-	@Query("SELECT * FROM sources ORDER BY used_at DESC LIMIT :limit")
-	abstract suspend fun findLastUsed(limit: Int): List<MangaSourceEntity>
+	@Query("SELECT * FROM sources WHERE used_at > 0 AND (:enabledOnly = 0 OR enabled = 1) ORDER BY used_at DESC, source LIMIT :limit")
+	abstract suspend fun findLastUsed(limit: Int, enabledOnly: Boolean): List<MangaSourceEntity>
 
 	@Query("SELECT * FROM sources ORDER BY pinned DESC, sort_key")
 	abstract fun observeAll(): Flow<List<MangaSourceEntity>>
