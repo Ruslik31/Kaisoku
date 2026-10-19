@@ -44,7 +44,7 @@ class GridSpanResolver(
 	}
 
 	fun setGridSize(scaleFactor: Float, rv: RecyclerView, columns: Int = 0) {
-		fixedColumns = columns.takeIf { it in 2..12 } ?: 0
+		fixedColumns = columns.takeIf { it in 1..12 } ?: 0
 		cellWidth = (gridWidth * scaleFactor) + spacing
 		val lm = rv.layoutManager as? GridLayoutManager ?: return
 		val innerWidth = lm.width - lm.paddingEnd - lm.paddingStart

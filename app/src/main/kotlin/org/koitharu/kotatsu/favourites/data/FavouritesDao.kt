@@ -27,6 +27,9 @@ import org.koitharu.kotatsu.parsers.model.MangaParserSource
 
 @Dao
 abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
+    @Query("SELECT f.manga_id,c.* FROM favourites f JOIN favourite_categories c ON c.category_id=f.category_id " +
+        "WHERE f.manga_id IN (:ids) AND f.deleted_at=0 AND c.deleted_at=0 AND c.show_in_lib=1 ORDER BY c.sort_key,c.category_id")
+    abstract suspend fun searchCategories(ids: List<Long>): List<SearchCategoryMembership>
 
 	/** SELECT **/
 
@@ -92,13 +95,13 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 			)
 			.filters(filterOptions)
 			.groupBy("favourites.manga_id")
-			.orderBy(getOrderBy(order))
+			.orderBy(getOrderBy(order, categoryId))
 			.limit(limit)
 			.build(),
 	)
 
 	suspend fun findCovers(categoryId: Long, order: ListSortOrder): List<Cover> {
-		val orderBy = getOrderBy(order)
+		val orderBy = getOrderBy(order, categoryId)
 
 		@Language("RoomSql")
 		val query = SimpleSQLiteQuery(
@@ -202,6 +205,29 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		}
 	}
 
+    @Query("SELECT favourites.category_id, COUNT(DISTINCT favourites.manga_id) AS count FROM favourites " +
+        "JOIN manga ON manga.manga_id=favourites.manga_id LEFT JOIN preferences ON preferences.manga_id=manga.manga_id " +
+        "WHERE favourites.deleted_at=0 AND (:hideAdult=0 OR CASE WHEN preferences.content_rating_override IS NULL " +
+        "THEN manga.nsfw=0 ELSE preferences.content_rating_override != 'ADULT' END) GROUP BY favourites.category_id")
+    abstract suspend fun categoryCounts(hideAdult: Boolean): List<CategoryCount>
+
+    @Query("SELECT COUNT(DISTINCT favourites.manga_id) FROM favourites JOIN manga ON manga.manga_id=favourites.manga_id " +
+        "JOIN favourite_categories ON favourite_categories.category_id=favourites.category_id " +
+        "LEFT JOIN preferences ON preferences.manga_id=manga.manga_id WHERE favourites.deleted_at=0 " +
+        "AND favourite_categories.deleted_at=0 AND favourite_categories.show_in_lib=1 AND (:hideAdult=0 OR " +
+        "CASE WHEN preferences.content_rating_override IS NULL THEN manga.nsfw=0 ELSE preferences.content_rating_override != 'ADULT' END)")
+    abstract suspend fun visibleFavoritesCount(hideAdult: Boolean): Int
+
+    @Query("SELECT COALESCE(preferences.cover_override, manga.cover_url) AS url, manga.source AS source " +
+        "FROM favourites JOIN manga ON manga.manga_id=favourites.manga_id " +
+        "JOIN favourite_categories ON favourite_categories.category_id=favourites.category_id " +
+        "LEFT JOIN preferences ON preferences.manga_id=manga.manga_id WHERE favourites.deleted_at=0 " +
+        "AND favourite_categories.deleted_at=0 AND favourite_categories.show_in_lib=1 " +
+        "AND (:categoryId=0 OR favourites.category_id=:categoryId) AND (:hideAdult=0 OR " +
+        "CASE WHEN preferences.content_rating_override IS NULL THEN manga.nsfw=0 ELSE preferences.content_rating_override != 'ADULT' END) " +
+        "GROUP BY favourites.manga_id ORDER BY MAX(favourites.created_at) DESC, manga.manga_id LIMIT :limit")
+    abstract suspend fun categoryPreviewCovers(categoryId: Long, hideAdult: Boolean, limit: Int): List<Cover>
+
 	/** INSERT **/
 
 	@Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -245,7 +271,7 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun upsert(entity: FavouriteEntity)
 
 	@Transaction
-	@RawQuery(observedEntities = [FavouriteEntity::class])
+	@RawQuery(observedEntities = [FavouriteEntity::class, FavoriteOrderEntity::class])
 	protected abstract fun observeAllImpl(query: SupportSQLiteQuery): Flow<List<FavouriteManga>>
 
 	@RawQuery
@@ -260,7 +286,11 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	@Query("UPDATE favourites SET deleted_at = :deletedAt WHERE category_id = :categoryId AND deleted_at = 0")
 	protected abstract suspend fun setDeletedAtAll(categoryId: Long, deletedAt: Long)
 
-	private fun getOrderBy(sortOrder: ListSortOrder) = when (sortOrder) {
+	private fun getOrderBy(sortOrder: ListSortOrder, scopeId: Long = 0L) = when (sortOrder) {
+        ListSortOrder.MANUAL -> "COALESCE((SELECT rank FROM favorite_order WHERE favorite_order.manga_id=manga.manga_id " +
+            "AND favorite_order.scope_id=$scopeId),2147483647) ASC, " +
+            "(SELECT MAX(f.created_at) FROM favourites f WHERE f.manga_id=manga.manga_id AND f.deleted_at=0 " +
+            "AND ($scopeId=0 OR f.category_id=$scopeId)) DESC, manga.manga_id ASC"
 		ListSortOrder.RATING -> "manga.rating DESC"
 		ListSortOrder.RATING_REVERSE -> "manga.rating ASC"
 		ListSortOrder.NEWEST -> "favourites.created_at DESC"

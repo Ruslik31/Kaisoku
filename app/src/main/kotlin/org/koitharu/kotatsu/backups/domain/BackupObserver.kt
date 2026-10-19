@@ -18,6 +18,7 @@ class BackupObserver @Inject constructor(
 		TABLE_HISTORY,
 		TABLE_FAVOURITES,
 		TABLE_FAVOURITE_CATEGORIES,
+        "favorite_order",
 	),
 ) {
 

@@ -39,6 +39,19 @@ class MangaListMapper @Inject constructor(
 	private val dataRepository: MangaDataRepository,
 ) {
 
+    suspend fun withFavoriteCategories(models: List<MangaListModel>): List<MangaListModel> {
+        val categories = if (settings.isSearchFavoriteCategoriesEnabled)
+            favouritesRepository.getVisibleCategories(models.map { it.id }) else emptyMap()
+        return models.map { model ->
+            val values = categories[model.id].orEmpty()
+            when (model) {
+                is MangaGridModel -> model.copy(favoriteCategories = values)
+                is MangaCompactListModel -> model.copy(favoriteCategories = values)
+                is MangaDetailedListModel -> model.copy(favoriteCategories = values)
+            }
+        }
+    }
+
     suspend fun toRecommendationModels(values: List<org.koitharu.kotatsu.suggestions.local.Recommendation>, mode: ListMode): List<MangaListModel> {
         val models = toListModelList(values.map { it.manga }, mode)
         return models.mapIndexed { index, model ->

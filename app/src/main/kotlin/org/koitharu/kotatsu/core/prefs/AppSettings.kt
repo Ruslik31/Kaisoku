@@ -240,9 +240,25 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     val isFixedGridColumnsEnabled: Boolean
         get() = prefs.getBoolean(KEY_FIXED_GRID_COLUMNS, false)
 
+    val isSearchFavoriteCategoriesEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SEARCH_FAVORITE_CATEGORIES, false)
+
+    val isFavoritesOverviewEnabled: Boolean
+        get() = prefs.getBoolean(KEY_FAVORITES_OVERVIEW, false)
+
+    val favoritesCategorySort: org.koitharu.kotatsu.favourites.domain.CategorySortOrder
+        get() = prefs.getEnumValue(KEY_FAVORITES_CATEGORY_SORT, org.koitharu.kotatsu.favourites.domain.CategorySortOrder.MANUAL)
+
+    val isFavoritesCategorySortAscending: Boolean
+        get() = prefs.getBoolean(KEY_FAVORITES_CATEGORY_SORT_ASCENDING, true)
+
+    val listLongPressDelay: Int
+        get() = prefs.getString(KEY_LIST_LONG_PRESS_DELAY, "0")?.toIntOrNull()
+            ?.takeIf { it in setOf(0, 750, 1000, 1500) } ?: 0
+
     var gridColumns: Int
-        get() = prefs.getInt(KEY_GRID_COLUMNS, 3).coerceIn(2, 12)
-        set(value) = prefs.edit { putInt(KEY_GRID_COLUMNS, value.coerceIn(2, 12)) }
+        get() = prefs.getInt(KEY_GRID_COLUMNS, 3).coerceIn(1, 12)
+        set(value) = prefs.edit { putInt(KEY_GRID_COLUMNS, value.coerceIn(1, 12)) }
 
     fun usesDefaultFavoritesOrder(categoryId: Long): Boolean =
         categoryId.toString() in prefs.getStringSet(KEY_FAVORITES_DEFAULT_CATEGORIES, emptySet()).orEmpty()
@@ -1169,6 +1185,11 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_BACKUP_PERIODICAL_OUTPUT = "backup_periodic_output"
         const val KEY_BACKUP_PERIODICAL_LAST = "backup_periodic_last"
         const val KEY_HISTORY_GROUPING = "history_grouping"
+        const val KEY_SEARCH_FAVORITE_CATEGORIES = "search_favorite_categories"
+        const val KEY_FAVORITES_OVERVIEW = "favorites_overview"
+        const val KEY_FAVORITES_CATEGORY_SORT = "favorites_category_sort"
+        const val KEY_FAVORITES_CATEGORY_SORT_ASCENDING = "favorites_category_sort_ascending"
+        const val KEY_LIST_LONG_PRESS_DELAY = "list_long_press_delay"
         const val KEY_UPDATED_GROUPING = "updated_grouping"
         const val KEY_PROGRESS_INDICATORS = "progress_indicators"
         /** Global chapter-list display order, independent of source reading direction. */

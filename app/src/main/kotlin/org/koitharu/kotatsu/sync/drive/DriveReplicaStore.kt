@@ -36,6 +36,7 @@ class DriveReplicaStore @Inject constructor(
     private val appSettings: AppSettings,
     private val preferenceVersions: DrivePreferenceVersions,
     private val preferenceApplier: DriveReplicaPreferences,
+    private val metadataRefreshSettings: org.koitharu.kotatsu.core.prefs.MetadataRefreshSettings,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val metadata = context.getSharedPreferences("google_drive_replica_metadata", Context.MODE_PRIVATE)
@@ -49,9 +50,11 @@ class DriveReplicaStore @Inject constructor(
         legacy: List<Legacy>,
     ): DriveReplica {
         currentCoroutineContext().ensureActive()
+        val mergedMangaIds = linkedMapOf<Long, Long>()
         // Preferences cannot roll back with SQLite. Once the local transaction starts, complete its
         // local merge even if the worker is stopped; authentication/transfers stay cancellable.
-        return withContext(NonCancellable) { database.withTransaction {
+        return withContext(NonCancellable) {
+        val mergedReplica = database.withTransaction {
         val db = database.openHelper.writableDatabase
         if (context.getSharedPreferences("google_drive_sync", Context.MODE_PRIVATE)
                 .getString(SyncBackendSettings.KEY_BACKEND, null) != SyncBackend.GOOGLE_DRIVE.name) {
@@ -141,7 +144,8 @@ class DriveReplicaStore @Inject constructor(
                     val databaseSections = sections.filterTo(hashSetOf()) { !preferenceApplier.isPreference(it.entryName) }
                     val result = backupRepository.restoreBackup(input, databaseSections, null, isMerge = true,
                         authoritativeRecords = true,
-                        preserveSettingsKeys = existingNetworkSettingsKeys(appSettings.getAllValues()))
+                        preserveSettingsKeys = existingNetworkSettingsKeys(appSettings.getAllValues()),
+                        mergedMangaIds = mergedMangaIds)
                     check(result.isAllSuccess) { result.failures.firstOrNull()?.message ?: "Could not apply Google Drive replica" }
                 }
             } finally {
@@ -161,9 +165,10 @@ class DriveReplicaStore @Inject constructor(
         val priorVersions = remote.flatMap { it.legacyVersions.entries }.associate { it.toPair() }
         DriveReplica(device = device, sections = selected, records = selectedRecords,
             legacyVersions = priorVersions + legacy.associate { it.fileId to it.fileVersion })
-    }
-
-    }
+        }
+        metadataRefreshSettings.copyMergedTitleFlags(mergedMangaIds)
+        mergedReplica
+        }
     }
 
     suspend fun writeCompatibilityBackup(file: File, replica: DriveReplica) = database.withTransaction {
@@ -297,6 +302,7 @@ class DriveReplicaStore @Inject constructor(
     private fun stableKey(db: SupportSQLiteDatabase, section: String, key: String): String = when (section) {
         "categories" -> categoryUid(db, key.toLong(), null)
         "favourites" -> "${key.substringBefore(':')}/${categoryUid(db, key.substringAfter(':').toLong(), null)}"
+        "favorite_order" -> "${key.substringBefore(':')}/${if (key.substringAfter(':') == "0") DriveReplicaBackup.ALL_FAVORITES_UID else categoryUid(db, key.substringAfter(':').toLong(), null)}"
         else -> key
     }
 
@@ -308,7 +314,7 @@ class DriveReplicaStore @Inject constructor(
         val where = table.columns.joinToString(" AND ") { "`$it`=?" }
         if (record.section == "sources") {
             db.execSQL("UPDATE sources SET enabled=0 WHERE $where", parts.toTypedArray())
-        } else if (record.section == "history" || record.section == "categories" || record.section == "favourites") {
+        } else if (record.section in setOf("history", "categories", "favourites")) {
             db.execSQL("UPDATE `${table.table}` SET deleted_at=? WHERE $where",
                 (listOf<Any?>(record.version / 1000) + parts).toTypedArray())
         } else db.execSQL("DELETE FROM `${table.table}` WHERE $where", parts.toTypedArray())
@@ -331,10 +337,10 @@ class DriveReplicaStore @Inject constructor(
                 val saved = json.decodeFromString(DriveReplicaRecord.serializer(), cursor.getString(0))
                 val record = when (saved.section) {
                     "categories" -> saved.copy(key = resolvedUid(db, saved.key))
-                    "favourites" -> saved.copy(key = "${saved.key.substringBefore('/')}/${resolvedUid(db, saved.key.substringAfter('/'))}")
+                    "favourites", "favorite_order" -> saved.copy(key = "${saved.key.substringBefore('/')}/${if (saved.key.substringAfter('/') == DriveReplicaBackup.ALL_FAVORITES_UID) DriveReplicaBackup.ALL_FAVORITES_UID else resolvedUid(db, saved.key.substringAfter('/'))}")
                     else -> saved
                 }
-                val normalized = if (record.section == "categories" || record.section == "favourites") {
+                val normalized = if (record.section in setOf("categories", "favourites", "favorite_order")) {
                     val uid = if (record.section == "categories") record.key else record.key.substringAfter('/')
                     record.copy(value = (record.value as? JsonObject)?.let {
                         JsonObject(it + ("sync_uid" to kotlinx.serialization.json.JsonPrimitive(uid)))

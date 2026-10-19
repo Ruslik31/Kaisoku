@@ -26,178 +26,181 @@ private const val KEY_SELECTION = "selection"
 private const val PROVIDER_NAME = "selection_decoration"
 
 class ListSelectionController(
-	private val appCompatDelegate: AppCompatDelegate,
-	private val decoration: AbstractSelectionItemDecoration,
-	private val registryOwner: SavedStateRegistryOwner,
-	private val callback: Callback,
+    private val appCompatDelegate: AppCompatDelegate,
+    private val decoration: AbstractSelectionItemDecoration,
+    private val registryOwner: SavedStateRegistryOwner,
+    private val callback: Callback,
 ) : ActionMode.Callback, SavedStateRegistry.SavedStateProvider {
 
-	private var actionMode: ActionMode? = null
-	private var focusedItemId: LongSet? = null
+    private var actionMode: ActionMode? = null
+    private var focusedItemId: LongSet? = null
 
-	var useActionMode: Boolean = true
+    val isContextMenuOpen: Boolean
+        get() = focusedItemId != null
 
-	val count: Int
-		get() = if (focusedItemId != null) 1 else decoration.checkedItemsCount
+    var useActionMode: Boolean = true
 
-	init {
-		registryOwner.lifecycle.addObserver(StateEventObserver())
-	}
+    val count: Int
+        get() = if (focusedItemId != null) 1 else decoration.checkedItemsCount
 
-	fun snapshot(): Set<Long> = (focusedItemId ?: peekCheckedIds()).toSet()
+    init {
+        registryOwner.lifecycle.addObserver(StateEventObserver())
+    }
 
-	fun peekCheckedIds(): LongSet {
-		return focusedItemId ?: decoration.checkedItemsIds
-	}
+    fun snapshot(): Set<Long> = (focusedItemId ?: peekCheckedIds()).toSet()
 
-	fun clear() {
-		decoration.clearSelection()
-		notifySelectionChanged()
-	}
+    fun peekCheckedIds(): LongSet {
+        return focusedItemId ?: decoration.checkedItemsIds
+    }
 
-	fun addAll(ids: Collection<Long>) {
-		if (ids.isEmpty()) {
-			return
-		}
-		startActionMode()
-		decoration.checkAll(ids)
-		notifySelectionChanged()
-	}
+    fun clear() {
+        decoration.clearSelection()
+        notifySelectionChanged()
+    }
 
-	fun attachToRecyclerView(recyclerView: RecyclerView) {
-		recyclerView.addItemDecoration(decoration)
-	}
+    fun addAll(ids: Collection<Long>) {
+        if (ids.isEmpty()) {
+            return
+        }
+        startActionMode()
+        decoration.checkAll(ids)
+        notifySelectionChanged()
+    }
 
-	override fun saveState(): Bundle {
-		val bundle = Bundle(1)
-		bundle.putLongArray(KEY_SELECTION, peekCheckedIds().toLongArray())
-		return bundle
-	}
+    fun attachToRecyclerView(recyclerView: RecyclerView) {
+        recyclerView.addItemDecoration(decoration)
+    }
 
-	fun onItemClick(id: Long): Boolean {
-		if (decoration.checkedItemsCount != 0) {
-			decoration.toggleItemChecked(id)
-			if (decoration.checkedItemsCount == 0) {
-				actionMode?.finish()
-			} else {
-				actionMode?.invalidate()
-			}
-			notifySelectionChanged()
-			return true
-		}
-		return false
-	}
+    override fun saveState(): Bundle {
+        val bundle = Bundle(1)
+        bundle.putLongArray(KEY_SELECTION, peekCheckedIds().toLongArray())
+        return bundle
+    }
 
-	fun onItemLongClick(view: View, id: Long): Boolean {
-		return if (useActionMode) {
-			startSelection(id)
-		} else {
-			onItemContextClick(view, id)
-		}
-	}
+    fun onItemClick(id: Long): Boolean {
+        if (decoration.checkedItemsCount != 0) {
+            decoration.toggleItemChecked(id)
+            if (decoration.checkedItemsCount == 0) {
+                actionMode?.finish()
+            } else {
+                actionMode?.invalidate()
+            }
+            notifySelectionChanged()
+            return true
+        }
+        return false
+    }
 
-	fun onItemContextClick(view: View, id: Long): Boolean {
-		focusedItemId = longSetOf(id)
-		val menu = PopupMenu(view.context, view)
-		callback.onCreateActionMode(this, menu.menuInflater, menu.menu)
-		callback.onPrepareActionMode(this, null, menu.menu)
-		menu.setForceShowIcon(true)
-		if (menu.menu.hasVisibleItems()) {
-			menu.setOnMenuItemClickListener { menuItem ->
-				callback.onActionItemClicked(this, null, menuItem)
-			}
-			menu.setOnDismissListener {
-				focusedItemId = null
-			}
-			menu.show()
-			return true
-		} else {
-			focusedItemId = null
-			return false
-		}
-	}
+    fun onItemLongClick(view: View, id: Long): Boolean {
+        return if (useActionMode) {
+            startSelection(id)
+        } else {
+            onItemContextClick(view, id)
+        }
+    }
 
-	fun startSelection(id: Long): Boolean = startActionMode()?.also {
-		decoration.setItemIsChecked(id, true)
-		notifySelectionChanged()
-	} != null
+    fun onItemContextClick(view: View, id: Long): Boolean {
+        focusedItemId = longSetOf(id)
+        val menu = PopupMenu(view.context, view)
+        callback.onCreateActionMode(this, menu.menuInflater, menu.menu)
+        callback.onPrepareActionMode(this, null, menu.menu)
+        menu.setForceShowIcon(true)
+        if (menu.menu.hasVisibleItems()) {
+            menu.setOnMenuItemClickListener { menuItem ->
+                callback.onActionItemClicked(this, null, menuItem)
+            }
+            menu.setOnDismissListener {
+                focusedItemId = null
+            }
+            menu.show()
+            return true
+        } else {
+            focusedItemId = null
+            return false
+        }
+    }
 
-	override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-		return callback.onCreateActionMode(this, mode.menuInflater, menu)
-	}
+    fun startSelection(id: Long): Boolean = startActionMode()?.also {
+        decoration.setItemIsChecked(id, true)
+        notifySelectionChanged()
+    } != null
 
-	override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
-		return callback.onPrepareActionMode(this, mode, menu)
-	}
+    override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+        return callback.onCreateActionMode(this, mode.menuInflater, menu)
+    }
 
-	override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
-		return callback.onActionItemClicked(this, mode, item)
-	}
+    override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
+        return callback.onPrepareActionMode(this, mode, menu)
+    }
 
-	override fun onDestroyActionMode(mode: ActionMode) {
-		callback.onDestroyActionMode(this, mode)
-		clear()
-		actionMode = null
-	}
+    override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+        return callback.onActionItemClicked(this, mode, item)
+    }
 
-	private fun startActionMode(): ActionMode? {
-		focusedItemId = null
-		return actionMode ?: appCompatDelegate.startSupportActionMode(this).also {
-			actionMode = it
-		}
-	}
+    override fun onDestroyActionMode(mode: ActionMode) {
+        callback.onDestroyActionMode(this, mode)
+        clear()
+        actionMode = null
+    }
 
-	private fun notifySelectionChanged() {
-		val count = decoration.checkedItemsCount
-		callback.onSelectionChanged(this, count)
-		if (count == 0) {
-			actionMode?.finish()
-		} else {
-			actionMode?.invalidate()
-		}
-	}
+    private fun startActionMode(): ActionMode? {
+        focusedItemId = null
+        return actionMode ?: appCompatDelegate.startSupportActionMode(this).also {
+            actionMode = it
+        }
+    }
 
-	private fun restoreState(ids: Collection<Long>) {
-		if (ids.isEmpty() || decoration.checkedItemsCount != 0) {
-			return
-		}
-		decoration.checkAll(ids)
-		startActionMode()
-		notifySelectionChanged()
-	}
+    private fun notifySelectionChanged() {
+        val count = decoration.checkedItemsCount
+        callback.onSelectionChanged(this, count)
+        if (count == 0) {
+            actionMode?.finish()
+        } else {
+            actionMode?.invalidate()
+        }
+    }
 
-	interface Callback {
+    private fun restoreState(ids: Collection<Long>) {
+        if (ids.isEmpty() || decoration.checkedItemsCount != 0) {
+            return
+        }
+        decoration.checkAll(ids)
+        startActionMode()
+        notifySelectionChanged()
+    }
 
-		fun onSelectionChanged(controller: ListSelectionController, count: Int)
+    interface Callback {
 
-		fun onCreateActionMode(controller: ListSelectionController, menuInflater: MenuInflater, menu: Menu): Boolean
+        fun onSelectionChanged(controller: ListSelectionController, count: Int)
 
-		fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode?, menu: Menu): Boolean {
-			mode?.title = controller.count.toString()
-			return true
-		}
+        fun onCreateActionMode(controller: ListSelectionController, menuInflater: MenuInflater, menu: Menu): Boolean
 
-		fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode?, item: MenuItem): Boolean
+        fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode?, menu: Menu): Boolean {
+            mode?.title = controller.count.toString()
+            return true
+        }
 
-		fun onDestroyActionMode(controller: ListSelectionController, mode: ActionMode) = Unit
-	}
+        fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode?, item: MenuItem): Boolean
 
-	private inner class StateEventObserver : LifecycleEventObserver {
+        fun onDestroyActionMode(controller: ListSelectionController, mode: ActionMode) = Unit
+    }
 
-		override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
-			if (event == Lifecycle.Event.ON_CREATE) {
-				source.lifecycle.removeObserver(this)
-				val registry = registryOwner.savedStateRegistry
-				registry.registerSavedStateProvider(PROVIDER_NAME, this@ListSelectionController)
-				val state = registry.consumeRestoredStateForKey(PROVIDER_NAME)
-				if (state != null) {
-					Dispatchers.Main.dispatch(EmptyCoroutineContext) { // == Handler.post
-						if (source.lifecycle.currentState.isAtLeast(Lifecycle.State.CREATED)) {
-							restoreState(state.getLongArray(KEY_SELECTION)?.toList().orEmpty())
-						}
-					}
-				}
-			}
-		}
-	}
+    private inner class StateEventObserver : LifecycleEventObserver {
+
+        override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
+            if (event == Lifecycle.Event.ON_CREATE) {
+                source.lifecycle.removeObserver(this)
+                val registry = registryOwner.savedStateRegistry
+                registry.registerSavedStateProvider(PROVIDER_NAME, this@ListSelectionController)
+                val state = registry.consumeRestoredStateForKey(PROVIDER_NAME)
+                if (state != null) {
+                    Dispatchers.Main.dispatch(EmptyCoroutineContext) { // == Handler.post
+                        if (source.lifecycle.currentState.isAtLeast(Lifecycle.State.CREATED)) {
+                            restoreState(state.getLongArray(KEY_SELECTION)?.toList().orEmpty())
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

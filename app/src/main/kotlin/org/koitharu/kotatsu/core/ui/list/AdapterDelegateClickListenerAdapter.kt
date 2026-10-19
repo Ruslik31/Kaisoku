@@ -32,7 +32,10 @@ class AdapterDelegateClickListenerAdapter<I, O>(
 	fun attach(itemView: View) {
 		itemView.setOnClickListener(this)
 		itemView.setOnLongClickListener(this)
-		itemView.setOnContextClickListener(this)
+        itemView.setOnContextClickListener(this)
+        val touch = ListLongPressTouchListener { mappedItem() }
+        itemView.setOnTouchListener(touch)
+        itemView.addOnAttachStateChangeListener(touch)
 	}
 
 	companion object {

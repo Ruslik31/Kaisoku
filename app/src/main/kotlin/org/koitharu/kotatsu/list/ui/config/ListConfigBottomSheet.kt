@@ -49,7 +49,7 @@ class ListConfigBottomSheet :
 
 		if (viewModel.usesFixedColumns) {
 			binding.textViewGridTitle.setText(R.string.grid_columns)
-			binding.sliderGrid.valueFrom = 2f
+			binding.sliderGrid.valueFrom = 1f
 			binding.sliderGrid.valueTo = 12f
 			binding.sliderGrid.stepSize = 1f
 			binding.sliderGrid.setLabelFormatter { it.toInt().toString() }

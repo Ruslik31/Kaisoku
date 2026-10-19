@@ -31,6 +31,8 @@ fun mangaGridItemAD(
             org.koitharu.kotatsu.suggestions.local.recommendationReasonText(it, context)
         }
         binding.textViewRecommendationReason.isVisible = item.recommendation != null
+        if (item.recommendation == null) binding.textViewRecommendationReason.bindFavoriteCategories(item.favoriteCategories)
+        else binding.textViewRecommendationReason.setOnClickListener(null)
         binding.progressView.setProgress(item.progress, PAYLOAD_PROGRESS_CHANGED in payloads)
         with(binding.iconsView) {
             clearIcons()

@@ -59,7 +59,7 @@
             android:key="grid_columns"
             android:dependency="grid_fixed_columns"
             android:title="@string/grid_columns"
-            android:valueFrom="2"
+            android:valueFrom="1"
             android:valueTo="12"
             android:stepSize="1"
             app:defaultValue="3" />
@@ -69,6 +69,40 @@
             android:defaultValue="true"
             android:title="@string/show_favorites_category_strip"
             android:summary="@string/show_favorites_category_strip_summary" />
+        <SwitchPreferenceCompat
+            android:key="favorites_overview"
+            android:defaultValue="false"
+            android:title="@string/favorites_overview"
+            android:summary="@string/favorites_overview_summary" />
+
+        <SwitchPreferenceCompat
+            android:key="search_favorite_categories"
+            android:defaultValue="false"
+            android:title="@string/search_favorite_categories"
+            android:summary="@string/search_favorite_categories_summary" />
+
+        <ListPreference
+            android:key="favorites_category_sort"
+            android:defaultValue="MANUAL"
+            android:entries="@array/favorites_category_sorts"
+            android:entryValues="@array/favorites_category_sort_values"
+            android:title="@string/favorites_category_sort"
+            app:useSimpleSummaryProvider="true" />
+
+        <SwitchPreferenceCompat
+            android:key="favorites_category_sort_ascending"
+            android:defaultValue="true"
+            android:title="@string/favorites_category_sort_ascending" />
+
+        <ListPreference
+            android:key="list_long_press_delay"
+            android:defaultValue="0"
+            android:entries="@array/list_long_press_delays"
+            android:entryValues="@array/list_long_press_delay_values"
+            android:title="@string/list_long_press_delay"
+            android:summary="@string/list_long_press_delay_summary"
+            app:useSimpleSummaryProvider="true" />
+
 
         <SwitchPreferenceCompat
             android:key="new_chapter_counter"

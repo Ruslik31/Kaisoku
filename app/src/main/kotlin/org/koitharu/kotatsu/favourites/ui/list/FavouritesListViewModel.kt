@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
@@ -62,6 +63,7 @@ class FavouritesListViewModel @Inject constructor(
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), QuickFilterListener {
 
 	val categoryId: Long = savedStateHandle[AppRouter.KEY_ID] ?: NO_ID
+    val arrangement = org.koitharu.kotatsu.core.util.ext.MutableEventFlow<List<Manga>>()
 	private val quickFilter = quickFilterFactory.create(categoryId)
 	private val refreshTrigger = MutableStateFlow(Any())
 	private val limit = MutableStateFlow(PAGE_SIZE)
@@ -116,6 +118,13 @@ class FavouritesListViewModel @Inject constructor(
 
 	override fun clearFilter() = quickFilter.clearFilter()
 
+    suspend fun filterPanelOptions() = quickFilter.panelOptions()
+    fun selectedFilters(): Set<ListFilterOption> = quickFilter.appliedOptions.value
+    fun applyFilters(options: Collection<ListFilterOption>) {
+        limit.value = PAGE_SIZE
+        quickFilter.replaceOptions(options)
+    }
+
 	fun markAsRead(items: Set<Manga>) {
 		launchLoadingJob(Dispatchers.Default) {
 			markAsReadUseCase(items)
@@ -139,12 +148,26 @@ class FavouritesListViewModel @Inject constructor(
 
 	fun setSortOrder(order: ListSortOrder) {
 		if (categoryId == NO_ID) {
-			return
+            settingsForFavorites.allFavoritesSortOrder = order
+            return
 		}
 		launchJob {
 			repository.setCategoryOrder(categoryId, order)
 		}
 	}
+
+    private val settingsForFavorites = settings
+
+    fun arrangeFavorites() = launchJob(Dispatchers.Default) {
+        val filters = if (settingsForFavorites.isNsfwContentDisabled) setOf(ListFilterOption.SFW) else emptySet()
+        arrangement.call(repository.observeAll(categoryId, ListSortOrder.MANUAL, filters, Int.MAX_VALUE).first())
+    }
+
+    fun saveArrangement(ids: List<Long>) = launchJob(Dispatchers.Default) {
+        repository.reorderFavorites(categoryId, ids)
+        if (categoryId == NO_ID) settingsForFavorites.allFavoritesSortOrder = ListSortOrder.MANUAL
+        else repository.setCategoryOrder(categoryId, ListSortOrder.MANUAL)
+    }
 
 	fun requestMoreItems() {
 		if (isPaginationReady.compareAndSet(true, false)) {

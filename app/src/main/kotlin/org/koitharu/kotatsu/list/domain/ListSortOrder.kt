@@ -20,6 +20,7 @@ enum class ListSortOrder(
 	RATING(R.string.by_rating),
 	RATING_REVERSE(R.string.by_rating),
 	RELEVANCE(R.string.by_relevance),
+    MANUAL(R.string.manual),
 	NEW_CHAPTERS(R.string.new_chapters),
 	NEW_CHAPTERS_REVERSE(R.string.new_chapters),
 	LAST_READ(R.string.last_read),
@@ -42,6 +43,7 @@ enum class ListSortOrder(
 			UPDATED, UPDATED_REVERSE -> Type.UPDATED
 			TOTAL_CHAPTERS, TOTAL_CHAPTERS_REVERSE -> Type.TOTAL_CHAPTERS
 			RELEVANCE -> Type.RELEVANCE
+            MANUAL -> Type.MANUAL
 		}
 
 	val isAscending: Boolean
@@ -62,6 +64,7 @@ enum class ListSortOrder(
 		UPDATED(R.string.updated),
 		TOTAL_CHAPTERS(R.string.total_chapters),
 		RELEVANCE(R.string.by_relevance),
+        MANUAL(R.string.manual),
 	}
 
 	companion object {
@@ -85,6 +88,7 @@ enum class ListSortOrder(
 			TOTAL_CHAPTERS_REVERSE,
 		)
 		val FAVORITES: Set<ListSortOrder> = EnumSet.of(
+            MANUAL,
 			ALPHABETIC,
 			ALPHABETIC_REVERSE,
 			NEWEST,
@@ -107,7 +111,7 @@ enum class ListSortOrder(
 		val SUGGESTIONS: Set<ListSortOrder> = EnumSet.of(RELEVANCE)
 
 		val FAVORITE_TYPES: List<Type> = Type.entries - Type.RELEVANCE
-		val HISTORY_TYPES: List<Type> = Type.entries.filterNot { it == Type.RELEVANCE || it == Type.RATING }
+		val HISTORY_TYPES: List<Type> = Type.entries.filterNot { it == Type.RELEVANCE || it == Type.RATING || it == Type.MANUAL }
 
 		private val ASCENDING = EnumSet.of(
 			ALPHABETIC,
@@ -132,6 +136,7 @@ enum class ListSortOrder(
 			Type.UPDATED -> if (isAscending) UPDATED_REVERSE else UPDATED
 			Type.TOTAL_CHAPTERS -> if (isAscending) TOTAL_CHAPTERS_REVERSE else TOTAL_CHAPTERS
 			Type.RELEVANCE -> RELEVANCE
+            Type.MANUAL -> MANUAL
 		}
 
 		operator fun invoke(value: String, fallback: ListSortOrder) = entries.find(value) ?: fallback

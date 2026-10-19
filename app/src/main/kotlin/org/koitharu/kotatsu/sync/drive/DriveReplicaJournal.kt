@@ -18,6 +18,8 @@ object DriveReplicaJournal {
             listOf("title", "sort_key", "order", "track", "show_in_lib", "deleted_at")),
         Table("favourites", "favourites", listOf("manga_id", "category_id"),
             listOf("sort_key", "pinned", "created_at", "deleted_at")),
+        Table("favorite_order", "favorite_order", listOf("manga_id", "scope_id"),
+            listOf("rank", "updated_at", "revision")),
         Table("history", "history", listOf("manga_id"),
             listOf("chapter_id", "page", "scroll", "percent", "updated_at", "deleted_at")),
         Table("bookmarks", "bookmarks", listOf("manga_id", "page_id"), emptyList()),

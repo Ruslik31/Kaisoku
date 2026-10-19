@@ -6,6 +6,13 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import androidx.appcompat.view.ActionMode
+import androidx.core.view.MenuProvider
+import kotlinx.coroutines.launch
+import org.koitharu.kotatsu.core.util.ext.addMenuProvider
+import org.koitharu.kotatsu.core.util.ext.viewLifecycleScope
+import org.koitharu.kotatsu.core.util.ext.observeEvent
+import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.list.domain.ListFilterOption
 import androidx.appcompat.widget.PopupMenu
 import androidx.fragment.app.viewModels
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -31,8 +38,64 @@ class FavouritesListFragment : MangaListFragment(), PopupMenu.OnMenuItemClickLis
 
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
-		binding.recyclerView.isVP2BugWorkaroundEnabled = true
+        binding.recyclerView.isVP2BugWorkaroundEnabled = true
+        addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
+                menu.add(Menu.NONE, R.id.action_favorites_filters, 30, R.string.favorites_filters)
+                menu.add(Menu.NONE, R.id.action_favorites_reorder, 31, R.string.favorites_reorder)
+            }
+            override fun onPrepareMenu(menu: Menu) {
+                val visible = (parentFragment as? org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment)
+                    ?.isCategoryOverviewVisible != true
+                menu.findItem(R.id.action_favorites_filters)?.isVisible = visible
+                menu.findItem(R.id.action_favorites_reorder)?.isVisible = visible
+            }
+            override fun onMenuItemSelected(item: MenuItem): Boolean {
+                if (item.itemId == R.id.action_favorites_reorder) { viewModel.arrangeFavorites(); return true }
+                if (item.itemId != R.id.action_favorites_filters) return false
+                showFilterPanel()
+                return true
+            }
+        })
+        viewModel.arrangement.observeEvent(viewLifecycleOwner) { values ->
+            if (isResumed) showFavoriteOrderDialog(requireContext(), values) { viewModel.saveArrangement(it) }
+        }
 	}
+
+    private fun showFilterPanel() {
+        viewLifecycleScope.launch {
+            val options = viewModel.filterPanelOptions()
+            if (viewBinding == null || !isAdded) return@launch
+            val selected = viewModel.selectedFilters().toMutableSet()
+            val labels = options.map { option ->
+                when {
+                    option is ListFilterOption.Source -> option.mangaSource.getTitle(requireContext())
+                    option.titleText != null -> option.titleText.toString()
+                    option.titleResId != 0 -> getString(option.titleResId)
+                    else -> option.groupKey
+                }
+            }.toTypedArray()
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.favorites_filters)
+                .setMultiChoiceItems(labels, options.map { it in selected }.toBooleanArray()) { dialog, index, checked ->
+                    val option = options[index]
+                    if (checked) {
+                        selected.removeAll { candidate ->
+                            (option is ListFilterOption.State && candidate is ListFilterOption.State) ||
+                                (option is ListFilterOption.Inverted && candidate == option.option) ||
+                                (candidate is ListFilterOption.Inverted && candidate.option == option)
+                        }
+                        selected.add(option)
+                    } else selected.remove(option)
+                    val list = (dialog as androidx.appcompat.app.AlertDialog).listView
+                    options.forEachIndexed { i, value -> list.setItemChecked(i, value in selected) }
+                }
+                .setPositiveButton(android.R.string.ok) { _, _ -> viewModel.applyFilters(selected) }
+                .setNeutralButton(R.string.reset_filter) { _, _ -> viewModel.applyFilters(emptyList()) }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }
+    }
 
 	override fun onScrolledToEnd() = viewModel.requestMoreItems()
 

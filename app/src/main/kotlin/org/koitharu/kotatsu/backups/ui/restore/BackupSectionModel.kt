@@ -19,6 +19,7 @@ data class BackupSectionModel(
 			BackupSection.HISTORY -> R.string.history
 			BackupSection.CATEGORIES -> R.string.favourites_categories
 			BackupSection.FAVOURITES -> R.string.favourites
+            BackupSection.FAVORITE_ORDER -> R.string.favorites_manual_order
 			BackupSection.SETTINGS -> R.string.settings
 			BackupSection.SETTINGS_READER_GRID -> R.string.reader_actions
 			BackupSection.BOOKMARKS -> R.string.bookmarks

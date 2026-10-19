@@ -17,6 +17,8 @@ sealed class MangaListModel : ListModel {
 	abstract val manga: Manga
 	abstract val counter: Int
 
+    open val favoriteCategories: List<org.koitharu.kotatsu.core.model.FavouriteCategory> = emptyList()
+
     open val recommendation: org.koitharu.kotatsu.suggestions.local.Recommendation? = null
 
 	val id: Long
@@ -43,6 +45,7 @@ sealed class MangaListModel : ListModel {
 			appendLine()
 		}
 		append(manga.source.getTitle(context))
+        if (favoriteCategories.isNotEmpty()) { appendLine(); favoriteCategories.joinTo(this) { it.title } }
 	}
 
 	override fun areItemsTheSame(other: ListModel): Boolean {

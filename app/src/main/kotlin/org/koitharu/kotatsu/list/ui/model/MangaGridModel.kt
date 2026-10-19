@@ -15,6 +15,7 @@ data class MangaGridModel(
 	val isSaved: Boolean,
 	val isTitleHidden: Boolean = false,
     override val recommendation: org.koitharu.kotatsu.suggestions.local.Recommendation? = null,
+    override val favoriteCategories: List<org.koitharu.kotatsu.core.model.FavouriteCategory> = emptyList(),
 ) : MangaListModel() {
 
 	override fun getChangePayload(previousState: ListModel): Any? = when {
