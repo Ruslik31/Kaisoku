@@ -5,6 +5,7 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.core.view.children
+import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.snackbar.Snackbar
@@ -23,6 +24,7 @@ import org.koitharu.kotatsu.core.util.ext.resetTransformations
 import org.koitharu.kotatsu.databinding.FragmentReaderDoubleBinding
 import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.reader.ui.ReaderState
+import org.koitharu.kotatsu.reader.ui.config.ReaderZoomScope
 import org.koitharu.kotatsu.reader.ui.pager.BaseReaderAdapter
 import org.koitharu.kotatsu.reader.ui.pager.BaseReaderFragment
 import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
@@ -32,237 +34,245 @@ import kotlin.math.absoluteValue
 @AndroidEntryPoint
 open class DoubleReaderFragment : BaseReaderFragment<FragmentReaderDoubleBinding>() {
 
-	@Inject
-	lateinit var networkState: NetworkState
+    @Inject
+    lateinit var networkState: NetworkState
 
-	@Inject
-	lateinit var pageLoader: PageLoader
+    @Inject
+    lateinit var pageLoader: PageLoader
 
-	@Inject
-	lateinit var settings: AppSettings
+    @Inject
+    lateinit var settings: AppSettings
 
-	private var recyclerLifecycleDispatcher: RecyclerViewLifecycleDispatcher? = null
-	protected var positionMap: IntArray = IntArray(0)
-		private set
-	protected var originalPageCount: Int = 0
-		private set
+    private var recyclerLifecycleDispatcher: RecyclerViewLifecycleDispatcher? = null
+    protected var positionMap: IntArray = IntArray(0)
+        private set
+    protected var originalPageCount: Int = 0
+        private set
 
-	override fun onCreateViewBinding(
-		inflater: LayoutInflater,
-		container: ViewGroup?,
-	) = FragmentReaderDoubleBinding.inflate(inflater, container, false)
+    override fun onCreateViewBinding(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+    ) = FragmentReaderDoubleBinding.inflate(inflater, container, false)
 
-	override fun onViewBindingCreated(
-		binding: FragmentReaderDoubleBinding,
-		savedInstanceState: Bundle?,
-	) {
-		super.onViewBindingCreated(binding, savedInstanceState)
-		with(binding.recyclerView) {
-			clipChildren = false
-			clipToPadding = false
-			adapter = readerAdapter
-			recyclerLifecycleDispatcher = RecyclerViewLifecycleDispatcher().also {
-				addOnScrollListener(it)
-			}
-			addOnScrollListener(PageScrollListener())
-			DoublePageSnapHelper(settings).attachToRecyclerView(this)
-		}
-		viewModel.pageAnimation.observe(viewLifecycleOwner) {
-			binding.recyclerView.scrollBy(0, 0)
-		}
-	}
+    override fun onViewBindingCreated(
+        binding: FragmentReaderDoubleBinding,
+        savedInstanceState: Bundle?,
+    ) {
+        super.onViewBindingCreated(binding, savedInstanceState)
+        val memory = viewModel.readerSettingsProducer.zoomMemory
+        memory.get(ReaderZoomScope.DOUBLE)?.coerceIn(1f, 2.5f)?.let { binding.frame.zoom = it }
+        binding.frame.onUserZoomChanged = { zoom ->
+            if (viewLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                memory.record(ReaderZoomScope.DOUBLE, zoom)
+            }
+        }
+        with(binding.recyclerView) {
+            clipChildren = false
+            clipToPadding = false
+            adapter = readerAdapter
+            recyclerLifecycleDispatcher = RecyclerViewLifecycleDispatcher().also {
+                addOnScrollListener(it)
+            }
+            addOnScrollListener(PageScrollListener())
+            DoublePageSnapHelper(settings).attachToRecyclerView(this)
+        }
+        viewModel.pageAnimation.observe(viewLifecycleOwner) {
+            binding.recyclerView.scrollBy(0, 0)
+        }
+    }
 
-	override fun onDestroyView() {
-		recyclerLifecycleDispatcher = null
-		requireViewBinding().recyclerView.adapter = null
-		super.onDestroyView()
-	}
+    override fun onDestroyView() {
+        requireViewBinding().frame.onUserZoomChanged = null
+        recyclerLifecycleDispatcher = null
+        requireViewBinding().recyclerView.adapter = null
+        super.onDestroyView()
+    }
 
-	override fun adapterPages(pages: List<ReaderPage>): List<ReaderPage> =
-		pages.padForDoublePage(coverPage = settings.isReaderDoubleCoverPage)
+    override fun adapterPages(pages: List<ReaderPage>): List<ReaderPage> =
+        pages.padForDoublePage(coverPage = settings.isReaderDoubleCoverPage)
 
-	override suspend fun onPagesChanged(pages: List<ReaderPage>, pendingState: ReaderState?) = coroutineScope {
-		originalPageCount = pages.size
-		val paddedPages = adapterPages(pages)
-		positionMap = IntArray(paddedPages.size)
-		var originalIndex = 0
-		for (i in paddedPages.indices) {
-			if (paddedPages[i].index < 0) {
-				positionMap[i] = -1
-			} else {
-				positionMap[i] = originalIndex++
-			}
-		}
-		val items = launch {
-			requireAdapter().setItems(paddedPages)
-			yield()
-			viewBinding?.recyclerView?.let { rv ->
-				recyclerLifecycleDispatcher?.invalidate(rv)
-			}
-		}
-		if (pendingState != null) {
-			var position = paddedPages.indexOfFirst {
-				it.chapterId == pendingState.chapterId && it.index == pendingState.page
-			}
-			items.join()
-			if (position != -1) {
-				position = position.toPagePosition()
-				requireViewBinding().recyclerView.firstVisibleItemPosition = position
-				notifyPageChanged(position, position + 1)
-			} else {
-				Snackbar.make(requireView(), R.string.not_found_404, Snackbar.LENGTH_SHORT)
-					.show()
-			}
-		} else {
-			items.join()
-		}
-	}
+    override suspend fun onPagesChanged(pages: List<ReaderPage>, pendingState: ReaderState?) = coroutineScope {
+        originalPageCount = pages.size
+        val paddedPages = adapterPages(pages)
+        positionMap = IntArray(paddedPages.size)
+        var originalIndex = 0
+        for (i in paddedPages.indices) {
+            if (paddedPages[i].index < 0) {
+                positionMap[i] = -1
+            } else {
+                positionMap[i] = originalIndex++
+            }
+        }
+        val items = launch {
+            requireAdapter().setItems(paddedPages)
+            yield()
+            viewBinding?.recyclerView?.let { rv ->
+                recyclerLifecycleDispatcher?.invalidate(rv)
+            }
+        }
+        if (pendingState != null) {
+            var position = paddedPages.indexOfFirst {
+                it.chapterId == pendingState.chapterId && it.index == pendingState.page
+            }
+            items.join()
+            if (position != -1) {
+                position = position.toPagePosition()
+                requireViewBinding().recyclerView.firstVisibleItemPosition = position
+                notifyPageChanged(position, position + 1)
+            } else {
+                Snackbar.make(requireView(), R.string.not_found_404, Snackbar.LENGTH_SHORT)
+                    .show()
+            }
+        } else {
+            items.join()
+        }
+    }
 
-	override fun onCreateAdapter() = DoublePagesAdapter(
-		lifecycleOwner = viewLifecycleOwner,
-		loader = pageLoader,
-		readerSettingsProducer = viewModel.readerSettingsProducer,
-		networkState = networkState,
-		exceptionResolver = exceptionResolver,
-	)
+    override fun onCreateAdapter() = DoublePagesAdapter(
+        lifecycleOwner = viewLifecycleOwner,
+        loader = pageLoader,
+        readerSettingsProducer = viewModel.readerSettingsProducer,
+        networkState = networkState,
+        exceptionResolver = exceptionResolver,
+    )
 
-	override fun onZoomIn() {
-		viewBinding?.frame?.onZoomIn()
-	}
+    override fun onZoomIn() {
+        viewBinding?.frame?.onZoomIn()
+    }
 
-	override fun onZoomOut() {
-		viewBinding?.frame?.onZoomOut()
-	}
+    override fun onZoomOut() {
+        viewBinding?.frame?.onZoomOut()
+    }
 
-	override fun switchPageBy(delta: Int) {
-		if (delta.absoluteValue > 1 || !isAnimationEnabled()) {
-			switchPageTo(getCurrentItem() + delta + delta, false)
-			return
-		}
-		val rv = viewBinding?.recyclerView ?: return
-		val distance = rv.width * delta
-		rv.smoothScrollBy(distance, 0, AccelerateDecelerateInterpolator())
-	}
+    override fun switchPageBy(delta: Int) {
+        if (delta.absoluteValue > 1 || !isAnimationEnabled()) {
+            switchPageTo(getCurrentItem() + delta + delta, false)
+            return
+        }
+        val rv = viewBinding?.recyclerView ?: return
+        val distance = rv.width * delta
+        rv.smoothScrollBy(distance, 0, AccelerateDecelerateInterpolator())
+    }
 
-	override fun switchPageTo(position: Int, smooth: Boolean) {
-		val lm = viewBinding?.recyclerView?.layoutManager as? LinearLayoutManager ?: return
-		val targetPosition = positionMap.indexOf(position).takeIf { it >= 0 } ?: position.toPagePosition()
-		lm.scrollToPositionWithOffset(targetPosition, 0)
-	}
+    override fun switchPageTo(position: Int, smooth: Boolean) {
+        val lm = viewBinding?.recyclerView?.layoutManager as? LinearLayoutManager ?: return
+        val targetPosition = positionMap.indexOf(position).takeIf { it >= 0 } ?: position.toPagePosition()
+        lm.scrollToPositionWithOffset(targetPosition, 0)
+    }
 
-	override fun getCurrentState(): ReaderState? = viewBinding?.run {
-		val adapter = recyclerView.adapter as? BaseReaderAdapter<*>
-		val currentPosition = getCurrentItem()
-		val page = sequenceOf(
-			currentPosition,
-			currentPosition + 1,
-			currentPosition - 1,
-		).mapNotNull { position ->
-			adapter?.getItemOrNull(position)?.takeIf { it.index >= 0 }
-		}.firstOrNull() ?: return@run null
-		ReaderState(
-			chapterId = page.chapterId,
-			page = page.index,
-			scroll = 0,
-		)
-	}
+    override fun getCurrentState(): ReaderState? = viewBinding?.run {
+        val adapter = recyclerView.adapter as? BaseReaderAdapter<*>
+        val currentPosition = getCurrentItem()
+        val page = sequenceOf(
+            currentPosition,
+            currentPosition + 1,
+            currentPosition - 1,
+        ).mapNotNull { position ->
+            adapter?.getItemOrNull(position)?.takeIf { it.index >= 0 }
+        }.firstOrNull() ?: return@run null
+        ReaderState(
+            chapterId = page.chapterId,
+            page = page.index,
+            scroll = 0,
+        )
+    }
 
-	protected open fun notifyPageChanged(lowerPos: Int, upperPos: Int) {
-		val originalLower = positionMap.getOrElse(lowerPos) { -1 }
-		val originalUpper = positionMap.getOrElse(upperPos) { -1 }
-		val lower = if (originalLower >= 0) originalLower else originalUpper
-		val upper = if (originalUpper >= 0) originalUpper else originalLower
-		if (lower >= 0) {
-			viewModel.onCurrentPageChanged(
-				lower,
-				upper.coerceAtLeast(lower),
-				contentGeneration = adapterContentGeneration,
-			)
-		}
-	}
+    protected open fun notifyPageChanged(lowerPos: Int, upperPos: Int) {
+        val originalLower = positionMap.getOrElse(lowerPos) { -1 }
+        val originalUpper = positionMap.getOrElse(upperPos) { -1 }
+        val lower = if (originalLower >= 0) originalLower else originalUpper
+        val upper = if (originalUpper >= 0) originalUpper else originalLower
+        if (lower >= 0) {
+            viewModel.onCurrentPageChanged(
+                lower,
+                upper.coerceAtLeast(lower),
+                contentGeneration = adapterContentGeneration,
+            )
+        }
+    }
 
-	private fun getCurrentItem() = (requireViewBinding().recyclerView.layoutManager as LinearLayoutManager)
-		.findFirstCompletelyVisibleItemPosition().toPagePosition()
+    private fun getCurrentItem() = (requireViewBinding().recyclerView.layoutManager as LinearLayoutManager)
+        .findFirstCompletelyVisibleItemPosition().toPagePosition()
 
-	private fun Int.toPagePosition() = this and 1.inv()
+    private fun Int.toPagePosition() = this and 1.inv()
 
-	private inner class PageScrollListener : RecyclerView.OnScrollListener() {
+    private inner class PageScrollListener : RecyclerView.OnScrollListener() {
 
-		private var firstPos = RecyclerView.NO_POSITION
-		private var lastPos = RecyclerView.NO_POSITION
+        private var firstPos = RecyclerView.NO_POSITION
+        private var lastPos = RecyclerView.NO_POSITION
 
-		override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-			super.onScrolled(recyclerView, dx, dy)
-			val lm = recyclerView.layoutManager as? LinearLayoutManager ?: run {
-				firstPos = RecyclerView.NO_POSITION
-				lastPos = RecyclerView.NO_POSITION
-				return
-			}
-			val newFirstPos = lm.findFirstVisibleItemPosition()
-			val newLastPos = lm.findLastVisibleItemPosition()
-			applyPageAnimation(recyclerView, lm, newFirstPos)
-			if (newFirstPos != firstPos || newLastPos != lastPos) {
-				firstPos = newFirstPos
-				lastPos = newLastPos
-				notifyPageChanged(newFirstPos, newLastPos)
-			}
-		}
+        override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+            super.onScrolled(recyclerView, dx, dy)
+            val lm = recyclerView.layoutManager as? LinearLayoutManager ?: run {
+                firstPos = RecyclerView.NO_POSITION
+                lastPos = RecyclerView.NO_POSITION
+                return
+            }
+            val newFirstPos = lm.findFirstVisibleItemPosition()
+            val newLastPos = lm.findLastVisibleItemPosition()
+            applyPageAnimation(recyclerView, lm, newFirstPos)
+            if (newFirstPos != firstPos || newLastPos != lastPos) {
+                firstPos = newFirstPos
+                lastPos = newLastPos
+                notifyPageChanged(newFirstPos, newLastPos)
+            }
+        }
 
-		private fun applyPageAnimation(
-			recyclerView: RecyclerView,
-			layoutManager: LinearLayoutManager,
-			firstVisiblePosition: Int,
-		) {
-			if (!isAnimationEnabled() || viewModel.pageAnimation.value != ReaderAnimation.ADVANCED) {
-				recyclerView.children.forEach { it.resetTransformations() }
-				return
-			}
-			if (firstVisiblePosition == RecyclerView.NO_POSITION) return
-			val width = recyclerView.width.toFloat()
-			val start = firstVisiblePosition.toPagePosition()
-			val left = layoutManager.findViewByPosition(start) ?: return
-			val offset = -left.left
-			if (width <= 0f || offset == 0) {
-				recyclerView.children.forEach { it.resetTransformations() }
-				return
-			}
-			val fraction = (offset / width).coerceIn(0f, 1f)
-			val half = width / 2f
-			recyclerView.children.forEach { child ->
-				when (recyclerView.getChildAdapterPosition(child)) {
-					start -> {
-						child.translationX = offset.toFloat()
-						child.translationZ = 0f
-						child.rotationY = 0f
-						child.alpha = 1f
-					}
-					start + 1 -> {
-						child.translationX = half - child.left
-						child.pivotX = 0f
-						child.pivotY = child.height / 2f
-						child.cameraDistance = 20_000f
-						child.translationZ = 3f
-						child.rotationY = -180f * fraction
-						child.alpha = if (fraction < 0.5f) 1f else 0f
-					}
-					start + 2 -> {
-						child.translationX = -child.left.toFloat()
-						child.pivotX = child.width.toFloat()
-						child.pivotY = child.height / 2f
-						child.cameraDistance = 20_000f
-						child.translationZ = 3f
-						child.rotationY = 180f * (1f - fraction)
-						child.alpha = if (fraction >= 0.5f) 1f else 0f
-					}
-					start + 3 -> {
-						child.translationX = half - child.left
-						child.translationZ = 0f
-						child.rotationY = 0f
-						child.alpha = 1f
-					}
-					else -> child.resetTransformations()
-				}
-			}
-		}
-	}
+        private fun applyPageAnimation(
+            recyclerView: RecyclerView,
+            layoutManager: LinearLayoutManager,
+            firstVisiblePosition: Int,
+        ) {
+            if (!isAnimationEnabled() || viewModel.pageAnimation.value != ReaderAnimation.ADVANCED) {
+                recyclerView.children.forEach { it.resetTransformations() }
+                return
+            }
+            if (firstVisiblePosition == RecyclerView.NO_POSITION) return
+            val width = recyclerView.width.toFloat()
+            val start = firstVisiblePosition.toPagePosition()
+            val left = layoutManager.findViewByPosition(start) ?: return
+            val offset = -left.left
+            if (width <= 0f || offset == 0) {
+                recyclerView.children.forEach { it.resetTransformations() }
+                return
+            }
+            val fraction = (offset / width).coerceIn(0f, 1f)
+            val half = width / 2f
+            recyclerView.children.forEach { child ->
+                when (recyclerView.getChildAdapterPosition(child)) {
+                    start -> {
+                        child.translationX = offset.toFloat()
+                        child.translationZ = 0f
+                        child.rotationY = 0f
+                        child.alpha = 1f
+                    }
+                    start + 1 -> {
+                        child.translationX = half - child.left
+                        child.pivotX = 0f
+                        child.pivotY = child.height / 2f
+                        child.cameraDistance = 20_000f
+                        child.translationZ = 3f
+                        child.rotationY = -180f * fraction
+                        child.alpha = if (fraction < 0.5f) 1f else 0f
+                    }
+                    start + 2 -> {
+                        child.translationX = -child.left.toFloat()
+                        child.pivotX = child.width.toFloat()
+                        child.pivotY = child.height / 2f
+                        child.cameraDistance = 20_000f
+                        child.translationZ = 3f
+                        child.rotationY = 180f * (1f - fraction)
+                        child.alpha = if (fraction >= 0.5f) 1f else 0f
+                    }
+                    start + 3 -> {
+                        child.translationX = half - child.left
+                        child.translationZ = 0f
+                        child.rotationY = 0f
+                        child.alpha = 1f
+                    }
+                    else -> child.resetTransformations()
+                }
+            }
+        }
+    }
 }

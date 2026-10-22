@@ -18,6 +18,7 @@ import java.util.zip.ZipOutputStream
 /** Bridge to Kaisoku's existing, typed and backwards-compatible backup serializers. */
 object DriveReplicaBackup {
     const val SOURCE_SETTINGS = "source_settings"
+    const val ALL_FAVORITES_UID = "__kaisoku_all_favorites__"
 
     fun read(
         backup: File,
@@ -46,9 +47,10 @@ object DriveReplicaBackup {
                                 ?: categoryUid(id, item.string("title"))
                             categories[id] = uid
                             values[section.entryName to uid] = JsonObject(item + ("sync_uid" to JsonPrimitive(uid)))
-                        } else if (section == BackupSection.FAVOURITES) {
+                        } else if (section == BackupSection.FAVOURITES || section == BackupSection.FAVORITE_ORDER) {
                             val id = item.number("category_id")
-                            val uid = categories[id] ?: categoryUid(id, null)
+                            val uid = if (section == BackupSection.FAVORITE_ORDER && id == 0L) ALL_FAVORITES_UID
+                                else categories[id] ?: categoryUid(id, null)
                             values[section.entryName to "${item.number("manga_id")}/$uid"] =
                                 JsonObject(item + ("sync_uid" to JsonPrimitive(uid)))
                         } else if (section == BackupSection.BOOKMARKS) {
@@ -85,8 +87,10 @@ object DriveReplicaBackup {
                     JsonArray(listOf(JsonObject(rows.associate { it.key to checkNotNull(it.value) })))
                 } else JsonArray(rows.map { record ->
                     val data = checkNotNull(record.value).jsonObject
-                    if (section == BackupSection.CATEGORIES || section == BackupSection.FAVOURITES) {
-                        JsonObject(data + ("category_id" to JsonPrimitive(categoryId(data.string("sync_uid")))))
+                    if (section == BackupSection.CATEGORIES || section == BackupSection.FAVOURITES || section == BackupSection.FAVORITE_ORDER) {
+                        val uid = data.string("sync_uid")
+                        val id = if (section == BackupSection.FAVORITE_ORDER && uid == ALL_FAVORITES_UID) 0L else categoryId(uid)
+                        JsonObject(data + ("category_id" to JsonPrimitive(id)))
                     } else data
                 })
                 output.putNextEntry(ZipEntry(section.entryName))
@@ -99,6 +103,7 @@ object DriveReplicaBackup {
     fun rawKey(section: String, key: String, categoryId: (String) -> Long): String = when (section) {
         "categories" -> categoryId(key).toString()
         "favourites" -> "${key.substringBefore('/')}:${categoryId(key.substringAfter('/'))}"
+        "favorite_order" -> "${key.substringBefore('/')}:${if (key.substringAfter('/') == ALL_FAVORITES_UID) 0L else categoryId(key.substringAfter('/'))}"
         else -> key
     }
 

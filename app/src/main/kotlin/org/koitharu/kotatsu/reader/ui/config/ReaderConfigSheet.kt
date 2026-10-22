@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.core.ui.sheet.BaseAdaptiveSheet
 import org.koitharu.kotatsu.core.util.ext.consume
 import org.koitharu.kotatsu.core.util.ext.findParentCallback
 import org.koitharu.kotatsu.core.util.ext.observe
+import org.koitharu.kotatsu.core.util.ext.getParcelableCompat
 import org.koitharu.kotatsu.core.util.ext.setValueRounded
 import org.koitharu.kotatsu.core.util.ext.viewLifecycleScope
 import org.koitharu.kotatsu.core.util.progress.IntPercentLabelFormatter
@@ -60,6 +61,8 @@ class ReaderConfigSheet :
 
     private lateinit var mode: ReaderMode
     private lateinit var imageServerDelegate: ImageServerDelegate
+    private val actionPage: org.koitharu.kotatsu.reader.ui.pager.ReaderPage?
+        get() = arguments?.getParcelableCompat("action_page")
 
     @Inject
     lateinit var settings: AppSettings
@@ -104,6 +107,7 @@ class ReaderConfigSheet :
 
         binding.checkableGroup.addOnButtonCheckedListener(this)
         binding.buttonSavePage.setOnClickListener(this)
+        binding.buttonSharePage.setOnClickListener(this)
         binding.buttonScreenRotate.setOnClickListener(this)
         binding.buttonSettings.setOnClickListener(this)
         binding.buttonImageServer.setOnClickListener(this)
@@ -117,7 +121,7 @@ class ReaderConfigSheet :
         binding.buttonOcr.setOnClickListener(this)
         binding.buttonTranslatedText.setOnClickListener(this)
         binding.buttonTranslatedText.isVisible = false
-        viewModel.currentTranslationState()?.let { translationState ->
+        viewModel.currentTranslationState(actionPage)?.let { translationState ->
             translationState.onEach { state ->
                 val overflow = (state as? org.koitharu.kotatsu.reader.translate.PageTranslationState.Done)?.overflow.orEmpty()
                 binding.buttonTranslatedText.isVisible = settings.isPageTranslationEnabled && overflow.isNotEmpty()
@@ -184,7 +188,12 @@ class ReaderConfigSheet :
             }
 
             R.id.button_save_page -> {
-                findParentCallback(Callback::class.java)?.onSavePageClick() ?: return
+                findParentCallback(Callback::class.java)?.onSavePageClick(actionPage) ?: return
+                dismissAllowingStateLoss()
+            }
+
+            R.id.button_share_page -> {
+                findParentCallback(Callback::class.java)?.onSharePageClick(actionPage) ?: return
                 dismissAllowingStateLoss()
             }
 
@@ -197,7 +206,7 @@ class ReaderConfigSheet :
             }
 
             R.id.button_color_filter -> {
-                val page = viewModel.getCurrentPage() ?: return
+                val page = viewModel.resolveActionPage(actionPage)?.toMangaPage() ?: return
                 val manga = viewModel.getMangaOrNull() ?: return
                 router.openColorFilterConfig(manga, page)
             }
@@ -223,17 +232,17 @@ class ReaderConfigSheet :
             }
 
             R.id.button_translate -> {
-                viewModel.toggleTranslateCurrentPage()
+                viewModel.toggleTranslateCurrentPage(actionPage)
                 dismissAllowingStateLoss()
             }
 
             R.id.button_ocr -> {
-                viewModel.requestOcrCurrentPage()
+                viewModel.requestOcrCurrentPage(actionPage)
                 dismissAllowingStateLoss()
             }
 
             R.id.button_translated_text -> {
-                viewModel.showTranslatedText()
+                viewModel.showTranslatedText(actionPage?.id)
                 dismissAllowingStateLoss()
             }
         }
@@ -365,7 +374,9 @@ class ReaderConfigSheet :
 
         fun onDoubleModeChanged(isEnabled: Boolean)
 
-        fun onSavePageClick()
+        fun onSavePageClick(page: org.koitharu.kotatsu.reader.ui.pager.ReaderPage?)
+
+        fun onSharePageClick(page: org.koitharu.kotatsu.reader.ui.pager.ReaderPage?)
 
         fun onScrollTimerClick(isLongClick: Boolean)
 

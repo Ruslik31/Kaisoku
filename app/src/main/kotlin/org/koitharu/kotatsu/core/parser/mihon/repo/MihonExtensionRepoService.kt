@@ -11,6 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.koitharu.kotatsu.core.network.MangaHttpClient
 import org.koitharu.kotatsu.core.parser.mihon.MihonExtensionPackageUtil
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.io.IOException
 import java.util.zip.GZIPInputStream
 import javax.inject.Inject
@@ -73,17 +74,7 @@ class MihonExtensionRepoService @Inject constructor(
 	}
 
 	suspend fun fetchExtensions(repo: MihonExtensionRepo): List<MihonAvailableExtension> {
-		val entries = if (repo.indexUrl != null && !repo.indexUrl.endsWith("/index.min.json")) {
-			loadEntries(repo, repo.indexUrl, depth = 0)
-		} else {
-			// Repositories saved by older versions did not retain the supplied modern index URL.
-			loadFirstAvailableIndex(
-				repo,
-				(listOf(repo.indexUrl ?: indexUrlFor(repo)) + legacyModernIndexCandidates(repo.baseUrl)).distinct(),
-				0,
-			)
-		}
-		return entries.sortedBy { it.name.lowercase() }
+		return IndexLoader(repo).load().sortedBy { it.name.lowercase() }
 	}
 
 	fun getApkUrl(extension: MihonAvailableExtension): String {
@@ -94,100 +85,124 @@ class MihonExtensionRepoService @Inject constructor(
 		return "${extension.repo.baseUrl}/apk/$apkName"
 	}
 
-	private suspend fun loadEntries(
-		repo: MihonExtensionRepo,
-		url: String,
-		depth: Int,
-		suppliedBytes: ByteArray? = null,
-	): List<MihonAvailableExtension> {
-		if (depth > MAX_INDEX_HOPS) {
-			throw IOException("Extension repository index redirects too many times: $url")
-		}
-		val bytes = suppliedBytes ?: fetchBytes(url)
-			?: throw IOException("Extension repository index is missing or empty: $url")
-		return when (bytes.firstOrNull()) {
-			OPEN_BRACKET -> {
-				// Legacy flat index.min.json array.
-				val entries = json.decodeFromString<List<MihonExtensionIndexEntryDto>>(bytes.decodeToString())
-				if (entries.isLegacyOutdatedPlaceholderIndex()) {
-					// The repo's legacy URL was replaced with an "Outdated App" marker; follow its
-					// repo.json -> index_v2 pointer instead of presenting the placeholder rows.
-					followLegacyPointer(repo, url, depth)
-				} else {
-					entries.mapNotNull { dto -> dto.toAvailableExtension(repo) }
-				}
+	private inner class IndexLoader(private val repo: MihonExtensionRepo) {
+
+		private var legacyMetadataLoaded = false
+		private var legacyPointer: String? = null
+
+		suspend fun load(): List<MihonAvailableExtension> {
+			val url = repo.indexUrl ?: indexUrlFor(repo)
+			if (!url.endsWith("/index.min.json")) {
+				return loadEntries(url, depth = 0)
 			}
+			// A migrated repository can leave real but stale rows in its legacy index. Honour
+			// repo.json first without changing the saved repository identity or trusted signer.
+			getLegacyPointer()?.let { return loadEntries(resolveRepoIndexUrl(repo, it), depth = 0) }
+			return loadFirstAvailableIndex((listOf(url) + legacyModernIndexCandidates(repo.baseUrl)).distinct(), 0)
+		}
 
-			OPEN_BRACE -> {
-				// Either a legacy repo.json pointer or a store-shaped JSON index.
-				val text = bytes.decodeToString()
-				val pointer = runCatching { json.decodeFromString<MihonExtensionRepoMetaResponse>(text) }.getOrNull()
-				val store = runCatching { json.decodeFromString<NetworkExtensionStoreJson>(text) }.getOrNull()
+		private suspend fun getLegacyPointer(): String? {
+			if (!legacyMetadataLoaded) {
+				// Metadata is optional for legacy repositories; a failure must not hide a valid index.
+				val bytes = runCatchingCancellable { fetchBytes("${repo.baseUrl}/repo.json") }.getOrNull()
+				legacyPointer = bytes?.let {
+					runCatching { json.decodeFromString<MihonStoreIndexPointer>(it.decodeToString()).indexV2 }
+						.getOrNull()?.takeIf(String::isNotBlank)
+				}
+				legacyMetadataLoaded = true
+			}
+			return legacyPointer
+		}
 
-				if (store != null && store.extensionList?.extensions?.isNotEmpty() == true) {
-					store.toEntries(repo)
-				} else if (store != null && !store.extensionListUrl.isNullOrBlank()) {
-					loadEntries(repo, resolveRepoIndexUrl(repo, store.extensionListUrl), depth + 1)
-				} else {
-					val explicit = runCatching {
-						json.decodeFromString<MihonStoreIndexPointer>(text)
-					}.getOrNull()?.indexV2
-					if (explicit != null) {
-						loadEntries(repo, resolveRepoIndexUrl(repo, explicit), depth + 1)
-					} else if (pointer != null) {
-						// A bare repo.json was requested as the index: locate its index file by convention.
-						loadFirstAvailableIndex(repo, legacyModernIndexCandidates(repo.baseUrl), depth + 1)
+		private suspend fun loadEntries(
+			url: String,
+			depth: Int,
+			suppliedBytes: ByteArray? = null,
+		): List<MihonAvailableExtension> {
+			if (depth > MAX_INDEX_HOPS) {
+				throw IOException("Extension repository index redirects too many times: $url")
+			}
+			val bytes = suppliedBytes ?: fetchBytes(url)
+				?: throw IOException("Extension repository index is missing or empty: $url")
+			return when (bytes.firstOrNull()) {
+				OPEN_BRACKET -> {
+					// Legacy flat index.min.json array.
+					val entries = json.decodeFromString<List<MihonExtensionIndexEntryDto>>(bytes.decodeToString())
+					if (entries.isLegacyOutdatedPlaceholderIndex()) {
+						// The repo's legacy URL was replaced with an "Outdated App" marker; follow its
+						// repo.json -> index_v2 pointer instead of presenting the placeholder rows.
+						followLegacyPointer(url, depth)
 					} else {
-						emptyList()
+						entries.mapNotNull { dto -> dto.toAvailableExtension(repo) }
+					}
+				}
+
+				OPEN_BRACE -> {
+					// Either a legacy repo.json pointer or a store-shaped JSON index.
+					val text = bytes.decodeToString()
+					val pointer = runCatching { json.decodeFromString<MihonExtensionRepoMetaResponse>(text) }.getOrNull()
+					val store = runCatching { json.decodeFromString<NetworkExtensionStoreJson>(text) }.getOrNull()
+
+					if (store != null && store.extensionList?.extensions?.isNotEmpty() == true) {
+						store.toEntries(repo)
+					} else if (store != null && !store.extensionListUrl.isNullOrBlank()) {
+						loadEntries(resolveRepoIndexUrl(repo, store.extensionListUrl), depth + 1)
+					} else {
+						val explicit = runCatching {
+							json.decodeFromString<MihonStoreIndexPointer>(text)
+						}.getOrNull()?.indexV2
+						if (explicit != null) {
+							loadEntries(resolveRepoIndexUrl(repo, explicit), depth + 1)
+						} else if (pointer != null) {
+							// A bare repo.json was requested as the index: locate its index file by convention.
+							loadFirstAvailableIndex(legacyModernIndexCandidates(repo.baseUrl), depth + 1)
+						} else {
+							emptyList()
+						}
+					}
+				}
+
+				null -> emptyList()
+
+				else -> {
+					// Protobuf (`index.pb`) — same store shape, binary-encoded.
+					val store = runCatching { protoBuf.decodeFromByteArray<NetworkExtensionStore>(bytes) }
+						.getOrElse { throw IOException("Could not decode extension repository index", it) }
+					when {
+						store.extensionList != null -> store.extensionList.extensions.mapNotNull {
+							it.toAvailableExtension(repo)
+						}
+
+						!store.extensionListUrl.isNullOrBlank() -> loadEntries(
+							resolveRepoIndexUrl(repo, store.extensionListUrl),
+							depth + 1,
+						)
+						else -> emptyList()
 					}
 				}
 			}
+		}
 
-			null -> emptyList()
+		private suspend fun followLegacyPointer(url: String, depth: Int): List<MihonAvailableExtension> {
+			// Some legacy repositories publish a pointer, while others only expose the new index
+			// files. A missing repo.json must not hide a valid index.json or index.pb.
+			val pointer = getLegacyPointer()
+			val candidates = legacyModernIndexCandidates(repo.baseUrl, pointer)
+				.map { resolveRepoIndexUrl(repo, it) }
+				.filterNot { it == url }
+			return loadFirstAvailableIndex(candidates, depth + 1)
+		}
 
-			else -> {
-				// Protobuf (`index.pb`) — same store shape, binary-encoded.
-				val store = runCatching { protoBuf.decodeFromByteArray<NetworkExtensionStore>(bytes) }
-					.getOrElse { throw IOException("Could not decode extension repository index", it) }
-				when {
-					store.extensionList != null -> store.extensionList.extensions.mapNotNull {
-						it.toAvailableExtension(repo)
-					}
-
-					!store.extensionListUrl.isNullOrBlank() -> loadEntries(
-						repo,
-						resolveRepoIndexUrl(repo, store.extensionListUrl),
-						depth + 1,
-					)
-					else -> emptyList()
-				}
+		private suspend fun loadFirstAvailableIndex(
+			candidates: List<String>,
+			depth: Int,
+		): List<MihonAvailableExtension> {
+			for (candidate in candidates) {
+				val bytes = fetchBytes(candidate) ?: continue
+				return loadEntries(candidate, depth, suppliedBytes = bytes)
 			}
+			throw IOException("Extension repository index is missing or empty: ${repo.baseUrl}")
 		}
-	}
-
-	private suspend fun followLegacyPointer(repo: MihonExtensionRepo, url: String, depth: Int): List<MihonAvailableExtension> {
-		// Some legacy repositories publish a pointer, while others only expose the new index
-		// files. A missing repo.json must not hide a valid index.json or index.pb.
-		val pointer = fetchBytes("${repo.baseUrl}/repo.json")?.let { bytes ->
-			runCatching { json.decodeFromString<MihonStoreIndexPointer>(bytes.decodeToString()).indexV2 }
-				.getOrNull()
-		}
-		val candidates = legacyModernIndexCandidates(repo.baseUrl, pointer)
-			.map { resolveRepoIndexUrl(repo, it) }
-			.filterNot { it == url }
-		return loadFirstAvailableIndex(repo, candidates, depth + 1)
-	}
-
-	private suspend fun loadFirstAvailableIndex(
-		repo: MihonExtensionRepo,
-		candidates: List<String>,
-		depth: Int,
-	): List<MihonAvailableExtension> {
-		for (candidate in candidates) {
-			val bytes = fetchBytes(candidate) ?: continue
-			return loadEntries(repo, candidate, depth, suppliedBytes = bytes)
-		}
-		throw IOException("Extension repository index is missing or empty: ${repo.baseUrl}")
 	}
 
 	private fun resolveRepoIndexUrl(repo: MihonExtensionRepo, value: String): String {

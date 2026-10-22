@@ -65,6 +65,19 @@ class ScrollTimer @AssistedInject constructor(
 	private var downY = 0f
 	@Volatile
 	private var movedBeyondSlop = false
+	private var holdDirection = 0
+
+	fun startHold(direction: Int) {
+		if (direction == 0 || !listener.isReaderResumed() || movedBeyondSlop) return
+		holdDirection = direction.coerceIn(-1, 1)
+		restartJob()
+	}
+
+	fun stopHold() {
+		if (holdDirection == 0) return
+		holdDirection = 0
+		restartJob()
+	}
 
 	val isActive: StateFlow<Boolean>
 		get() = isRunning
@@ -124,6 +137,7 @@ class ScrollTimer @AssistedInject constructor(
 			// A second pointer (pinch/zoom) is not a hold: cancel any pending boost.
 			MotionEvent.ACTION_POINTER_DOWN -> {
 				movedBeyondSlop = true
+				stopHold()
 			}
 
 			MotionEvent.ACTION_MOVE -> {
@@ -132,6 +146,7 @@ class ScrollTimer @AssistedInject constructor(
 					val dy = event.y - downY
 					if (dx * dx + dy * dy > touchSlopPx * touchSlopPx) {
 						movedBeyondSlop = true
+						stopHold()
 					}
 				}
 			}
@@ -139,6 +154,7 @@ class ScrollTimer @AssistedInject constructor(
 			MotionEvent.ACTION_UP,
 			MotionEvent.ACTION_CANCEL -> {
 				isTouchDown.value = false
+				stopHold()
 				movedBeyondSlop = false
 			}
 		}
@@ -164,7 +180,7 @@ class ScrollTimer @AssistedInject constructor(
 		job?.cancel()
 		resumeAt = 0L
 		isBoost.value = false
-		if (!isRunning.value) {
+		if (!isRunning.value && holdDirection == 0) {
 			job = null
 			return
 		}
@@ -174,11 +190,13 @@ class ScrollTimer @AssistedInject constructor(
 			var speedFactor = 1f
 			val speedStepPerTick = SPEED_FACTOR_CHANGE_PER_SEC * (TICK_DELAY_MS / 1000f)
 			while (isActive) {
-				val boosting = isBoostActive()
+				val holding = holdDirection != 0
+				val direction = if (holding) holdDirection else 1
+				val boosting = !holding && isBoostActive()
 				isBoost.value = boosting
 				// While boosting, a held finger no longer pauses: ramp the factor back up and let the
 				// boost multiplier apply below.
-				if (!boosting && isPaused()) {
+				if (!holding && !boosting && isPaused()) {
 					speedFactor = (speedFactor - speedStepPerTick).coerceAtLeast(0f)
 				} else if (speedFactor < 1f) {
 					speedFactor = (speedFactor + speedStepPerTick).coerceAtMost(1f)
@@ -193,7 +211,7 @@ class ScrollTimer @AssistedInject constructor(
 				}
 
 				val boostFactor = if (boosting) boostMultiplier else 1f
-				val effectiveMultiplier = scrollSpeedMultiplier * speedFactor * boostFactor
+				val effectiveMultiplier = (if (holding) scrollSpeedMultiplier.coerceAtLeast(2f) else scrollSpeedMultiplier) * speedFactor * boostFactor
 				scrollAccumulator += baseScrollSpeedPxPerSec * effectiveMultiplier * (TICK_DELAY_MS / 1000f)
 				val scrollByPx = scrollAccumulator.toInt()
 				if (scrollByPx <= 0) {
@@ -201,10 +219,10 @@ class ScrollTimer @AssistedInject constructor(
 				}
 				scrollAccumulator -= scrollByPx
 
-				if (!listener.scrollBy(scrollByPx, false)) {
+				if (!listener.scrollBy(scrollByPx * direction, false)) {
 					chapterSwitchAccumulator += TICK_DELAY_MS
-					if (chapterSwitchAccumulator >= pageSwitchDelay) {
-						listener.switchPageBy(1)
+					if (chapterSwitchAccumulator >= (if (holding) pageSwitchDelay.coerceAtMost(800L) else pageSwitchDelay)) {
+						listener.switchPageBy(direction)
 						chapterSwitchAccumulator = 0L
 					}
 				} else {

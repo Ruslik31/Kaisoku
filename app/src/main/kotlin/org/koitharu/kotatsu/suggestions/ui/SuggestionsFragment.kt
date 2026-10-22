@@ -16,75 +16,85 @@ import org.koitharu.kotatsu.list.ui.MangaListFragment
 
 class SuggestionsFragment : MangaListFragment() {
 
-	override val viewModel by viewModels<SuggestionsViewModel>()
-	override val isSwipeRefreshEnabled = true
+    override val viewModel by viewModels<SuggestionsViewModel>()
+    override val isSwipeRefreshEnabled = true
 
-	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
-		super.onViewBindingCreated(binding, savedInstanceState)
-		addMenuProvider(SuggestionMenuProvider())
-	}
+    override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
+        super.onViewBindingCreated(binding, savedInstanceState)
+        addMenuProvider(SuggestionMenuProvider())
+    }
 
-	override fun onScrolledToEnd() = Unit
+    override fun onScrolledToEnd() = Unit
 
-	override fun onRefresh() {
-		super.onRefresh()
-		showUpdatingSnackbar()
-	}
+    override fun onRefresh() {
+        super.onRefresh()
+        showUpdatingSnackbar()
+    }
 
-	private fun showUpdatingSnackbar() {
-		Snackbar.make(
-			requireViewBinding().recyclerView,
-			R.string.suggestions_updating,
-			Snackbar.LENGTH_LONG,
-		).show()
-	}
+    private fun showUpdatingSnackbar() {
+        Snackbar.make(
+            requireViewBinding().recyclerView,
+            R.string.suggestions_updating,
+            Snackbar.LENGTH_LONG,
+        ).show()
+    }
 
-	override fun onCreateActionMode(
-		controller: ListSelectionController,
-		menuInflater: MenuInflater,
-		menu: Menu,
-	): Boolean {
-		menuInflater.inflate(R.menu.mode_remote, menu)
-		return super.onCreateActionMode(controller, menuInflater, menu)
-	}
+    override fun onCreateActionMode(
+        controller: ListSelectionController,
+        menuInflater: MenuInflater,
+        menu: Menu,
+    ): Boolean {
+        menuInflater.inflate(R.menu.mode_remote, menu)
+        return super.onCreateActionMode(controller, menuInflater, menu)
+    }
 
-	private inner class SuggestionMenuProvider : MenuProvider {
+    private inner class SuggestionMenuProvider : MenuProvider {
 
-		override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-			menuInflater.inflate(R.menu.opt_suggestions, menu)
-		}
+        override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+            menuInflater.inflate(R.menu.opt_suggestions, menu)
+            menu.add(Menu.NONE, R.id.action_recommendation_media, Menu.NONE, R.string.recommendation_all)
+        }
 
-		override fun onPrepareMenu(menu: Menu) {
-			super.onPrepareMenu(menu)
-			menu.findItem(R.id.action_settings_suggestions)?.isVisible =
-				menu.findItem(R.id.action_settings) == null
-		}
+        override fun onPrepareMenu(menu: Menu) {
+            super.onPrepareMenu(menu)
+            menu.findItem(R.id.action_recommendation_media)?.isVisible = !viewModel.isLegacy
+            menu.findItem(R.id.action_settings_suggestions)?.isVisible =
+                menu.findItem(R.id.action_settings) == null
+        }
 
-		override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
-			R.id.action_update -> {
-				viewModel.updateSuggestions()
-				showUpdatingSnackbar()
-				true
-			}
+        override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
+            R.id.action_recommendation_media -> {
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+                    .setTitle(R.string.recommendations_beta)
+                    .setItems(arrayOf(getString(R.string.recommendation_all), getString(R.string.recommendation_manga), getString(R.string.recommendation_novels))) { _, index ->
+                        viewModel.setMedia(arrayOf("ALL", "MANGA", "NOVEL")[index])
+                    }.show()
+                true
+            }
+            R.id.action_update -> {
+                viewModel.updateSuggestions()
+                showUpdatingSnackbar()
+                true
+            }
 
-			R.id.action_settings_suggestions -> {
-				router.openSuggestionsSettings()
-				true
-			}
+            R.id.action_settings_suggestions -> {
+                router.openSuggestionsSettings()
+                true
+            }
 
-			else -> false
-		}
-	}
+            else -> false
+        }
+    }
 
-	companion object {
+    companion object {
 
-		@Deprecated(
-			"",
-			ReplaceWith(
-				"SuggestionsFragment()",
-				"org.koitharu.kotatsu.suggestions.ui.SuggestionsFragment",
-			),
-		)
-		fun newInstance() = SuggestionsFragment()
-	}
+        @Deprecated(
+            "",
+            ReplaceWith(
+                "SuggestionsFragment()",
+                "org.koitharu.kotatsu.suggestions.ui.SuggestionsFragment",
+            ),
+        )
+        fun newInstance() = SuggestionsFragment()
+    }
 }

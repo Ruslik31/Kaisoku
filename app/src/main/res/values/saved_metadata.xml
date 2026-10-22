@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="saved_metadata_only">Use saved metadata only</string>
+    <string name="saved_metadata_only_summary">Pause automatic details and chapter-list refresh for this title. Saved information may be incomplete. Reading pages or text, restoring the source, and moving to another source remain available. Pull to refresh to update once without turning this choice off.</string>
+    <string name="saved_metadata_unavailable_sources">Use saved metadata for unavailable sources</string>
+    <string name="saved_metadata_unavailable_sources_summary">Pause automatic details and chapter-list refresh when an extension is missing or a source is marked broken. Saved information may be incomplete. Restoring the source resumes refresh unless the title has its own saved-only choice. Disabled sources, login errors, and connection failures do not trigger this option.</string>
+</resources>

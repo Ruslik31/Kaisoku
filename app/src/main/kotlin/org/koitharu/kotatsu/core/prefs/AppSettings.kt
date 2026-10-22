@@ -225,6 +225,51 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         get() = prefs.getInt(KEY_GRID_SIZE_PAGES, 100)
         set(value) = prefs.edit { putInt(KEY_GRID_SIZE_PAGES, value) }
 
+    val isLocalDiagnosticsEnabled: Boolean
+        get() = prefs.getBoolean("local_diagnostics", false)
+
+    val widePageRotation: Int
+        get() = prefs.getString(KEY_WIDE_PAGE_ROTATION, null)?.toIntOrNull()?.takeIf { it == 90 || it == 270 } ?: 0
+
+    val isFavoritesCategoryStripVisible: Boolean
+        get() = prefs.getBoolean(KEY_FAVORITES_CATEGORY_STRIP, true)
+
+    val isNewChapterCounterVisible: Boolean
+        get() = prefs.getBoolean(KEY_NEW_CHAPTER_COUNTER, true)
+
+    val isFixedGridColumnsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_FIXED_GRID_COLUMNS, false)
+
+    val isSearchFavoriteCategoriesEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SEARCH_FAVORITE_CATEGORIES, false)
+
+    val isFavoritesOverviewEnabled: Boolean
+        get() = prefs.getBoolean(KEY_FAVORITES_OVERVIEW, false)
+
+    val favoritesCategorySort: org.koitharu.kotatsu.favourites.domain.CategorySortOrder
+        get() = prefs.getEnumValue(KEY_FAVORITES_CATEGORY_SORT, org.koitharu.kotatsu.favourites.domain.CategorySortOrder.MANUAL)
+
+    val isFavoritesCategorySortAscending: Boolean
+        get() = prefs.getBoolean(KEY_FAVORITES_CATEGORY_SORT_ASCENDING, true)
+
+    val listLongPressDelay: Int
+        get() = prefs.getString(KEY_LIST_LONG_PRESS_DELAY, "0")?.toIntOrNull()
+            ?.takeIf { it in setOf(0, 750, 1000, 1500) } ?: 0
+
+    var gridColumns: Int
+        get() = prefs.getInt(KEY_GRID_COLUMNS, 3).coerceIn(1, 12)
+        set(value) = prefs.edit { putInt(KEY_GRID_COLUMNS, value.coerceIn(1, 12)) }
+
+    fun usesDefaultFavoritesOrder(categoryId: Long): Boolean =
+        categoryId.toString() in prefs.getStringSet(KEY_FAVORITES_DEFAULT_CATEGORIES, emptySet()).orEmpty()
+
+    @Synchronized
+    fun setUsesDefaultFavoritesOrder(categoryId: Long, enabled: Boolean) {
+        val ids = prefs.getStringSet(KEY_FAVORITES_DEFAULT_CATEGORIES, emptySet()).orEmpty().toMutableSet()
+        if (enabled) ids.add(categoryId.toString()) else ids.remove(categoryId.toString())
+        prefs.edit { putStringSet(KEY_FAVORITES_DEFAULT_CATEGORIES, ids) }
+    }
+
     val isQuickFilterEnabled: Boolean
         get() = prefs.getBoolean(KEY_QUICK_FILTER, true)
 
@@ -267,6 +312,21 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     var isNsfwContentDisabled: Boolean
         get() = prefs.getBoolean(KEY_DISABLE_NSFW, true)
         set(value) = prefs.edit { putBoolean(KEY_DISABLE_NSFW, value) }
+
+    val useSeparateSourceContentClasses: Boolean
+        get() = try { prefs.getBoolean(KEY_SOURCE_CONTENT_CLASSES_ENABLED, false) } catch (_: ClassCastException) { false }
+
+    val sourceContentPolicy: org.koitharu.kotatsu.core.model.SourceContentPolicy
+        get() {
+            val restricted = isNsfwContentDisabled
+            val defaults = if (restricted) setOf(org.koitharu.kotatsu.core.model.SourceContentClass.SAFE)
+                else org.koitharu.kotatsu.core.model.SourceContentClass.entries.toSet()
+            val stored = try { prefs.getStringSet(KEY_SOURCE_CONTENT_CLASSES, null) } catch (_: ClassCastException) { null }
+            val selected = stored?.mapNotNullTo(linkedSetOf()) { name ->
+                org.koitharu.kotatsu.core.model.SourceContentClass.entries.find { it.name == name }
+            } ?: defaults
+            return org.koitharu.kotatsu.core.model.SourceContentPolicy(useSeparateSourceContentClasses, selected, restricted)
+        }
 
     var appLocales: LocaleListCompat
         get() {
@@ -317,6 +377,17 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
     val isReaderOptimizationEnabled: Boolean
         get() = prefs.getBoolean(KEY_READER_OPTIMIZE, false)
+
+    val isSourceSwitchSuggestionEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SOURCE_SWITCH_SUGGEST, false)
+
+    fun isSourceSwitchSuggestionMuted(sourceName: String): Boolean =
+        sourceName in prefs.getStringSet(KEY_SOURCE_SWITCH_MUTED, emptySet()).orEmpty()
+
+    fun muteSourceSwitchSuggestion(sourceName: String) {
+        val muted = prefs.getStringSet(KEY_SOURCE_SWITCH_MUTED, emptySet()).orEmpty() + sourceName
+        prefs.edit { putStringSet(KEY_SOURCE_SWITCH_MUTED, muted) }
+    }
 
     val isReaderAnimatedPagesEnabled: Boolean
         get() = prefs.getBoolean(KEY_READER_ANIMATED_PAGES, true)
@@ -498,6 +569,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     val isUnstableUpdatesAllowed: Boolean
         get() = prefs.getBoolean(KEY_UPDATES_UNSTABLE, false)
 
+    val isDetailsChaptersInline: Boolean
+        get() = try { prefs.getBoolean(KEY_DETAILS_CHAPTERS_INLINE, false) } catch (_: ClassCastException) { false }
+
     val isPagesTabEnabled: Boolean
         get() = prefs.getBoolean(KEY_PAGES_TAB, true)
 
@@ -615,12 +689,56 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     val preferredDownloadFormat: DownloadFormat
         get() = prefs.getEnumValue(KEY_DOWNLOADS_FORMAT, DownloadFormat.AUTOMATIC)
 
+    val downloadRequestInterval: Long
+        get() = DownloadControlValues.requestInterval(readDownloadControl(KEY_DOWNLOADS_REQUEST_INTERVAL))
+
+    val downloadChapterDelay: Long
+        get() = DownloadControlValues.chapterDelay(readDownloadControl(KEY_DOWNLOADS_CHAPTER_DELAY))
+
+    val downloadChapterConcurrency: Int
+        get() = DownloadControlValues.chapterConcurrency(readDownloadControl(KEY_DOWNLOADS_CHAPTER_CONCURRENCY))
+
+    /** Repair only damaged new values before ListPreference reads their persisted strings. */
+    fun sanitizeDownloadControls() {
+        val values = prefs.all
+        val normalized = mapOf(
+            KEY_DOWNLOADS_REQUEST_INTERVAL to DownloadControlValues.requestInterval(
+                values[KEY_DOWNLOADS_REQUEST_INTERVAL],
+            ).toString(),
+            KEY_DOWNLOADS_CHAPTER_DELAY to DownloadControlValues.chapterDelay(
+                values[KEY_DOWNLOADS_CHAPTER_DELAY],
+            ).toString(),
+            KEY_DOWNLOADS_CHAPTER_CONCURRENCY to DownloadControlValues.chapterConcurrency(
+                values[KEY_DOWNLOADS_CHAPTER_CONCURRENCY],
+            ).toString(),
+        ).filter { (key, value) -> key in values && values[key] != value }
+        if (normalized.isNotEmpty()) {
+            prefs.edit { normalized.forEach { (key, value) -> putString(key, value) } }
+        }
+    }
+
+    private fun readDownloadControl(key: String): String? = try {
+        prefs.getString(key, null)
+    } catch (_: ClassCastException) {
+        null
+    }
+
     var isSuggestionsEnabled: Boolean
         get() = prefs.getBoolean(KEY_SUGGESTIONS, false)
         set(value) = prefs.edit { putBoolean(KEY_SUGGESTIONS, value) }
 
     val isSuggestionsWiFiOnly: Boolean
         get() = prefs.getBoolean(KEY_SUGGESTIONS_WIFI_ONLY, false)
+
+    val useLegacySuggestions: Boolean get() = prefs.getBoolean(KEY_SUGGESTIONS_LEGACY, false)
+    val recommendationDiversity: Int get() = prefs.getInt(KEY_SUGGESTIONS_DIVERSITY, 50).coerceIn(0, 100)
+    val publicRecommendations: Boolean get() = prefs.getBoolean(KEY_SUGGESTIONS_PUBLIC, false)
+    val recommendationLanguages: Set<String> get() = prefs.getStringSet(KEY_SUGGESTIONS_LANGUAGES, emptySet()).orEmpty()
+    val recommendStartedTitles: Boolean get() = prefs.getBoolean(KEY_SUGGESTIONS_STARTED, true)
+    val recommendationReleaseThreshold: Int get() = prefs.getInt(KEY_SUGGESTIONS_THRESHOLD, 25).coerceIn(1, 100)
+    var recommendationMedia: String
+        get() = prefs.getString(KEY_SUGGESTIONS_MEDIA, "ALL") ?: "ALL"
+        set(value) = prefs.edit { putString(KEY_SUGGESTIONS_MEDIA, value) }
 
     val isSuggestionsExcludeNsfw: Boolean
         get() = prefs.getBoolean(KEY_SUGGESTIONS_EXCLUDE_NSFW, false)
@@ -631,7 +749,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     val isSuggestionsNotificationAvailable: Boolean
         get() = prefs.getBoolean(KEY_SUGGESTIONS_NOTIFICATIONS, false)
 
-    val suggestionsTagsBlacklist: Set<String>
+    var suggestionsTagsBlacklist: Set<String>
         get() {
             val string = prefs.getString(KEY_SUGGESTIONS_EXCLUDE_TAGS, null)?.trimEnd(' ', ',')
             if (string.isNullOrEmpty()) {
@@ -639,6 +757,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
             }
             return string.split(',').mapToSet { it.trim() }
         }
+        set(value) = prefs.edit { putString(KEY_SUGGESTIONS_EXCLUDE_TAGS, value.joinToString(", ")) }
 
     val isReaderBarEnabled: Boolean
         get() = prefs.getBoolean(KEY_READER_BAR, true)
@@ -660,6 +779,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
     val isReaderChapterToastEnabled: Boolean
         get() = prefs.getBoolean(KEY_READER_CHAPTER_TOAST, true)
+
+    val isReaderChapterHapticsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_READER_CHAPTER_HAPTICS, false)
 
     val isReaderKeepScreenOn: Boolean
         get() = prefs.getBoolean(KEY_READER_SCREEN_ON, true)
@@ -804,6 +926,24 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
     var isReaderAutoscrollHoldBoostEnabled: Boolean
         get() = prefs.getBoolean(KEY_READER_AUTOSCROLL_HOLD, false)
         set(value) = prefs.edit { putBoolean(KEY_READER_AUTOSCROLL_HOLD, value) }
+
+    val isHoldScrollEnabled: Boolean get() = prefs.getBoolean(KEY_HOLD_SCROLL, false)
+
+    fun holdScrollDirection(area: org.koitharu.kotatsu.reader.domain.TapGridArea): Int {
+        val key = when (area) {
+            org.koitharu.kotatsu.reader.domain.TapGridArea.TOP_LEFT,
+            org.koitharu.kotatsu.reader.domain.TapGridArea.TOP_CENTER,
+            org.koitharu.kotatsu.reader.domain.TapGridArea.TOP_RIGHT -> KEY_HOLD_SCROLL_TOP
+            org.koitharu.kotatsu.reader.domain.TapGridArea.CENTER_LEFT -> KEY_HOLD_SCROLL_LEFT
+            org.koitharu.kotatsu.reader.domain.TapGridArea.CENTER_RIGHT -> KEY_HOLD_SCROLL_RIGHT
+            org.koitharu.kotatsu.reader.domain.TapGridArea.BOTTOM_LEFT,
+            org.koitharu.kotatsu.reader.domain.TapGridArea.BOTTOM_CENTER,
+            org.koitharu.kotatsu.reader.domain.TapGridArea.BOTTOM_RIGHT -> KEY_HOLD_SCROLL_BOTTOM
+            else -> return 0
+        }
+        val fallback = if (key == KEY_HOLD_SCROLL_TOP || key == KEY_HOLD_SCROLL_LEFT) "-1" else "1"
+        return prefs.getString(key, fallback)?.toIntOrNull()?.coerceIn(-1, 1) ?: fallback.toInt()
+    }
 
     @get:FloatRange(from = 1.5, to = 5.0)
     var readerAutoscrollBoostMultiplier: Float
@@ -1054,6 +1194,17 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_SEARCH_HISTORY_CLEAR = "search_history_clear"
         const val KEY_UPDATES_FEED_CLEAR = "updates_feed_clear"
         const val KEY_GRID_SIZE = "grid_size"
+        const val KEY_FIXED_GRID_COLUMNS = "grid_fixed_columns"
+        const val KEY_GRID_COLUMNS = "grid_columns"
+        const val KEY_SEARCH_FAVORITE_CATEGORIES = "search_favorite_categories"
+        const val KEY_FAVORITES_OVERVIEW = "favorites_overview"
+        const val KEY_FAVORITES_CATEGORY_SORT = "favorites_category_sort"
+        const val KEY_FAVORITES_CATEGORY_SORT_ASCENDING = "favorites_category_sort_ascending"
+        const val KEY_LIST_LONG_PRESS_DELAY = "list_long_press_delay"
+        const val KEY_WIDE_PAGE_ROTATION = "reader_wide_page_rotation"
+        const val KEY_FAVORITES_CATEGORY_STRIP = "favorites_category_strip"
+        const val KEY_NEW_CHAPTER_COUNTER = "new_chapter_counter"
+        const val KEY_FAVORITES_DEFAULT_CATEGORIES = "favorites_default_order_categories"
         const val KEY_GRID_SIZE_PAGES = "grid_size_pages"
         const val KEY_REMOTE_SOURCES = "remote_sources"
         const val KEY_LOCAL_STORAGE = "local_storage"
@@ -1116,6 +1267,13 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_SCREENSHOTS_POLICY = "screenshots_policy"
         const val KEY_PAGES_PRELOAD = "pages_preload"
         const val KEY_SUGGESTIONS = "suggestions"
+        const val KEY_SUGGESTIONS_LEGACY = "suggestions_legacy"
+        const val KEY_SUGGESTIONS_DIVERSITY = "suggestions_diversity"
+        const val KEY_SUGGESTIONS_PUBLIC = "suggestions_public"
+        const val KEY_SUGGESTIONS_LANGUAGES = "suggestions_languages"
+        const val KEY_SUGGESTIONS_STARTED = "suggestions_started"
+        const val KEY_SUGGESTIONS_THRESHOLD = "suggestions_release_threshold"
+        const val KEY_SUGGESTIONS_MEDIA = "suggestions_media"
         const val KEY_SUGGESTIONS_WIFI_ONLY = "suggestions_wifi"
         const val KEY_SUGGESTIONS_EXCLUDE_NSFW = "suggestions_exclude_nsfw"
         const val KEY_SUGGESTIONS_EXCLUDE_TAGS = "suggestions_exclude_tags"
@@ -1128,6 +1286,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_MANGABAKA = "mangabaka"
         const val KEY_DOWNLOADS_METERED_NETWORK = "downloads_metered_network"
         const val KEY_DOWNLOADS_FORMAT = "downloads_format"
+        const val KEY_DOWNLOADS_REQUEST_INTERVAL = "downloads_request_interval"
+        const val KEY_DOWNLOADS_CHAPTER_DELAY = "downloads_chapter_delay"
+        const val KEY_DOWNLOADS_CHAPTER_CONCURRENCY = "downloads_chapter_concurrency"
         const val KEY_ALL_FAVOURITES_VISIBLE = "all_favourites_visible"
         const val KEY_FAVORITES_LAST_CATEGORY = "favorites_last_category"
         const val KEY_DOH = "doh"
@@ -1140,11 +1301,14 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_READER_BOTTOM_BAR_OPACITY = "reader_bottom_bar_opacity"
         const val KEY_READER_FLOAT_BAR = "reader_float_bar"
         const val KEY_READER_CHAPTER_TOAST = "reader_chapter_toast"
+        const val KEY_READER_CHAPTER_HAPTICS = "reader_chapter_haptics"
         const val KEY_READER_BACKGROUND = "reader_background"
         const val KEY_READER_SCREEN_ON = "reader_screen_on"
         const val KEY_SHORTCUTS = "dynamic_shortcuts"
         const val KEY_READER_TAP_ACTIONS = "reader_tap_actions"
         const val KEY_READER_OPTIMIZE = "reader_optimize"
+        const val KEY_SOURCE_SWITCH_SUGGEST = "source_switch_suggest"
+        const val KEY_SOURCE_SWITCH_MUTED = "source_switch_muted"
         const val KEY_READER_ANIMATED_PAGES = "reader_animated_pages"
         const val KEY_UPSCALE_STRENGTH = "reader_upscale_strength"
         const val KEY_UPSCALE_PASSES = "reader_upscale_passes"
@@ -1174,6 +1338,11 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_READER_AUTOSCROLL_SPEED = "as_speed"
         const val KEY_READER_AUTOSCROLL_FAB = "as_fab"
         const val KEY_READER_AUTOSCROLL_HOLD = "as_hold"
+        const val KEY_HOLD_SCROLL = "reader_hold_scroll"
+        const val KEY_HOLD_SCROLL_TOP = "reader_hold_top"
+        const val KEY_HOLD_SCROLL_LEFT = "reader_hold_left"
+        const val KEY_HOLD_SCROLL_RIGHT = "reader_hold_right"
+        const val KEY_HOLD_SCROLL_BOTTOM = "reader_hold_bottom"
         const val KEY_READER_AUTOSCROLL_BOOST = "as_boost"
         const val KEY_MIRROR_SWITCHING = "mirror_switching"
         const val KEY_PROXY = "proxy"
@@ -1187,6 +1356,8 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_IMAGES_PROXY = "images_proxy_2"
         const val KEY_LOCAL_MANGA_DIRS = "local_manga_dirs"
         const val KEY_DISABLE_NSFW = "no_nsfw"
+        const val KEY_SOURCE_CONTENT_CLASSES_ENABLED = "source_content_classes_enabled"
+        const val KEY_SOURCE_CONTENT_CLASSES = "source_content_classes"
         const val KEY_RELATED_MANGA = "related_manga"
         const val KEY_NAV_MAIN = "nav_main"
         const val KEY_NAV_LABELS = "nav_labels"
@@ -1205,6 +1376,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
         const val KEY_CF_INVERTED = "cf_inverted"
         const val KEY_CF_GRAYSCALE = "cf_grayscale"
         const val KEY_CF_BOOK = "cf_book"
+        const val KEY_DETAILS_CHAPTERS_INLINE = "details_chapters_inline"
         const val KEY_PAGES_TAB = "pages_tab"
         const val KEY_DETAILS_TAB = "details_tab"
         const val KEY_DETAILS_LAST_TAB = "details_last_tab"

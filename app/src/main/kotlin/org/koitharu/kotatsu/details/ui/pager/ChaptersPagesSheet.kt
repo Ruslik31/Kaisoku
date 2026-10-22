@@ -33,165 +33,175 @@ import org.koitharu.kotatsu.core.util.ext.recyclerView
 import org.koitharu.kotatsu.core.util.ext.smoothScrollToTop
 import org.koitharu.kotatsu.databinding.SheetChaptersPagesBinding
 import org.koitharu.kotatsu.details.ui.DetailsViewModel
+import org.koitharu.kotatsu.details.ui.DetailsActivity
 import org.koitharu.kotatsu.details.ui.ReadButtonDelegate
 import org.koitharu.kotatsu.download.ui.worker.DownloadStartedObserver
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class ChaptersPagesSheet : BaseAdaptiveSheet<SheetChaptersPagesBinding>(),
-	TabLayout.OnTabSelectedListener,
-	ActionModeListener,
-	AdaptiveSheetCallback {
+    TabLayout.OnTabSelectedListener,
+    ActionModeListener,
+    AdaptiveSheetCallback {
 
-	@Inject
-	lateinit var settings: AppSettings
+    @Inject
+    lateinit var settings: AppSettings
 
-	private val viewModel by ChaptersPagesViewModel.ActivityVMLazy(this)
+    private val viewModel by ChaptersPagesViewModel.ActivityVMLazy(this)
+    private var inlineActionMode: ActionMode? = null
 
-	override fun onCreateViewBinding(inflater: LayoutInflater, container: ViewGroup?): SheetChaptersPagesBinding {
-		return SheetChaptersPagesBinding.inflate(inflater, container, false)
-	}
+    override fun onCreateViewBinding(inflater: LayoutInflater, container: ViewGroup?): SheetChaptersPagesBinding {
+        return SheetChaptersPagesBinding.inflate(inflater, container, false)
+    }
 
-	override fun onViewBindingCreated(binding: SheetChaptersPagesBinding, savedInstanceState: Bundle?) {
-		super.onViewBindingCreated(binding, savedInstanceState)
-		disableFitToContents()
+    override fun onViewBindingCreated(binding: SheetChaptersPagesBinding, savedInstanceState: Bundle?) {
+        super.onViewBindingCreated(binding, savedInstanceState)
+        disableFitToContents()
 
-		val args = arguments ?: Bundle.EMPTY
-		var defaultTab = args.getInt(AppRouter.KEY_TAB, settings.defaultDetailsTab)
-		val requestedDefaultTab = defaultTab
-		var hasDetails = viewModel.mangaDetails.value != null
-		val adapter = ChaptersPagesAdapter(this,
-			settings.isPagesTabEnabled && viewModel.mangaDetails.value?.supportsPageThumbnails == true)
-		if (!adapter.isPagesTabEnabled) {
-			defaultTab = (defaultTab - 1).coerceAtLeast(TAB_CHAPTERS)
-		}
-		(viewModel as? DetailsViewModel)?.let { dvm ->
-			ReadButtonDelegate(binding.splitButtonRead, dvm, router).attach(viewLifecycleOwner)
-		}
-		binding.pager.offscreenPageLimit = adapter.itemCount
-		binding.pager.recyclerView?.isNestedScrollingEnabled = false
-		binding.pager.adapter = adapter
-		binding.pager.doOnPageChanged(::onPageChanged)
-		TabLayoutMediator(binding.tabs, binding.pager, adapter).attach()
-		binding.tabs.addOnTabSelectedListener(this)
-		binding.pager.setCurrentItem(defaultTab, false)
-		binding.tabs.isVisible = adapter.itemCount > 1
-		viewModel.mangaDetails.observe(viewLifecycleOwner) { details ->
-			if (details != null) {
-				val previousTab = if (hasDetails) adapter.getItemId(binding.pager.currentItem) else requestedDefaultTab.toLong()
-				hasDetails = true
-				adapter.isPagesTabEnabled = settings.isPagesTabEnabled && details.supportsPageThumbnails
-				binding.pager.setCurrentItem(when {
-					previousTab == 2L -> adapter.itemCount - 1
-					previousTab == 1L && !adapter.isPagesTabEnabled -> TAB_CHAPTERS
-					else -> previousTab.toInt()
-				}, false)
-			}
-		}
+        val args = arguments ?: Bundle.EMPTY
+        var defaultTab = args.getInt(AppRouter.KEY_TAB, settings.defaultDetailsTab)
+        val requestedDefaultTab = defaultTab
+        var hasDetails = viewModel.mangaDetails.value != null
+        val adapter = ChaptersPagesAdapter(this,
+            settings.isPagesTabEnabled && viewModel.mangaDetails.value?.supportsPageThumbnails == true)
+        if (!adapter.isPagesTabEnabled) {
+            defaultTab = (defaultTab - 1).coerceAtLeast(TAB_CHAPTERS)
+        }
+        (viewModel as? DetailsViewModel)?.let { dvm ->
+            ReadButtonDelegate(binding.splitButtonRead, dvm, router).attach(viewLifecycleOwner)
+        }
+        binding.pager.offscreenPageLimit = adapter.itemCount
+        binding.pager.recyclerView?.isNestedScrollingEnabled = false
+        binding.pager.adapter = adapter
+        binding.pager.doOnPageChanged(::onPageChanged)
+        TabLayoutMediator(binding.tabs, binding.pager, adapter).attach()
+        binding.tabs.addOnTabSelectedListener(this)
+        binding.pager.setCurrentItem(defaultTab, false)
+        binding.tabs.isVisible = adapter.itemCount > 1
+        viewModel.mangaDetails.observe(viewLifecycleOwner) { details ->
+            if (details != null) {
+                val previousTab = if (hasDetails) adapter.getItemId(binding.pager.currentItem) else requestedDefaultTab.toLong()
+                hasDetails = true
+                adapter.isPagesTabEnabled = settings.isPagesTabEnabled && details.supportsPageThumbnails
+                binding.pager.setCurrentItem(when {
+                    previousTab == 2L -> adapter.itemCount - 1
+                    previousTab == 1L && !adapter.isPagesTabEnabled -> TAB_CHAPTERS
+                    else -> previousTab.toInt()
+                }, false)
+            }
+        }
 
-		val menuProvider = ChapterPagesMenuProvider(viewModel, this, binding.pager, settings)
-		onBackPressedDispatcher.addCallback(viewLifecycleOwner, menuProvider)
-		binding.toolbar.addMenuProvider(menuProvider)
+        val menuProvider = ChapterPagesMenuProvider(viewModel, this, binding.pager, settings)
+        onBackPressedDispatcher.addCallback(viewLifecycleOwner, menuProvider)
+        binding.toolbar.addMenuProvider(menuProvider)
 
-		val menuInvalidator = MenuInvalidator(binding.toolbar)
-		viewModel.isReadingOrderReversed.observe(viewLifecycleOwner, menuInvalidator)
-		viewModel.isChaptersSortedByName.observe(viewLifecycleOwner, menuInvalidator)
-		viewModel.isGlobalChaptersReversed.observe(viewLifecycleOwner, menuInvalidator)
-		viewModel.isChaptersInGridView.observe(viewLifecycleOwner, menuInvalidator)
-		viewModel.isDownloadedOnly.observe(viewLifecycleOwner, menuInvalidator)
+        val menuInvalidator = MenuInvalidator(binding.toolbar)
+        viewModel.isReadingOrderReversed.observe(viewLifecycleOwner, menuInvalidator)
+        viewModel.isChaptersSortedByName.observe(viewLifecycleOwner, menuInvalidator)
+        viewModel.isGlobalChaptersReversed.observe(viewLifecycleOwner, menuInvalidator)
+        viewModel.isChaptersInGridView.observe(viewLifecycleOwner, menuInvalidator)
+        viewModel.isDownloadedOnly.observe(viewLifecycleOwner, menuInvalidator)
 
-		actionModeDelegate?.addListener(this, viewLifecycleOwner)
-		addSheetCallback(this, viewLifecycleOwner)
+        actionModeDelegate?.addListener(this, viewLifecycleOwner)
+        addSheetCallback(this, viewLifecycleOwner)
 
-		viewModel.newChaptersCount.observe(viewLifecycleOwner, ::onNewChaptersChanged)
-		if (dialog != null) {
-			viewModel.onError.observeEvent(viewLifecycleOwner, SnackbarErrorObserver(binding.pager, this))
-			viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.pager))
-			viewModel.onDownloadStarted.observeEvent(viewLifecycleOwner, DownloadStartedObserver(binding.pager))
-		} else {
-			PeekHeightController(arrayOf(binding.headerBar, binding.toolbar)).attach()
-		}
-	}
+        viewModel.newChaptersCount.observe(viewLifecycleOwner, ::onNewChaptersChanged)
+        if (dialog != null) {
+            viewModel.onError.observeEvent(viewLifecycleOwner, SnackbarErrorObserver(binding.pager, this))
+            viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.pager))
+            viewModel.onDownloadStarted.observeEvent(viewLifecycleOwner, DownloadStartedObserver(binding.pager))
+        } else {
+            PeekHeightController(arrayOf(binding.headerBar, binding.toolbar)).attach()
+        }
+    }
 
-	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat = insets
+    override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat = insets
 
-	override fun onStateChanged(sheet: View, newState: Int) {
+    override fun onStateChanged(sheet: View, newState: Int) {
         val binding = viewBinding ?: return
         binding.layoutTouchBlock.isTouchEventsAllowed = dialog != null || newState != STATE_COLLAPSED
         if (newState == STATE_DRAGGING || newState == STATE_SETTLING) {
             return
         }
-		val isActionModeStarted = actionModeDelegate?.isActionModeStarted == true
-		binding.toolbar.menuView?.isVisible = newState == STATE_EXPANDED && !isActionModeStarted
-		binding.splitButtonRead.isVisible = newState != STATE_EXPANDED && !isActionModeStarted
-			&& viewModel is DetailsViewModel
-	}
+        val isActionModeStarted = actionModeDelegate?.isActionModeStarted == true
+        binding.toolbar.menuView?.isVisible = newState == STATE_EXPANDED && !isActionModeStarted
+        binding.splitButtonRead.isVisible = newState != STATE_EXPANDED && !isActionModeStarted
+            && viewModel is DetailsViewModel
+    }
 
-	override fun onActionModeStarted(mode: ActionMode) {
-		viewBinding?.toolbar?.menuView?.isVisible = false
-		view?.post(::expandAndLock)
-	}
+    override fun onActionModeStarted(mode: ActionMode) {
+        if ((activity as? DetailsActivity)?.isInlineChapterSelectionActive == true) {
+            inlineActionMode = mode
+            return
+        }
+        viewBinding?.toolbar?.menuView?.isVisible = false
+        view?.post(::expandAndLock)
+    }
 
-	override fun onActionModeFinished(mode: ActionMode) {
-		unlock()
-		val state = behavior?.state ?: STATE_EXPANDED
-		viewBinding?.toolbar?.menuView?.isVisible = state != STATE_COLLAPSED
-	}
+    override fun onActionModeFinished(mode: ActionMode) {
+        if (inlineActionMode === mode) {
+            inlineActionMode = null
+            return
+        }
+        unlock()
+        val state = behavior?.state ?: STATE_EXPANDED
+        viewBinding?.toolbar?.menuView?.isVisible = state != STATE_COLLAPSED
+    }
 
-	override fun onTabSelected(tab: TabLayout.Tab?) = Unit
+    override fun onTabSelected(tab: TabLayout.Tab?) = Unit
 
-	override fun onTabUnselected(tab: TabLayout.Tab?) = Unit
+    override fun onTabUnselected(tab: TabLayout.Tab?) = Unit
 
-	override fun onTabReselected(tab: TabLayout.Tab?) {
-		val f = childFragmentManager.findCurrentPagerFragment(
-			viewBinding?.pager ?: return,
-		) as? RecyclerViewOwner ?: return
-		f.recyclerView?.smoothScrollToTop()
-	}
+    override fun onTabReselected(tab: TabLayout.Tab?) {
+        val f = childFragmentManager.findCurrentPagerFragment(
+            viewBinding?.pager ?: return,
+        ) as? RecyclerViewOwner ?: return
+        f.recyclerView?.smoothScrollToTop()
+    }
 
-	override fun expandAndLock() {
-		super.expandAndLock()
-		adjustLockState()
-	}
+    override fun expandAndLock() {
+        super.expandAndLock()
+        adjustLockState()
+    }
 
-	override fun unlock() {
-		super.unlock()
-		adjustLockState()
-	}
+    override fun unlock() {
+        super.unlock()
+        adjustLockState()
+    }
 
-	private fun adjustLockState() {
-		viewBinding?.run {
-			pager.isUserInputEnabled = !isLocked
-			tabs.visibility = when {
-				(pager.adapter?.itemCount ?: 0) <= 1 -> View.GONE
-				isLocked -> View.INVISIBLE
-				else -> View.VISIBLE
-			}
-		}
-	}
+    private fun adjustLockState() {
+        viewBinding?.run {
+            pager.isUserInputEnabled = !isLocked
+            tabs.visibility = when {
+                (pager.adapter?.itemCount ?: 0) <= 1 -> View.GONE
+                isLocked -> View.INVISIBLE
+                else -> View.VISIBLE
+            }
+        }
+    }
 
-	private fun onPageChanged(position: Int) {
-		viewBinding?.toolbar?.invalidateMenu()
-		if (viewModel.mangaDetails.value != null) {
-			val adapter = viewBinding?.pager?.adapter as? ChaptersPagesAdapter ?: return
-			settings.lastDetailsTab = adapter.getItemId(position).toInt()
-		}
-	}
+    private fun onPageChanged(position: Int) {
+        viewBinding?.toolbar?.invalidateMenu()
+        if (viewModel.mangaDetails.value != null) {
+            val adapter = viewBinding?.pager?.adapter as? ChaptersPagesAdapter ?: return
+            settings.lastDetailsTab = adapter.getItemId(position).toInt()
+        }
+    }
 
-	private fun onNewChaptersChanged(counter: Int) {
-		val tab = viewBinding?.tabs?.getTabAt(0) ?: return
-		if (counter == 0) {
-			tab.removeBadge()
-		} else {
-			val badge = tab.orCreateBadge
-			badge.number = counter
-		}
-	}
+    private fun onNewChaptersChanged(counter: Int) {
+        val tab = viewBinding?.tabs?.getTabAt(0) ?: return
+        if (counter == 0) {
+            tab.removeBadge()
+        } else {
+            val badge = tab.orCreateBadge
+            badge.number = counter
+        }
+    }
 
-	companion object {
+    companion object {
 
-		const val TAB_CHAPTERS = 0
-		const val TAB_PAGES = 1
-		const val TAB_BOOKMARKS = 2
-	}
+        const val TAB_CHAPTERS = 0
+        const val TAB_PAGES = 1
+        const val TAB_BOOKMARKS = 2
+    }
 }

@@ -14,15 +14,16 @@ import org.koitharu.kotatsu.parsers.model.Manga
 class ExploreAdapter(
 	listener: ExploreListEventListener,
 	clickListener: OnListItemClickListener<MangaSourceItem>,
-	mangaClickListener: OnListItemClickListener<Manga>,
+	mangaClickListener: OnListItemClickListener<org.koitharu.kotatsu.list.ui.model.MangaCompactListModel>,
 	browserSourceClickListener: OnListItemClickListener<BrowserSourceItem>,
+    mediaListener: (String) -> Unit,
 ) : BaseListAdapter<ListModel>() {
 
 	init {
 		addDelegate(ListItemType.EXPLORE_BUTTONS, exploreButtonsAD(listener))
 		addDelegate(
 			ListItemType.EXPLORE_SUGGESTION,
-			exploreRecommendationItemAD(mangaClickListener),
+			exploreRecommendationItemAD(mangaClickListener, mediaListener),
 		)
 		addDelegate(ListItemType.HEADER, listHeaderAD(listener))
 		addDelegate(ListItemType.EXPLORE_SOURCE_LIST, exploreSourceListItemAD(clickListener))

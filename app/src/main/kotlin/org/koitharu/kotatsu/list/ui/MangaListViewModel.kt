@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.core.model.isNsfw
+import org.koitharu.kotatsu.core.model.isNsfwForFiltering
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
@@ -49,12 +50,18 @@ abstract class MangaListViewModel(
 	val isIncognitoModeEnabled: Boolean
 		get() = settings.isIncognitoModeEnabled
 
+	val gridColumns = settings.observeChanges()
+		.filter { it == null || it == AppSettings.KEY_FIXED_GRID_COLUMNS || it == AppSettings.KEY_GRID_COLUMNS }
+		.onStart { emit(null) }
+		.map { if (settings.isFixedGridColumnsEnabled) settings.gridColumns else 0 }
+		.stateIn(viewModelScope, SharingStarted.Eagerly, if (settings.isFixedGridColumnsEnabled) settings.gridColumns else 0)
+
 	abstract fun onRefresh()
 
 	abstract fun onRetry()
 
 	protected fun List<Manga>.skipNsfwIfNeeded() = if (settings.isNsfwContentDisabled) {
-		filterNot { it.isNsfw() }
+		filterNot { it.isNsfwForFiltering(settings.useSeparateSourceContentClasses) }
 	} else {
 		this
 	}
@@ -83,6 +90,8 @@ abstract class MangaListViewModel(
 				|| key == AppSettings.KEY_TRACKER_ENABLED
 				|| key == AppSettings.KEY_QUICK_FILTER
 				|| key == AppSettings.KEY_MANGA_LIST_BADGES
+				|| key == AppSettings.KEY_NEW_CHAPTER_COUNTER
+                    || key == AppSettings.KEY_SEARCH_FAVORITE_CATEGORIES
 		}.onStart { emit("") }
 			.map { Unit }
 			.conflate(),

@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.core.exceptions.resolve
 
 import android.content.Context
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.result.ActivityResultCaller
 import androidx.annotation.StringRes
@@ -18,6 +20,7 @@ import org.koitharu.kotatsu.browser.BrowserActivity
 import org.koitharu.kotatsu.browser.cloudflare.CloudFlareActivity
 import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
 import org.koitharu.kotatsu.core.exceptions.EmptyMangaException
+import org.koitharu.kotatsu.core.exceptions.InputRequiredException
 import org.koitharu.kotatsu.core.exceptions.InteractiveActionRequiredException
 import org.koitharu.kotatsu.core.exceptions.ProxyConfigException
 import org.koitharu.kotatsu.core.exceptions.UnsupportedSourceException
@@ -79,6 +82,8 @@ class ExceptionResolver private constructor(
             }
 
             is InteractiveActionRequiredException -> resolveBrowserAction(e)
+
+            is InputRequiredException -> resolveInput(e)
 
             is ProxyConfigException -> {
                 host.router.openProxySettings()
@@ -190,6 +195,35 @@ class ExceptionResolver private constructor(
         continuations.remove(tag)?.resume(result)
     }
 
+    private suspend fun resolveInput(e: InputRequiredException): Boolean {
+        val ctx = host.context ?: return false
+        val sourceSettings = SourceSettings(ctx, e.source)
+        return suspendCancellableCoroutine { cont ->
+            val input = EditText(ctx).apply {
+                setSingleLine()
+                setText(sourceSettings.getUserInput(e.key))
+            }
+            val container = FrameLayout(ctx).apply {
+                val padding = ctx.resources.getDimensionPixelOffset(R.dimen.screen_padding)
+                setPadding(padding, padding / 2, padding, 0)
+                addView(input)
+            }
+            val dialog = buildAlertDialog(ctx) {
+                setTitle(R.string.input_required)
+                setMessage(e.prompt)
+                setView(container)
+                setPositiveButton(android.R.string.ok) { _, _ ->
+                    sourceSettings.setUserInput(e.key, input.text?.toString()?.trim())
+                    if (cont.isActive) cont.resume(true)
+                }
+                setNegativeButton(android.R.string.cancel, null)
+                setOnDismissListener { if (cont.isActive) cont.resume(false) }
+            }
+            cont.invokeOnCancellation { dialog.dismiss() }
+            dialog.show()
+        }
+    }
+
     private fun showSslErrorDialog() {
         val ctx = host.context ?: return
         if (settings.isSSLBypassEnabled) {
@@ -289,6 +323,8 @@ class ExceptionResolver private constructor(
             is ProxyConfigException -> R.string.settings
 
             is InteractiveActionRequiredException -> R.string._continue
+
+            is InputRequiredException -> android.R.string.ok
 
             is EmptyMangaException -> when (e.reason) {
                 EmptyMangaReason.RESTRICTED -> if (e.manga.publicUrl.isHttpUrl()) R.string.open_in_browser else 0

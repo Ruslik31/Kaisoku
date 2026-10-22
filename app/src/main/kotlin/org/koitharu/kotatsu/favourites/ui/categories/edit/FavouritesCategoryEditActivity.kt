@@ -42,6 +42,10 @@ class FavouritesCategoryEditActivity :
 		setContentView(ActivityCategoryEditBinding.inflate(layoutInflater))
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = true)
 		initSortSpinner()
+		viewBinding.switchDefaultSort.setOnCheckedChangeListener { _, checked ->
+			viewBinding.editSort.isEnabled = !checked && !viewModel.isLoading.value
+            viewBinding.editSort.setText(sortLabel(if (checked) viewModel.defaultOrder else selectedSortOrder ?: viewModel.defaultOrder), false)
+		}
 		viewBinding.buttonDone.setOnClickListener(this)
 		viewBinding.editName.addTextChangedListener(this)
 		afterTextChanged(viewBinding.editName.text)
@@ -88,6 +92,7 @@ class FavouritesCategoryEditActivity :
 				sortOrder = getSelectedSortOrder(),
 				isTrackerEnabled = viewBinding.switchTracker.isChecked,
 				isVisibleOnShelf = viewBinding.switchShelf.isChecked,
+				useDefaultOrder = viewBinding.switchDefaultSort.isChecked,
 			)
 		}
 	}
@@ -107,8 +112,9 @@ class FavouritesCategoryEditActivity :
 		}
 		viewBinding.editName.setText(category?.title)
 		selectedSortOrder = category?.order
-		val sortText = getString((category?.order ?: ListSortOrder.NEWEST).titleResId)
+		val sortText = sortLabel(category?.order ?: viewModel.defaultOrder)
 		viewBinding.editSort.setText(sortText, false)
+		viewBinding.switchDefaultSort.isChecked = viewModel.usesDefaultOrder
 		viewBinding.switchTracker.setChecked(category?.isTrackingEnabled != false, false)
 		viewBinding.switchShelf.setChecked(category?.isVisibleInLibrary != false, false)
 	}
@@ -120,7 +126,8 @@ class FavouritesCategoryEditActivity :
 
 	private fun onLoadingStateChanged(isLoading: Boolean) {
 		viewBinding.buttonDone.isEnabled = !isLoading && !viewBinding.editName.text.isNullOrBlank()
-		viewBinding.editSort.isEnabled = !isLoading
+		viewBinding.editSort.isEnabled = !isLoading && !viewBinding.switchDefaultSort.isChecked
+		viewBinding.switchDefaultSort.isEnabled = !isLoading
 		viewBinding.editName.isEnabled = !isLoading
 		viewBinding.switchTracker.isEnabled = !isLoading
 		viewBinding.switchShelf.isEnabled = !isLoading
@@ -129,16 +136,19 @@ class FavouritesCategoryEditActivity :
 		}
 	}
 
+    private fun sortLabel(order: ListSortOrder) = "${getString(order.titleResId)} (${getString(if (order.isAscending) R.string.sort_order_asc else R.string.sort_order_desc)})"
+
 	private fun initSortSpinner() {
-		val entries = sortOrders.map { getString(it.titleResId) }
+		val entries = sortOrders.map(::sortLabel)
 		val adapter = SortAdapter(this, entries)
 		viewBinding.editSort.setAdapter(adapter)
 		viewBinding.editSort.onItemClickListener = this
 	}
 
 	private fun getSelectedSortOrder(): ListSortOrder {
+		if (viewBinding.switchDefaultSort.isChecked) return viewModel.defaultOrder
 		selectedSortOrder?.let { return it }
-		val entries = sortOrders.map { getString(it.titleResId) }
+		val entries = sortOrders.map(::sortLabel)
 		val index = entries.indexOf(viewBinding.editSort.text.toString())
 		return sortOrders.getOrNull(index) ?: ListSortOrder.NEWEST
 	}

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="source_content_classes_enabled">Выбирать типы содержимого источников отдельно</string>
+    <string name="source_content_classes">Видимые типы источников</string>
+    <string name="source_content_classes_summary">Выбирайте безопасные, смешанные и взрослые источники отдельно. «Отключить NSFW» по-прежнему скрывает взрослые произведения. Выключите этот параметр, чтобы вернуть прежнее ограничение источников.</string>
+    <string name="source_content_classes_none">Типы содержимого не выбраны</string>
+    <string name="source_content_classes_hidden">Некоторые источники расширений скрыты выбором содержимого. Проверьте Настройки → Источники. Установленные расширения нужно включить кнопкой +, чтобы они появились в Обзоре.</string>
+    <string-array name="source_content_class_entries">
+        <item>Безопасные</item>
+        <item>Смешанные</item>
+        <item>Для взрослых</item>
+    </string-array>
+</resources>

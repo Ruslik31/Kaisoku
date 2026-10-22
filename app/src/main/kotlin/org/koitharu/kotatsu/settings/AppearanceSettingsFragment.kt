@@ -8,14 +8,19 @@ import android.os.Bundle
 import android.provider.Settings
 import android.view.View
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.preference.ListPreference
 import androidx.preference.MultiSelectListPreference
 import androidx.preference.Preference
 import androidx.preference.TwoStatePreference
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.ColorScheme
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode
 import org.koitharu.kotatsu.core.prefs.ScreenshotsPolicy
@@ -23,6 +28,7 @@ import org.koitharu.kotatsu.core.prefs.SearchSuggestionType
 import org.koitharu.kotatsu.core.prefs.TriStateOption
 import org.koitharu.kotatsu.core.ui.BasePreferenceFragment
 import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
+import org.koitharu.kotatsu.core.ui.theme.WallpaperPaletteCompat
 import org.koitharu.kotatsu.core.util.LocaleComparator
 import org.koitharu.kotatsu.core.util.ext.getLocalesConfig
 import org.koitharu.kotatsu.core.util.ext.postDelayed
@@ -37,6 +43,8 @@ import org.koitharu.kotatsu.settings.utils.ActivityListPreference
 import org.koitharu.kotatsu.settings.utils.MultiSummaryProvider
 import org.koitharu.kotatsu.settings.utils.PercentSummaryProvider
 import org.koitharu.kotatsu.settings.utils.SliderPreference
+import org.koitharu.kotatsu.settings.utils.ThemeChooserPreference
+import org.koitharu.kotatsu.list.domain.ListSortOrder
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -50,9 +58,20 @@ class AppearanceSettingsFragment :
     @Inject
     lateinit var appShortcutManager: AppShortcutManager
 
+    @Inject
+    lateinit var wallpaperPalette: WallpaperPaletteCompat
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_appearance)
         findPreference<SliderPreference>(AppSettings.KEY_GRID_SIZE)?.summaryProvider = PercentSummaryProvider()
+        findPreference<ListPreference>(AppSettings.KEY_FAVORITES_ORDER)?.run {
+            val orders = ListSortOrder.FAVORITES.sortedBy { it.ordinal }
+            entries = orders.map {
+                "${getString(it.titleResId)} (${getString(if (it.isAscending) R.string.sort_order_asc else R.string.sort_order_desc)})"
+            }.toTypedArray()
+            entryValues = orders.map { it.name }.toTypedArray()
+            setDefaultValueCompat(ListSortOrder.NEWEST.name)
+        }
         findPreference<ListPreference>(AppSettings.KEY_LIST_MODE)?.run {
             entryValues = ListMode.entries.names()
             setDefaultValueCompat(ListMode.GRID.name)
@@ -93,11 +112,20 @@ class AppearanceSettingsFragment :
             pref.values = settings.searchSuggestionTypes.mapToSet { it.name }
         }
         bindNavSummary()
+        bindWallpaperStatus()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         settings.subscribe(this)
+        if (WallpaperPaletteCompat.isSupported) viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                wallpaperPalette.status.collect {
+                    bindWallpaperStatus()
+                    findPreference<ThemeChooserPreference>(AppSettings.KEY_COLOR_THEME)?.refreshPalettePreview()
+                }
+            }
+        }
     }
 
     override fun onDestroyView() {
@@ -114,6 +142,7 @@ class AppearanceSettingsFragment :
             AppSettings.KEY_COLOR_THEME,
             AppSettings.KEY_THEME_AMOLED,
                 -> {
+                bindWallpaperStatus()
                 postRestart()
             }
 
@@ -134,6 +163,16 @@ class AppearanceSettingsFragment :
 
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         return when (preference.key) {
+            "wallpaper_palette_refresh" -> {
+                if (WallpaperPaletteCompat.isSupported && settings.colorScheme == ColorScheme.WALLPAPER) {
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        val result = wallpaperPalette.refresh(force = true)
+                        if (result == WallpaperPaletteCompat.Status.READY &&
+                            settings.colorScheme == ColorScheme.WALLPAPER && isResumed) postRestart()
+                    }
+                }
+                true
+            }
             AppSettings.KEY_PROTECT_APP -> {
                 val pref = (preference as? TwoStatePreference ?: return false)
                 if (pref.isChecked) {
@@ -152,6 +191,19 @@ class AppearanceSettingsFragment :
     private fun postRestart() {
         viewLifecycleOwner.lifecycle.postDelayed(400) {
             activityRecreationHandle.recreateAll()
+        }
+    }
+
+    private fun bindWallpaperStatus() {
+        findPreference<Preference>("wallpaper_palette_refresh")?.run {
+            isVisible = WallpaperPaletteCompat.isSupported
+            isEnabled = settings.colorScheme == ColorScheme.WALLPAPER
+            setSummary(if (!isEnabled) R.string.wallpaper_palette_choose else when (wallpaperPalette.status.value) {
+                WallpaperPaletteCompat.Status.NOT_PREPARED -> R.string.wallpaper_palette_pending
+                WallpaperPaletteCompat.Status.READY -> R.string.wallpaper_palette_ready
+                WallpaperPaletteCompat.Status.UNAVAILABLE -> R.string.wallpaper_palette_unavailable
+                WallpaperPaletteCompat.Status.OVERRIDE_UNAVAILABLE -> R.string.wallpaper_palette_override_unavailable
+            })
         }
     }
 

@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.core.parser.mihon
 
 import android.net.Uri
 import androidx.core.net.toUri
+import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.Page
@@ -10,10 +11,13 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
+import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
+import org.koitharu.kotatsu.core.parser.chapterWebUrl
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.network.CommonHeaders
 import org.koitharu.kotatsu.parsers.model.ContentRating
@@ -49,7 +53,7 @@ internal fun List<SChapter>.toKaisokuChapterOrder(): List<OrderedMihonChapter> =
 	}
 	.sortedBy { it.number }
 
-class MihonMangaRepository(
+open class MihonMangaRepository(
 	private val loadedSource: MihonExtensionManager.LoadedSource,
 	cache: MemoryContentCache,
  	private val appSettings: AppSettings,
@@ -60,7 +64,9 @@ class MihonMangaRepository(
 	override val source: MihonMangaSource
 		get() = loadedSource.wrapper
 
-	private val mihonSource = loadedSource.catalogueSource
+	private val mihonSource = requireNotNull(loadedSource.catalogueSource) { "Source has preferences only" }
+    private val mangaUpdates = MihonMangaUpdates(mihonSource, ::mapHostedFailure)
+    private val discovery = MihonDiscovery(mihonSource)
     private val chapterCache = MihonChapterCache()
 	private var mihonFilters = mihonSource.getFilterList()
 	private val defaultFilterState = mihonFilters.stateFingerprint()
@@ -132,29 +138,23 @@ class MihonMangaRepository(
         details.toKaisokuManga(chapters = chapters).copy(id = manga.id)
     }
 
+    override suspend fun discover(order: SortOrder, filter: MangaListFilter): List<Manga> = withContext(Dispatchers.IO) {
+        runCatchingCancellable {
+            val result = discovery.get(order, filter)
+            result.mangas.map { it.toKaisokuManga() }
+        }.getOrElse { throw mapHostedFailure(it) }
+    }
+
+    override val supportsLightweightMetadata: Boolean get() = true
+
+    override suspend fun getLightweightMetadataImpl(manga: Manga): Manga = withContext(Dispatchers.IO) {
+        mangaUpdates.metadata(manga.toSManga()).toKaisokuManga().copy(id = manga.id)
+    }
+
     private suspend fun loadDetailsAndChapters(manga: Manga): Pair<SManga, List<SChapter>> {
-		val seed = manga.toSManga()
-		val details = runCatchingCancellable { mihonSource.getMangaDetails(seed) }.getOrElse { error ->
-			when (val mapped = mapHostedFailure(error)) {
-				is AuthRequiredException -> throw mapped
-				else -> seed
-			}
-		}
-		val seedUrl = seed.safeUrl()
-		val seedTitle = seed.safeTitle()
-		val seedThumbnail = seed.safeThumbnailUrl()
-		if (details.safeUrl().isBlank() && seedUrl.isNotBlank()) {
-			details.url = seedUrl
-		}
-		if (details.safeTitle().isBlank() && seedTitle.isNotBlank()) {
-			details.title = seedTitle
-		}
-		if (details.safeThumbnailUrl().isNullOrBlank() && !seedThumbnail.isNullOrBlank()) {
-			details.thumbnail_url = seedThumbnail
-		}
-        val originalChapters = loadChapters(seed, details)
-        chapterCache.put(manga.url, originalChapters)
-        return details to originalChapters
+        val update = mangaUpdates.load(manga.toSManga())
+        chapterCache.put(manga.url, update.chapters)
+        return update.manga to update.chapters
     }
 
 	override suspend fun getPagesImpl(chapter: MangaChapter): List<MangaPage> = withContext(Dispatchers.IO) {
@@ -175,6 +175,12 @@ class MihonMangaRepository(
 				page.toKaisokuPage(index)
 			}
 		}.getOrElse { throw mapPageFailure(it) }
+
+    override suspend fun getChapterUrl(manga: Manga, chapter: MangaChapter): String? = withContext(Dispatchers.IO) {
+        val httpSource = mihonSource as? HttpSource ?: return@withContext null
+        val original = chapterCache.get(manga.url, chapter.url) ?: chapter.toSChapter()
+        chapterWebUrl(httpSource.getChapterUrl(original))
+    }
 
 	override suspend fun getPageUrl(page: MangaPage): String = withContext(Dispatchers.IO) {
 		val uri = page.url.toUri()
@@ -247,7 +253,7 @@ class MihonMangaRepository(
 			url = rawUrl,
 			publicUrl = publicUrl,
 			rating = RATING_UNKNOWN,
-			contentRating = if (source.isNsfwSource) ContentRating.ADULT else null,
+			contentRating = if (source.contentClass == org.koitharu.kotatsu.core.model.SourceContentClass.ADULT) ContentRating.ADULT else null,
 			coverUrl = rawThumbnail?.let(::absolutizeUrl),
 			tags = safeGenres().orEmpty().mapTo(LinkedHashSet()) { genre ->
 				MangaTag(title = genre, key = genre.lowercase(Locale.ROOT), source = source)
@@ -403,37 +409,28 @@ class MihonMangaRepository(
 
 	private fun stableId(rawValue: String): Long = mihonStableId(source.name, rawValue)
 
-	private suspend fun loadChapters(seed: SManga, details: SManga): List<SChapter> {
-		val candidates = buildList {
-			if (details !== seed) {
-				add(details)
-			}
-			add(seed)
+	/** Extensions report a failed in-process challenge as text; offer the captcha browser instead. */
+	private fun mapCloudFlareFailure(error: Throwable): Throwable? {
+		val httpSource = mihonSource as? HttpSource ?: return null
+		val isBypassFailure = generateSequence(error) { it.cause?.takeIf { cause -> cause !== it } }.take(4).any {
+			it.message?.contains("cloudflare bypass failed", ignoreCase = true) == true
 		}
-		var hadSuccessfulLoad = false
-		var lastError: Throwable? = null
-		for (candidate in candidates) {
-			val result = runCatchingCancellable { mihonSource.getChapterList(candidate) }
-			val chapters = result.getOrNull()
-			if (chapters != null) {
-				hadSuccessfulLoad = true
-				if (chapters.isNotEmpty()) {
-					return chapters
-				}
-			} else {
-				lastError = result.exceptionOrNull()
-			}
-		}
-		if (hadSuccessfulLoad) {
-			return emptyList()
-		}
-		throw mapHostedFailure(lastError ?: IllegalStateException("Unable to load chapters"))
+		if (!isBypassFailure) return null
+		return CloudFlareProtectedException(
+			url = httpSource.baseUrl,
+			source = source,
+			headers = runCatching { httpSource.headers }.getOrDefault(Headers.headersOf()),
+		)
 	}
+
+	val configurableSource: ConfigurableSource?
+		get() = mihonSource as? ConfigurableSource
 
 	private fun mapHostedFailure(error: Throwable): Throwable {
 		if (error is AuthRequiredException) {
 			return error
 		}
+		mapCloudFlareFailure(error)?.let { return it }
 		val message = buildString {
 			appendLine(error.message.orEmpty())
 			error.cause?.message?.takeIf { it.isNotBlank() }?.let(::append)
@@ -452,6 +449,7 @@ class MihonMangaRepository(
 		if (error is AuthRequiredException) {
 			return error
 		}
+		mapCloudFlareFailure(error)?.let { return it }
 		val message = buildString {
 			appendLine(error.message.orEmpty())
 			error.cause?.message?.takeIf { it.isNotBlank() }?.let(::append)

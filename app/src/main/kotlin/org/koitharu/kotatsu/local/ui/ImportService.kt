@@ -30,6 +30,7 @@ import org.koitharu.kotatsu.core.util.ext.toBitmapOrNull
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
 import org.koitharu.kotatsu.core.util.ext.withPartialWakeLock
 import org.koitharu.kotatsu.local.data.importer.SingleMangaImporter
+import org.koitharu.kotatsu.local.data.importer.MangaImportResult
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import javax.inject.Inject
@@ -55,7 +56,7 @@ class ImportService : CoroutineIntentService() {
 		startForeground(this)
 		powerManager.withPartialWakeLock(TAG) {
 			val result = runCatchingCancellable {
-				importer.import(uri).map { it.manga }
+				importer.import(uri).let { MangaImportResult(it.imported.map { local -> local.manga }, it.failures) }
 			}
 			if (applicationContext.checkNotificationPermission(CHANNEL_ID)) {
 				val notification = buildNotification(startId, result)
@@ -102,67 +103,78 @@ class ImportService : CoroutineIntentService() {
 		)
 	}
 
-	private suspend fun buildNotification(startId: Int, result: Result<List<Manga>>): Notification {
-		val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-			.setPriority(NotificationCompat.PRIORITY_DEFAULT)
-			.setDefaults(0)
-			.setSilent(true)
-			.setAutoCancel(true)
-		result.onSuccess { imported ->
-			val manga = imported.singleOrNull()
-			if (manga == null) {
-				notification.setContentTitle(applicationContext.getString(R.string.import_completed))
-					.setContentText(
-						applicationContext.resources.getQuantityString(
-							R.plurals.imported_titles,
-							imported.size,
-							imported.size,
-						),
-					)
-					.setSmallIcon(R.drawable.ic_stat_done)
-				return@onSuccess
-			}
-			notification.setLargeIcon(
-				coil.execute(
-					ImageRequest.Builder(applicationContext)
-						.data(manga.coverUrl)
-						.mangaSourceExtra(manga.source)
-						.build(),
-				).toBitmapOrNull(),
-			)
-			notification.setSubText(manga.title)
-			val intent = AppRouter.detailsIntent(applicationContext, manga)
-			notification.setContentIntent(
-				PendingIntentCompat.getActivity(
-					applicationContext,
-					manga.id.toInt(),
-					intent,
-					PendingIntent.FLAG_UPDATE_CURRENT,
-					false,
-				),
-			).setVisibility(
-				if (manga.isNsfw()) NotificationCompat.VISIBILITY_SECRET else NotificationCompat.VISIBILITY_PUBLIC,
-			)
-			notification.setContentTitle(applicationContext.getString(R.string.import_completed))
-				.setContentText(applicationContext.getString(R.string.import_completed_hint))
-				.setSmallIcon(R.drawable.ic_stat_done)
-			NotificationCompat.BigTextStyle(notification)
-				.bigText(applicationContext.getString(R.string.import_completed_hint))
-		}.onFailure { error ->
-			notification.setContentTitle(applicationContext.getString(R.string.error_occurred))
-				.setContentText(error.getDisplayMessage(applicationContext.resources))
-				.setSmallIcon(android.R.drawable.stat_notify_error)
-			ErrorReporterReceiver.getNotificationAction(
-				context = applicationContext,
-				e = error,
-				notificationId = startId,
-				notificationTag = TAG,
-			)?.let { action ->
-				notification.addAction(action)
-			}
-		}
-		return notification.build()
-	}
+    private suspend fun buildNotification(startId: Int, result: Result<MangaImportResult<Manga>>): Notification {
+        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setDefaults(0)
+            .setSilent(true)
+            .setAutoCancel(true)
+        result.onSuccess { outcome ->
+            val imported = outcome.imported
+            if (outcome.failures.isNotEmpty()) {
+                val message = applicationContext.getString(R.string.import_partial, imported.size, outcome.failures.size)
+                val error = java.io.IOException(message).apply {
+                    outcome.failures.forEach { failure -> addSuppressed(java.io.IOException(failure.title, failure.error)) }
+                }
+                notification.setContentTitle(message).setSmallIcon(android.R.drawable.stat_notify_error)
+                    .setContentText(applicationContext.getString(R.string.details))
+                ErrorReporterReceiver.getNotificationAction(applicationContext, error, startId, TAG)?.let { notification.addAction(it) }
+                return@onSuccess
+            }
+            val manga = imported.singleOrNull()
+            if (manga == null) {
+                notification.setContentTitle(applicationContext.getString(R.string.import_completed))
+                    .setContentText(
+                        applicationContext.resources.getQuantityString(
+                            R.plurals.imported_titles,
+                            imported.size,
+                            imported.size,
+                        ),
+                    )
+                    .setSmallIcon(R.drawable.ic_stat_done)
+                return@onSuccess
+            }
+            notification.setLargeIcon(
+                coil.execute(
+                    ImageRequest.Builder(applicationContext)
+                        .data(manga.coverUrl)
+                        .mangaSourceExtra(manga.source)
+                        .build(),
+                ).toBitmapOrNull(),
+            )
+            notification.setSubText(manga.title)
+            val intent = AppRouter.detailsIntent(applicationContext, manga)
+            notification.setContentIntent(
+                PendingIntentCompat.getActivity(
+                    applicationContext,
+                    manga.id.toInt(),
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT,
+                    false,
+                ),
+            ).setVisibility(
+                if (manga.isNsfw()) NotificationCompat.VISIBILITY_SECRET else NotificationCompat.VISIBILITY_PUBLIC,
+            )
+            notification.setContentTitle(applicationContext.getString(R.string.import_completed))
+                .setContentText(applicationContext.getString(R.string.import_completed_hint))
+                .setSmallIcon(R.drawable.ic_stat_done)
+            NotificationCompat.BigTextStyle(notification)
+                .bigText(applicationContext.getString(R.string.import_completed_hint))
+        }.onFailure { error ->
+            notification.setContentTitle(applicationContext.getString(R.string.error_occurred))
+                .setContentText(error.getDisplayMessage(applicationContext.resources))
+                .setSmallIcon(android.R.drawable.stat_notify_error)
+            ErrorReporterReceiver.getNotificationAction(
+                context = applicationContext,
+                e = error,
+                notificationId = startId,
+                notificationTag = TAG,
+            )?.let { action ->
+                notification.addAction(action)
+            }
+        }
+        return notification.build()
+    }
 
 	companion object {
 

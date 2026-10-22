@@ -17,9 +17,12 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.MangaSourceRegistry
+import org.koitharu.kotatsu.core.model.PluginMangaSource
 import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.parser.DynamicParserManager
 import org.koitharu.kotatsu.core.parser.PluginFileLoader
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.parsers.util.await
@@ -34,9 +37,12 @@ class PluginsManageViewModel @Inject constructor(
 	@ApplicationContext private val context: Context,
 	@BaseHttpClient private val okHttpClient: OkHttpClient,
 	private val mangaSourcesRepository: MangaSourcesRepository,
+	private val updatePluginsProvider: UpdatePluginsProvider,
+	private val settings: AppSettings,
 ) : BaseViewModel() {
 
 	val content = MutableStateFlow<List<PluginManageItem>>(emptyList())
+	val selection = MutableStateFlow<Set<String>>(emptySet())
 	private val prefs by lazy {
 		context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 	}
@@ -73,14 +79,66 @@ class PluginsManageViewModel @Inject constructor(
 		}
 	}
 
+	/** Runs the regular plugin auto-update (if enabled) and refreshes the list when it finishes. */
+	fun runAutoUpdate() {
+		launchJob(Dispatchers.Default) {
+			updatePluginsProvider.runAutoUpdate(settings)
+			refresh()
+		}
+	}
+
+	fun toggleSelection(jarName: String) {
+		val current = selection.value
+		selection.value = if (jarName in current) current - jarName else current + jarName
+		publishFiltered()
+	}
+
+	fun clearSelection() {
+		if (selection.value.isEmpty()) return
+		selection.value = emptySet()
+		publishFiltered()
+	}
+
+	suspend fun deleteSelected(): Boolean = withContext(Dispatchers.Default) {
+		val selected = selection.value
+		if (selected.isEmpty()) return@withContext false
+		val pluginsDir = PluginFileLoader.pluginsDir(context)
+		var isSuccess = true
+		for (jarName in selected) {
+			runCatchingCancellable {
+				File(pluginsDir, jarName).takeIf { it.exists() }?.run {
+					setWritable(true, true)
+					check(delete()) { "Cannot delete $jarName" }
+				}
+				clearGithubMeta(jarName)
+			}.onFailure { isSuccess = false }
+		}
+		selection.value = emptySet()
+		reloadPlugins(pluginsDir)
+		isSuccess
+	}.also { refresh() }
+
+	/** The JAR name is part of every source identity; rename only its display label. */
+	suspend fun renamePlugin(item: PluginManageItem.Plugin, rawName: String): Boolean = withContext(Dispatchers.Default) {
+		val label = rawName.trim().takeIf { it.isNotEmpty() && it.length <= 120 && it.none(Char::isISOControl) }
+			?: return@withContext false
+		if (!File(PluginFileLoader.pluginsDir(context), item.jarName).isFile) return@withContext false
+		prefs.edit { putString(KEY_PLUGIN_LABEL_PREFIX + item.jarName, label) }
+		true
+	}.also { if (it) refresh() }
+
 	fun setQuery(value: String?) {
 		query = value?.trim().orEmpty()
 		publishFiltered()
 	}
 
-	suspend fun resolveGithubRelease(input: String): ExternalPluginDto? = withContext(Dispatchers.Default) {
-		val repository = normalizeRepository(input) ?: return@withContext null
-		requestLatestRelease(repository)
+	suspend fun resolveGithubRelease(input: String): ExternalPluginDto? = resolveGithubReleases(input).firstOrNull()
+
+	/** Every jar asset of the repository's latest release. */
+	suspend fun resolveGithubReleases(input: String): List<ExternalPluginDto> = withContext(Dispatchers.Default) {
+		val repository = normalizeRepository(input) ?: return@withContext emptyList()
+		val tag = requestLatestTag(repository) ?: return@withContext emptyList()
+		requestReleaseAssets(repository, tag)
 	}
 
 	suspend fun importFromUri(uri: Uri, fileName: String): Boolean = withContext(Dispatchers.Default) {
@@ -142,15 +200,22 @@ class PluginsManageViewModel @Inject constructor(
 
 	fun importGithubPlugin(
 		askInput: suspend () -> String?,
+		askSelect: suspend (List<String>) -> Int?,
 		askOverwrite: suspend (String) -> Boolean,
 		onResult: (Boolean) -> Unit,
 	) {
 		launchJob(Dispatchers.Default) {
 			val input = askInput()?.trim()?.takeIf { it.isNotBlank() } ?: return@launchJob
-			val release = resolveGithubRelease(input)
-			if (release == null) {
+			val releases = resolveGithubReleases(input)
+			if (releases.isEmpty()) {
 				withContext(Dispatchers.Main) { onResult(false) }
 				return@launchJob
+			}
+			val release = if (releases.size == 1) {
+				releases.single()
+			} else {
+				val index = askSelect(releases.map { it.fileName }) ?: return@launchJob
+				releases.getOrNull(index) ?: return@launchJob
 			}
 
 			val fileName = sanitizeJarFileName(release.fileName)
@@ -165,7 +230,7 @@ class PluginsManageViewModel @Inject constructor(
 
 	suspend fun updatePlugin(item: PluginManageItem.Plugin): Boolean {
 		val repository = item.repository ?: return false
-		val release = resolveGithubRelease(repository) ?: return false
+		val release = pickAsset(resolveGithubReleases(repository), item.jarName) ?: return false
 		return if (release.tag == item.installedTag) {
 			refresh()
 			true
@@ -208,13 +273,15 @@ class PluginsManageViewModel @Inject constructor(
 			)
 			return
 		}
+		val selected = selection.value
 		val q = query
 		if (q.isBlank()) {
-			content.value = all
+			content.value = all.map { it.copy(isSelected = it.jarName in selected) }
 			return
 		}
-		val filtered = all.filter { plugin ->
+		val filtered = all.map { it.copy(isSelected = it.jarName in selected) }.filter { plugin ->
 			plugin.jarName.contains(q, ignoreCase = true) ||
+				plugin.displayName.contains(q, ignoreCase = true) ||
 				plugin.repository?.contains(q, ignoreCase = true) == true
 		}
 		content.value = filtered.ifEmpty {
@@ -228,13 +295,20 @@ class PluginsManageViewModel @Inject constructor(
 			return emptyList()
 		}
 		val meta = readAndCleanupMeta(plugins.toSet())
+		val loaded = MangaSourceRegistry.entries.filterIsInstance<PluginMangaSource>().groupBy { it.jarName }
+		val errors = DynamicParserManager.getLoadErrors()
 		return plugins.map { fileName ->
 			val itemMeta = meta[fileName]
+			val sources = loaded[fileName].orEmpty()
 			PluginManageItem.Plugin(
 				jarName = fileName,
+				customName = prefs.getString(KEY_PLUGIN_LABEL_PREFIX + fileName, null),
 				repository = itemMeta?.repository,
 				installedTag = itemMeta?.tag,
 				latestTag = null,
+				sourcesCount = sources.size,
+				isTsuki = sources.any { it.isTsuki },
+				loadError = errors[fileName]?.let { it.message ?: it.javaClass.simpleName },
 			)
 		}
 	}
@@ -244,10 +318,6 @@ class PluginsManageViewModel @Inject constructor(
 		mangaSourcesRepository.refreshInstalledPluginSources()
 	}
 
-	private suspend fun requestLatestRelease(repository: String): ExternalPluginDto? {
-		val tag = requestLatestTag(repository) ?: return null
-		return requestReleaseByTag(repository, tag)
-	}
 
 	private suspend fun requestLatestTag(repository: String): String? {
 		return runCatchingCancellable {
@@ -271,9 +341,9 @@ class PluginsManageViewModel @Inject constructor(
 		}.getOrNull()
 	}
 
-	private suspend fun requestReleaseByTag(repository: String, tag: String): ExternalPluginDto? {
+	private suspend fun requestReleaseAssets(repository: String, tag: String): List<ExternalPluginDto> {
 		return runCatchingCancellable {
-			val (owner, repoName) = splitRepository(repository) ?: return null
+			val (owner, repoName) = splitRepository(repository) ?: return emptyList()
 			val url = HttpUrl.Builder()
 				.scheme("https")
 				.host("api.github.com")
@@ -285,17 +355,18 @@ class PluginsManageViewModel @Inject constructor(
 				.build()
 			okHttpClient.newCall(request).await().use { response ->
 				if (!response.isSuccessful) {
-					return null
+					return emptyList()
 				}
 				val body = response.body.string()
 				if (body.isBlank()) {
-					return null
+					return emptyList()
 				}
 				val json = JSONObject(body)
-				val asset = findJarAsset(json.optJSONArray("assets")) ?: return null
-				ExternalPluginDto(repository, tag, asset.first, asset.second)
+				findJarAssets(json.optJSONArray("assets")).map { (name, url) ->
+					ExternalPluginDto(repository, tag, name, url)
+				}
 			}
-		}.getOrNull()
+		}.getOrDefault(emptyList())
 	}
 
 	private fun normalizeRepository(input: String): String? {
@@ -317,18 +388,11 @@ class PluginsManageViewModel @Inject constructor(
 		return owner to repo
 	}
 
-	private fun findJarAsset(assets: JSONArray?): Pair<String, String>? {
-		assets ?: return null
-		for (i in 0 until assets.length()) {
-			val asset = assets.optJSONObject(i) ?: continue
-			val name = asset.optString("name")
-			val url = asset.optString("browser_download_url")
-			if (name.endsWith(".jar", ignoreCase = true) && url.isNotBlank()) {
-				return name to url
-			}
-		}
-		return null
-	}
+	private fun findJarAssets(assets: JSONArray?): List<Pair<String, String>> =
+		UpdatePluginsProvider.findJarAssets(assets)
+
+	private fun pickAsset(assets: List<ExternalPluginDto>, jarName: String): ExternalPluginDto? =
+		assets.firstOrNull { it.fileName.equals(jarName, ignoreCase = true) } ?: assets.singleOrNull()
 
 	private fun readAndCleanupMeta(installedFiles: Set<String>): MutableMap<String, GithubMeta> {
 		val meta = readMeta()
@@ -399,6 +463,7 @@ class PluginsManageViewModel @Inject constructor(
 	)
 
 	private companion object {
+		const val KEY_PLUGIN_LABEL_PREFIX = "display_name:"
 		const val PREFS_NAME = "plugins_manage"
 		const val PREFS_KEY_GITHUB_META = "github_meta"
 		const val JSON_KEY_REPOSITORY = "repository"

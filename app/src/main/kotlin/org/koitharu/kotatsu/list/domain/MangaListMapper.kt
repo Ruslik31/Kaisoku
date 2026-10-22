@@ -30,7 +30,7 @@ import javax.inject.Inject
 
 @Reusable
 class MangaListMapper @Inject constructor(
-	@ApplicationContext context: Context,
+	@ApplicationContext private val context: Context,
 	private val settings: AppSettings,
 	private val trackingRepository: TrackingRepository,
 	private val historyRepository: HistoryRepository,
@@ -38,6 +38,32 @@ class MangaListMapper @Inject constructor(
 	private val localMangaIndex: LocalMangaIndex,
 	private val dataRepository: MangaDataRepository,
 ) {
+
+    suspend fun withFavoriteCategories(models: List<MangaListModel>): List<MangaListModel> {
+        val categories = if (settings.isSearchFavoriteCategoriesEnabled)
+            favouritesRepository.getVisibleCategories(models.map { it.id }) else emptyMap()
+        return models.map { model ->
+            val values = categories[model.id].orEmpty()
+            when (model) {
+                is MangaGridModel -> model.copy(favoriteCategories = values)
+                is MangaCompactListModel -> model.copy(favoriteCategories = values)
+                is MangaDetailedListModel -> model.copy(favoriteCategories = values)
+            }
+        }
+    }
+
+    suspend fun toRecommendationModels(values: List<org.koitharu.kotatsu.suggestions.local.Recommendation>, mode: ListMode): List<MangaListModel> {
+        val models = toListModelList(values.map { it.manga }, mode)
+        return models.mapIndexed { index, model ->
+            val recommendation = values[index]
+            val reason = org.koitharu.kotatsu.suggestions.local.recommendationReasonText(recommendation, context)
+            when (model) {
+                is MangaGridModel -> model.copy(recommendation = recommendation)
+                is MangaCompactListModel -> model.copy(recommendation = recommendation, subtitle = reason)
+                is MangaDetailedListModel -> model.copy(recommendation = recommendation, subtitle = reason)
+            }
+        }
+    }
 
 
 	suspend fun toListModelList(
@@ -173,7 +199,7 @@ class MangaListMapper @Inject constructor(
 			return emptyMap()
 		}
 		return coroutineScope {
-			val countersDeferred = if (settings.isTrackerEnabled) {
+			val countersDeferred = if (settings.isTrackerEnabled && settings.isNewChapterCounterVisible) {
 				async { trackingRepository.getNewChaptersCountMap(ids) }
 			} else {
 				null
@@ -213,7 +239,7 @@ class MangaListMapper @Inject constructor(
 	}
 
 	private suspend fun getBadges(mangaId: Long, @Options options: Int): MangaBadges {
-		val counter = if (settings.isTrackerEnabled) {
+		val counter = if (settings.isTrackerEnabled && settings.isNewChapterCounterVisible) {
 			trackingRepository.getNewChaptersCount(mangaId)
 		} else {
 			0

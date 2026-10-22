@@ -15,10 +15,15 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 class PluginManageAdapter(
 	onDeleteClick: (PluginManageItem.Plugin) -> Unit,
 	onUpdateClick: (PluginManageItem.Plugin) -> Unit,
+	onItemClick: (PluginManageItem.Plugin) -> Unit,
+	onItemLongClick: (PluginManageItem.Plugin) -> Unit,
 ) : BaseListAdapter<ListModel>() {
 
 	init {
-		addDelegate(ListItemType.CHAPTER_LIST, pluginItemDelegate(onDeleteClick, onUpdateClick))
+		addDelegate(
+			ListItemType.CHAPTER_LIST,
+			pluginItemDelegate(onDeleteClick, onUpdateClick, onItemClick, onItemLongClick),
+		)
 		addDelegate(ListItemType.HINT_EMPTY, pluginPlaceholderDelegate())
 	}
 }
@@ -26,6 +31,8 @@ class PluginManageAdapter(
 private fun pluginItemDelegate(
 	onDeleteClick: (PluginManageItem.Plugin) -> Unit,
 	onUpdateClick: (PluginManageItem.Plugin) -> Unit,
+	onItemClick: (PluginManageItem.Plugin) -> Unit,
+	onItemLongClick: (PluginManageItem.Plugin) -> Unit,
 ) = adapterDelegateViewBinding<PluginManageItem.Plugin, ListModel, ItemSourceConfigBinding>(
 	{ layoutInflater, parent -> ItemSourceConfigBinding.inflate(layoutInflater, parent, false) },
 ) {
@@ -38,13 +45,25 @@ private fun pluginItemDelegate(
 	binding.imageViewRemove.contentDescription = context.getString(R.string.delete)
 	binding.imageViewAdd.setImageResource(R.drawable.ic_download)
 	binding.imageViewAdd.contentDescription = context.getString(R.string.update)
+	binding.root.setOnClickListener { onItemClick(item) }
+	binding.root.setOnLongClickListener {
+		onItemLongClick(item)
+		true
+	}
 
 	bind {
 		binding.textViewTitle.text = item.displayName
-		val parts = ArrayList<String>(3)
+		binding.imageViewIcon.setImageResource(if (item.isSelected) R.drawable.ic_check else R.drawable.ic_services)
+		val parts = ArrayList<String>(4)
+		if (item.loadError != null) {
+			parts += context.getString(R.string.plugin_load_error, item.loadError)
+		} else {
+			parts += context.resources.getQuantityString(R.plurals.plugin_sources, item.sourcesCount, item.sourcesCount)
+		}
+		if (item.isTsuki) parts += "Tsuki"
 		item.repository?.takeIf { it.isNotBlank() }?.let(parts::add)
 		item.installedTag?.takeIf { it.isNotBlank() }?.let(parts::add)
-		binding.textViewDescription.text = if (parts.isEmpty()) item.jarName else parts.joinToString(" - ")
+		binding.textViewDescription.text = parts.joinToString(" - ")
 		binding.imageViewRemove.setOnClickListener { onDeleteClick(item) }
 		binding.imageViewAdd.isVisible = item.hasUpdate
 		binding.imageViewAdd.setOnClickListener(

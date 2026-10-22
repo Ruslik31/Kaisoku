@@ -150,6 +150,12 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		updatedAt: Long,
 	): Int
 
+	/** Same-chapter autosave; a changed/deleted row must take the normal full-save path. */
+	@Query("UPDATE history SET page = :page, scroll = :scroll, percent = :percent, updated_at = :updatedAt WHERE manga_id = :mangaId AND chapter_id = :chapterId AND chapters = :chapters AND deleted_at = 0")
+	abstract suspend fun updatePosition(
+		mangaId: Long, chapterId: Long, chapters: Int, page: Int, scroll: Float, percent: Float, updatedAt: Long,
+	): Int
+
 	suspend fun delete(mangaId: Long) = setDeletedAt(mangaId, System.currentTimeMillis())
 
 	suspend fun recover(mangaId: Long) = setDeletedAt(mangaId, 0L)

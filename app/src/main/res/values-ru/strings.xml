@@ -985,4 +985,24 @@
     <string name="tracker_sync_error">Не удалось синхронизировать прогресс: %1$s</string>
     <string name="tracker_beta_short">Бета: проверяйте привязки и номера глав. Нажмите, чтобы узнать о рисках.</string>
     <string name="tracker_beta_risks">Похожие названия могут относиться к другому произведению, продолжению или изданию. Автоподбор необязателен и по умолчанию выключен; автоматически привязываются только доверенные ID. Подсказки по названию и новые записи требуют подтверждения. Привязку можно исправить или удалить в разделе «Отслеживание». Прочитанные главы синхронизируются по номерам источника, которые могут отличаться от трекера. Изменение прогресса на сайте во время синхронизации может совпасть с отправкой запроса — проверьте прогресс после одновременных изменений. Изменения на сайте не меняют позицию чтения и категории избранного. Эта сборка обновляет локальную базу: создайте резервную копию перед возвратом на старую версию. Старые импортированные привязки без аккаунта требуют подтверждения перед автоматической синхронизацией.</string>
+    <string name="details_chapters_inline">Показывать главы на странице произведения</string>
+    <string name="details_chapters_inline_summary">Список глав, страницы и закладки также останутся доступны в нижней панели.</string>
+    <string name="source_switch_suggest">Предлагать другой источник при ошибках</string>
+    <string name="source_switch_suggest_summary">Если источник медленный или постоянно выдаёт ошибки, предлагать плагин или расширение для того же сайта</string>
+    <string name="source_switch_title_errors">%s не отвечает</string>
+    <string name="source_switch_title_slow">%s работает медленно</string>
+    <string name="source_switch_to">Перейти на %1$s (%2$s)</string>
+    <string name="source_switch_install">Установить и перейти на %1$s (%2$s)</string>
+    <string name="source_switch_kind_plugin">плагин %s</string>
+    <string name="source_switch_kind_builtin">встроенный</string>
+    <string name="source_switch_kind_extension">расширение</string>
+    <string name="source_switch_mute">Не предлагать для этого источника</string>
+    <string name="source_switch_slow">Источник работает медленно</string>
+    <string name="source_switch_action">Сменить источник</string>
+    <string name="source_switch_progress">Переход на %s…</string>
+    <string name="source_switched">Перенесено на %s</string>
+    <string name="input_required">Требуется ввод</string>
+    <string name="plugin_load_error">Не удалось загрузить: %s</string>
+    <string name="plugin_select_file">Выберите файл плагина</string>
+    <string name="plugins_deleted">Плагины удалены</string>
 </resources>

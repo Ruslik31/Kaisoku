@@ -51,7 +51,7 @@ class UpdatePluginsProvider @Inject constructor(
 						val results = installed.map { jarName ->
 							async {
 								val info = meta[jarName] ?: return@async null
-								val release = requestRelease(info.repository) ?: return@async null
+								val release = requestRelease(info.repository, jarName) ?: return@async null
 								if (release.tag == info.tag) return@async null
 								if (replacePlugin(release.downloadUrl, File(pluginsDir, jarName))) {
 									jarName to RemoteReleaseDto(repository = info.repository, tag = release.tag)
@@ -117,6 +117,32 @@ class UpdatePluginsProvider @Inject constructor(
 	suspend fun requestRelease(repository: String): ExternalPluginDto? {
 		val tag = requestTag(repository) ?: return null
 		return requestPlugin(repository, tag)
+	}
+
+	/** The latest release asset for an installed jar: the one with the same file name, or the only one. */
+	suspend fun requestRelease(repository: String, jarName: String): ExternalPluginDto? {
+		val tag = requestTag(repository) ?: return null
+		val assets = requestPlugins(repository, tag)
+		return assets.firstOrNull { it.fileName.equals(jarName, ignoreCase = true) } ?: assets.singleOrNull()
+	}
+
+	suspend fun requestPlugins(repository: String, tag: String): List<ExternalPluginDto> {
+		return runCatchingCancellable {
+			val (owner, repoName) = splitRepository(repository) ?: return emptyList()
+			val url = HttpUrl.Builder()
+				.scheme("https")
+				.host("api.github.com")
+				.addPathSegments("repos/$owner/$repoName/releases/tags/$tag")
+				.build()
+			okHttpClient.newCall(Request.Builder().get().url(url).build()).await().use { response ->
+				if (!response.isSuccessful) return emptyList()
+				val body = response.body.string()
+				if (body.isBlank()) return emptyList()
+				findJarAssets(JSONObject(body).optJSONArray("assets")).map { (name, downloadUrl) ->
+					ExternalPluginDto(repository, tag, name, downloadUrl)
+				}
+			}
+		}.getOrDefault(emptyList())
 	}
 
 	suspend fun requestTag(repository: String): String? {
@@ -260,6 +286,17 @@ class UpdatePluginsProvider @Inject constructor(
 	}
 
 	companion object {
+
+		fun findJarAssets(assets: JSONArray?): List<Pair<String, String>> {
+			assets ?: return emptyList()
+			return (0 until assets.length()).mapNotNull { i ->
+				val asset = assets.optJSONObject(i) ?: return@mapNotNull null
+				val name = asset.optString("name")
+				val url = asset.optString("browser_download_url")
+				(name to url).takeIf { name.endsWith(".jar", ignoreCase = true) && url.isNotBlank() }
+			}
+		}
+
 		private const val PREFS_NAME = "plugins_manage"
 		private const val PREFS_KEY = "github_meta"
 		private const val KEY_REPOSITORY = "repository"

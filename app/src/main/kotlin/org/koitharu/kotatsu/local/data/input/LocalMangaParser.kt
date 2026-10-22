@@ -53,7 +53,7 @@ import java.io.File
  * :
  * L--- Page x.png
  */
-class LocalMangaParser(private val uri: Uri) {
+class LocalMangaParser(private val uri: Uri) : org.koitharu.kotatsu.core.parser.ChapterTextRepository {
 
 	constructor(file: File) : this(file.toUri())
 
@@ -156,9 +156,31 @@ class LocalMangaParser(private val uri: Uri) {
 		}
 	}
 
-	suspend fun isNovel(): Boolean = getMangaInfo()?.source?.name?.startsWith("lnreader:") == true
+    suspend fun isNovel(): Boolean {
+        if (getMangaInfo()?.source?.name?.startsWith("lnreader:") == true) return true
+        // Downloaded text stays readable after its optional extension is disabled or removed.
+        // Probe names only; do not decompress all pages or contact the original source.
+        return runInterruptible(Dispatchers.IO) {
+            uri.resolveFsAndPath().use { (fileSystem, rootPath) ->
+                var archives = 0
+                fileSystem.listRecursively(rootPath).take(256).any { path ->
+                    if (!fileSystem.isRegularFile(path)) return@any false
+                    if (path.isChapterHtml()) return@any true
+                    if (!hasZipExtension(path.name) || archives++ >= 4) return@any false
+                    // MULTIPLE_CBZ stores one nested archive per chapter. Inspect only a bounded
+                    // number of directory entries, never chapter contents or image allocations.
+                    runCatchingCancellable {
+                        fileSystem.openZip(path).use { zip ->
+                            zip.listRecursively(Path.DIRECTORY_SEPARATOR.toPath()).take(256)
+                                .any { it.isChapterHtml() && zip.isRegularFile(it) }
+                        }
+                    }.getOrDefault(false)
+                }
+            }
+        }
+    }
 
-	suspend fun getChapterHtml(chapter: MangaChapter): String = runInterruptible(Dispatchers.IO) {
+	override suspend fun getChapterHtml(chapter: MangaChapter): String = runInterruptible(Dispatchers.IO) {
 		val chapterUri = chapter.url.toUri().resolve()
 		chapterUri.resolveFsAndPath().use { (fileSystem, rootPath) ->
 			val index = MangaIndex.read(fileSystem, rootPath / ENTRY_NAME_INDEX)
@@ -299,6 +321,8 @@ class LocalMangaParser(private val uri: Uri) {
 		private fun Path.isImage(): Boolean = MimeTypes.getMimeTypeFromExtension(name)?.isImage == true
 
 		private fun Path.isZip(): Boolean = hasZipExtension(name)
+
+        private fun Path.isChapterHtml(): Boolean = name.endsWith(".html", true) || name.endsWith(".htm", true)
 
 		private fun Uri.resolve(): Uri = if (isFileUri()) {
 			val file = toFile()

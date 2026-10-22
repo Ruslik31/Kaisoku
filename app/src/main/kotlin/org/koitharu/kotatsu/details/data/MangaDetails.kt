@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.details.data
 import org.koitharu.kotatsu.core.model.getLocale
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.withOverride
+import org.koitharu.kotatsu.core.parser.hasChapterText
 import org.koitharu.kotatsu.core.ui.model.MangaOverride
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -43,7 +44,7 @@ data class MangaDetails(
 
     // Novel chapter HTML is not an image page. Do not fetch it for the thumbnail tab.
     val supportsPageThumbnails: Boolean
-        get() = !manga.source.name.startsWith("lnreader:")
+        get() = !manga.source.name.startsWith("lnreader:") && !manga.source.hasChapterText()
 
     val local: LocalManga?
         get() = localManga ?: if (manga.isLocal) LocalManga(manga) else null

@@ -3,6 +3,8 @@ package org.koitharu.kotatsu.reader.ui.pager.webtoon
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import org.koitharu.kotatsu.reader.ui.pager.displaySourceWidth
+import org.koitharu.kotatsu.reader.ui.pager.displaySourceHeight
 import android.graphics.PointF
 import android.util.AttributeSet
 import androidx.core.view.ancestors
@@ -72,7 +74,7 @@ class WebtoonImageView @JvmOverloads constructor(
 		if (!isReady) {
 			return 0
 		}
-		return calculateScaledPageScrollRange(sWidth, sHeight, width, height)
+		return calculateScaledPageScrollRange(displaySourceWidth, displaySourceHeight, width, height)
 	}
 
 	override fun recycle() {
@@ -84,7 +86,7 @@ class WebtoonImageView @JvmOverloads constructor(
 
 	override fun getSuggestedMinimumHeight(): Int {
 		var desiredHeight = super.getSuggestedMinimumHeight()
-		if (sHeight == 0 && placeholderSize == null) {
+		if (displaySourceHeight == 0 && placeholderSize == null) {
 			val unresolvedHeight = unresolvedPageHeight()
 			if (desiredHeight < unresolvedHeight) {
 				desiredHeight = unresolvedHeight
@@ -101,8 +103,8 @@ class WebtoonImageView @JvmOverloads constructor(
 		val resizeWidth = widthSpecMode != MeasureSpec.EXACTLY
 		val resizeHeight = heightSpecMode != MeasureSpec.EXACTLY
 		var desiredWidth = parentWidth
-		val sourceWidth = sWidth.takeIf { it > 0 } ?: placeholderSize?.width ?: 0
-		val sourceHeight = sHeight.takeIf { it > 0 } ?: placeholderSize?.height ?: 0
+		val sourceWidth = displaySourceWidth.takeIf { it > 0 } ?: placeholderSize?.width ?: 0
+		val sourceHeight = displaySourceHeight.takeIf { it > 0 } ?: placeholderSize?.height ?: 0
 		var desiredHeight = if (sourceWidth > 0 && sourceHeight > 0) {
 			parentHeight
 		} else {
@@ -156,29 +158,29 @@ class WebtoonImageView @JvmOverloads constructor(
 	/**
 	 * [getScrollRange] reports `0` both for an image shorter than the view and for one that has not
 	 * been decoded yet, and callers cannot tell those apart. Without this guard the second case
-	 * divides by `sWidth == 0`: float division yields `Infinity` rather than throwing, so `minScale`
+	 * divides by `displaySourceWidth == 0`: float division yields `Infinity` rather than throwing, so `minScale`
 	 * and `maxScale` both become infinite, and SSIV clamps the image to that scale as soon as it does
 	 * decode - the page then renders as a hugely magnified crop, silently and only in webtoon mode.
 	 */
-	private fun canScale(): Boolean = isReady && sWidth > 0 && sHeight > 0 && width > 0
+	private fun canScale(): Boolean = isReady && displaySourceWidth > 0 && displaySourceHeight > 0 && width > 0
 
 	private fun scrollToInternal(pos: Int) {
 		if (!canScale()) {
 			scrollPos = 0
 			return
 		}
-		minScale = width / sWidth.toFloat()
+		minScale = width / displaySourceWidth.toFloat()
 		maxScale = minScale * DEFAULT_MAX_SCALE_MULTIPLIER
 		scrollPos = pos
-		ct.set(sWidth / 2f, (height / 2f + pos.toFloat()) / minScale)
+		ct.set(displaySourceWidth / 2f, (height / 2f + pos.toFloat()) / minScale)
 		setScaleAndCenter(minScale, ct)
 	}
 
-	private fun adjustScale() {
+	internal fun adjustScale() {
 		if (!canScale()) {
 			return
 		}
-		minScale = width / sWidth.toFloat()
+		minScale = width / displaySourceWidth.toFloat()
 		maxScale = minScale * DEFAULT_MAX_SCALE_MULTIPLIER
 		minimumScaleType = SCALE_TYPE_CUSTOM
 		requestLayout()

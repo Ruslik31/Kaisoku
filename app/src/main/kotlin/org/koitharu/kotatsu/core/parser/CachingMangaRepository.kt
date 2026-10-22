@@ -5,6 +5,7 @@ import androidx.collection.MutableLongSet
 import coil3.request.CachePolicy
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainCoroutineDispatcher
 import kotlinx.coroutines.async
@@ -24,11 +25,23 @@ abstract class CachingMangaRepository(
 	private val cache: MemoryContentCache,
 ) : MangaRepository {
 
+    internal var onFreshDetails: (suspend (Manga) -> Unit)? = null
+
+    internal var beforeDetails: (suspend (Manga) -> Manga?)? = null
+
+    final override suspend fun getLightweightMetadata(manga: Manga): Manga? =
+        beforeDetails?.invoke(manga)?.copy(chapters = null) ?: getLightweightMetadataImpl(manga)
+
+    protected open suspend fun getLightweightMetadataImpl(manga: Manga): Manga? = null
+
 	private val detailsMutex = MultiMutex<Long>()
 	private val relatedMangaMutex = MultiMutex<Long>()
 	private val pagesMutex = MultiMutex<MemoryContentCache.Key>()
 
 	final override suspend fun getDetails(manga: Manga): Manga = getDetails(manga, CachePolicy.ENABLED)
+
+    final override suspend fun refreshDetails(manga: Manga): Manga =
+        getDetailsCached(manga, CachePolicy.WRITE_ONLY, explicitRefresh = true)
 
     final override suspend fun getPages(chapter: MangaChapter): List<MangaPage> = getPagesCached(null, chapter)
 
@@ -54,18 +67,29 @@ abstract class CachingMangaRepository(
 		related
 	}.await()
 
-	suspend fun getDetails(manga: Manga, cachePolicy: CachePolicy): Manga = detailsMutex.withLock(manga.id) {
-		if (cachePolicy.readEnabled) {
-			cache.getDetails(source, manga.url)?.let { return it }
-		}
-		val details = asyncSafe {
-			getDetailsImpl(manga)
-		}
-		if (cachePolicy.writeEnabled) {
-			cache.putDetails(source, manga.url, details)
-		}
-		details
-	}.await()
+    suspend fun getDetails(manga: Manga, cachePolicy: CachePolicy): Manga =
+        getDetailsCached(manga, cachePolicy, explicitRefresh = false)
+
+    private suspend fun getDetailsCached(manga: Manga, cachePolicy: CachePolicy, explicitRefresh: Boolean): Manga =
+        detailsMutex.withLock(manga.id) {
+            if (!explicitRefresh) beforeDetails?.invoke(manga)?.let { return it }
+            if (cachePolicy.readEnabled) {
+                cache.getDetails(source, manga.url)?.let { return it }
+            }
+            lateinit var details: SafeDeferred<Manga>
+            details = asyncSafe(start = CoroutineStart.LAZY) {
+                // A queued request must honor a choice enabled after it left the calling coroutine.
+                if (!explicitRefresh) beforeDetails?.invoke(manga)?.let {
+                    cache.removeDetails(source, manga.url, details)
+                    return@asyncSafe it
+                }
+                getDetailsImpl(manga).also { onFreshDetails?.invoke(it) }
+            }
+            if (cachePolicy.writeEnabled) {
+                cache.putDetails(source, manga.url, details)
+            }
+            details
+        }.await()
 
 	suspend fun peekDetails(manga: Manga): Manga? {
 		return cache.getDetails(source, manga.url)
@@ -83,13 +107,16 @@ abstract class CachingMangaRepository(
 
     protected open suspend fun getPagesImpl(manga: Manga, chapter: MangaChapter): List<MangaPage> = getPagesImpl(chapter)
 
-	private suspend fun <T> asyncSafe(block: suspend CoroutineScope.() -> T): SafeDeferred<T> {
+    private suspend fun <T> asyncSafe(
+        start: CoroutineStart = CoroutineStart.DEFAULT,
+        block: suspend CoroutineScope.() -> T,
+    ): SafeDeferred<T> {
 		var dispatcher = currentCoroutineContext()[CoroutineDispatcher.Key]
 		if (dispatcher == null || dispatcher is MainCoroutineDispatcher) {
 			dispatcher = Dispatchers.Default
 		}
 		return SafeDeferred(
-			processLifecycleScope.async(dispatcher) {
+			processLifecycleScope.async(dispatcher, start = start) {
 				runCatchingCancellable { block() }
 			},
 		)

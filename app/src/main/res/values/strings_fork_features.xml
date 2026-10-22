@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="show_favorites_category_strip">Show favorites category strip</string>
+    <string name="show_favorites_category_strip_summary">When hidden, swipe between categories or use Choose category in the menu.</string>
+    <string name="choose_favorites_category">Choose category</string>
+    <string name="show_new_chapter_counters">Show new-chapter counters</string>
+    <string name="show_new_chapter_counters_summary">Hide or show counters on title cards without turning off update checks.</string>
+    <string name="fixed_grid_columns">Use a fixed number of grid columns</string>
+    <string name="fixed_grid_columns_summary">Choose columns instead of cover size. Page thumbnails keep their own setting.</string>
+    <string name="grid_columns">Grid columns</string>
+    <string name="default_favorites_sort">Default favorites sorting</string>
+    <string name="default_favorites_sort_summary">Used by All favorites and new categories. Existing categories keep their order; enable Use default sorting in their list options to follow this setting.</string>
+    <string name="use_default_favorites_sort">Use default sorting</string>
+    <string name="wide_page_rotation">Rotate wide pages</string>
+    <string name="wide_page_rotation_summary">Turn landscape pages upright for reading. Original files and reading progress stay unchanged.</string>
+    <string name="rotate_clockwise">Clockwise</string>
+    <string name="rotate_counterclockwise">Counterclockwise</string>
+    <string name="hold_scroll_settings">Hold-to-scroll</string>
+    <string name="hold_scroll_enabled">Scroll while holding a page</string>
+    <string name="hold_scroll_summary">Long-press an edge to scroll until you release. Custom long-press actions take priority; pinch and drag cancel scrolling.</string>
+    <string name="hold_scroll_top">Top row</string>
+    <string name="hold_scroll_left">Middle left</string>
+    <string name="hold_scroll_right">Middle right</string>
+    <string name="hold_scroll_bottom">Bottom row</string>
+    <string name="hold_scroll_up">Scroll backward</string>
+    <string name="hold_scroll_down">Scroll forward</string>
+    <string name="import_partial">Imported: %1$d; failed: %2$d</string>
+    <string name="local_diagnostics">Local diagnostic recording</string>
+    <string name="local_diagnostics_summary">Off by default. Keeps a small local record of screens, operations and error types. No titles, URLs, credentials or request bodies; nothing is uploaded.</string>
+    <string name="copy_local_diagnostics">Copy local diagnostics</string>
+    <string name="clear_local_diagnostics">Clear local diagnostics</string>
+    <string name="local_diagnostics_empty">No local diagnostics recorded.</string>
+    <string name="local_diagnostics_copied">Local diagnostics copied</string>
+    <string name="local_diagnostics_cleared">Local diagnostics cleared</string>
+</resources>

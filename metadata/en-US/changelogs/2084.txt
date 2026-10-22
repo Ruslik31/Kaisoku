@@ -1,0 +1,7 @@
+Suggest a plugin or extension when a source keeps failing.
+Support Tsuki parser plugins and bundle UMA.
+Add the Keiyoushi extension repository by default.
+Rename, bulk delete and choose files in the plugin manager.
+Show Mihon extension settings.
+Add reader gestures and favorites grid options.
+Fix recommendations, downloads and webtoon scrolling.

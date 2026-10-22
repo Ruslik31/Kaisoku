@@ -47,8 +47,17 @@ class ListConfigBottomSheet :
 		binding.textViewGridTitle.isVisible = isGridMode
 		binding.sliderGrid.isVisible = isGridMode
 
-		binding.sliderGrid.setLabelFormatter(IntPercentLabelFormatter(binding.root.context))
-		binding.sliderGrid.setValueRounded(viewModel.gridSize.toFloat())
+		if (viewModel.usesFixedColumns) {
+			binding.textViewGridTitle.setText(R.string.grid_columns)
+			binding.sliderGrid.valueFrom = 1f
+			binding.sliderGrid.valueTo = 12f
+			binding.sliderGrid.stepSize = 1f
+			binding.sliderGrid.setLabelFormatter { it.toInt().toString() }
+			binding.sliderGrid.setValueRounded(viewModel.gridColumns.toFloat())
+		} else {
+			binding.sliderGrid.setLabelFormatter(IntPercentLabelFormatter(binding.root.context))
+			binding.sliderGrid.setValueRounded(viewModel.gridSize.toFloat())
+		}
 		binding.sliderGrid.addOnChangeListener(this)
 
 		binding.checkableGroup.addOnButtonCheckedListener(this)
@@ -59,6 +68,19 @@ class ListConfigBottomSheet :
 		}
 		binding.switchGrouping.isChecked = viewModel.isGroupingEnabled
 		binding.switchGrouping.setOnCheckedChangeListener(this)
+		binding.switchDefaultSort.isVisible = viewModel.supportsDefaultSort
+		binding.switchDefaultSort.isChecked = viewModel.usesDefaultSort
+		binding.switchDefaultSort.setOnCheckedChangeListener { _, checked ->
+			viewModel.usesDefaultSort = checked
+			binding.cardOrder.isEnabled = !checked
+			binding.spinnerOrder.isEnabled = !checked
+			binding.spinnerDirection.isEnabled = !checked
+            val current = viewModel.getSelectedSortOrder()
+            val types = viewModel.getSortTypes()
+            val selected = types?.indexOf(current?.type) ?: viewModel.getSortOrders().orEmpty().indexOf(current)
+            if (selected >= 0) binding.spinnerOrder.setSelection(selected, false)
+            if (types != null) binding.spinnerDirection.setSelection(if (current?.isAscending == true) 0 else 1, false)
+		}
 
 		val sortTypes = viewModel.getSortTypes()
 		val sortOrders = viewModel.getSortOrders()
@@ -93,6 +115,8 @@ class ListConfigBottomSheet :
 				binding.spinnerDirection.onItemSelectedListener = this
 			}
 			binding.cardOrder.isVisible = true
+			binding.spinnerOrder.isEnabled = !viewModel.usesDefaultSort
+			binding.spinnerDirection.isEnabled = !viewModel.usesDefaultSort
 		}
 	}
 
@@ -129,7 +153,7 @@ class ListConfigBottomSheet :
 
 	override fun onValueChange(slider: Slider, value: Float, fromUser: Boolean) {
 		if (fromUser) {
-			viewModel.gridSize = value.toInt()
+			if (viewModel.usesFixedColumns) viewModel.gridColumns = value.toInt() else viewModel.gridSize = value.toInt()
 		}
 	}
 

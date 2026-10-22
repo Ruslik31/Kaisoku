@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="hold_scroll_directions">
+        <item>@string/hold_scroll_up</item>
+        <item>@string/none</item>
+        <item>@string/hold_scroll_down</item>
+    </string-array>
+    <string-array name="hold_scroll_direction_values" translatable="false">
+        <item>-1</item><item>0</item><item>1</item>
+    </string-array>
+    <string-array name="wide_page_rotations">
+        <item>@string/disabled</item>
+        <item>@string/rotate_clockwise</item>
+        <item>@string/rotate_counterclockwise</item>
+    </string-array>
+    <string-array name="wide_page_rotation_values" translatable="false">
+        <item>0</item><item>90</item><item>270</item>
+    </string-array>
+</resources>

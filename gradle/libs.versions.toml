@@ -12,7 +12,8 @@ collections = "1.5.0"
 conscrypt = "2.5.2"
 constraintlayout = "2.2.1"
 coreKtx = "1.17.0"
-coroutines = "1.10.2"
+# Hosted extensions use the runBlockingK JVM bridge introduced in 1.11.0.
+coroutines = "1.11.0"
 dagger = "2.57.2"
 decoroutinator = "2.5.7"
 desugar = "2.1.5"
@@ -38,11 +39,12 @@ moshi = "1.15.2"
 okhttp = "5.3.2"
 playServicesAuth = "21.6.0"
 okio = "3.17.0"
-parsers = "716077cd63"
+parsers = "c97ddeb321"
 quickjsKt = "1.0.0-alpha13"
 preference = "1.2.1"
 recyclerview = "1.4.0"
 room = "2.8.4"
+tsuki = "1.0.6"
 serialization = "1.11.0"
 junrar = "8.1.1"
 slf4j = "2.0.19"
@@ -70,6 +72,7 @@ androidx-collection = { module = "androidx.collection:collection-ktx", version.r
 androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayout" }
 androidx-core = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
 androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
+androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version = "1.4.2" }
 androidx-fragment = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
 androidx-hilt-compiler = { module = "androidx.hilt:hilt-compiler", version.ref = "hilt" }
 androidx-hilt-work = { module = "androidx.hilt:hilt-work", version.ref = "hilt" }
@@ -129,6 +132,7 @@ play-services-auth = { module = "com.google.android.gms:play-services-auth", ver
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 ssiv = { module = "com.github.KotatsuApp:subsampling-scale-image-view", version.ref = "ssiv" }
 junrar = { module = "com.github.junrar:junrar", version.ref = "junrar" }
+tsuki = { module = "com.github.UsagiApp:Tsuki", version.ref = "tsuki" }
 usagi-rpc = { module = "com.github.UsagiApp:OAuth2-RPC", version.ref = "usagiRpc" }
 workinspector = { module = "com.github.Koitharu:WorkInspector", version.ref = "workinspector" }
 quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt" }

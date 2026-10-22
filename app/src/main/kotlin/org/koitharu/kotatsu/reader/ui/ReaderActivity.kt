@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.reader.ui
 
+import android.widget.Toast
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChangedBy
@@ -55,12 +56,14 @@ import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.resolve.DialogErrorObserver
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
+import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ReaderMode
+import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.ui.BaseFullscreenActivity
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.dialog.setCheckbox
@@ -82,6 +85,7 @@ import org.koitharu.kotatsu.databinding.ActivityReaderBinding
 import org.koitharu.kotatsu.details.ui.pager.pages.PagesSavedObserver
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.reader.data.TapGridSettings
+import org.koitharu.kotatsu.reader.domain.SourceHealthMonitor
 import org.koitharu.kotatsu.reader.domain.TapGridArea
 import org.koitharu.kotatsu.reader.domain.UpscaleEffect
 import org.koitharu.kotatsu.reader.ui.ReaderState
@@ -115,6 +119,9 @@ class ReaderActivity :
     lateinit var settings: AppSettings
 
     @Inject
+    lateinit var mangaRepositoryFactory: MangaRepository.Factory
+
+    @Inject
     lateinit var tapGridSettings: TapGridSettings
 
     @Inject
@@ -141,6 +148,7 @@ class ReaderActivity :
     private lateinit var controlDelegate: ReaderControlDelegate
     private var gestureInsets: Insets = Insets.NONE
     private lateinit var readerManager: ReaderManager
+    private lateinit var chapterBrowser: ReaderChapterBrowser
     private val hideUiRunnable = Runnable { setUiIsVisible(false) }
     private val hideEInkFlashRunnable = Runnable { einkFlashView.isVisible = false }
     private lateinit var einkFlashView: View
@@ -182,6 +190,12 @@ class ReaderActivity :
         )
         setContentView(ActivityReaderBinding.inflate(layoutInflater))
         readerManager = ReaderManager(supportFragmentManager, viewBinding.container, settings)
+        chapterBrowser = ReaderChapterBrowser(this, viewBinding.root, mangaRepositoryFactory, ::chapterBrowserTarget)
+        ReaderChapterHaptics(viewBinding.root, lifecycle, { settings.isReaderChapterHapticsEnabled }) {
+            val chapter = confirmedVisibleChapter() ?: return@ReaderChapterHaptics null
+            val mangaId = viewModel.mangaDetails.value?.id ?: return@ReaderChapterHaptics null
+            PresentedChapter(mangaId, chapter.id)
+        }
         einkFlashView = createEInkFlashView()
         setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
         touchHelper = TapGridDispatcher(viewBinding.root, this)
@@ -262,6 +276,27 @@ class ReaderActivity :
                 onResolved = null,
             ),
         )
+        viewModel.onSourceSwitchSuggestion.observeEvent(this, ::onSourceSwitchSuggestion)
+        viewModel.sourceSwitchTarget.observe(this) { candidate ->
+            val dialog = supportFragmentManager.findFragmentByTag(SourceSwitchProgressDialog.TAG)
+                as? SourceSwitchProgressDialog
+            if (candidate == null) {
+                dialog?.dismissAllowingStateLoss()
+            } else if (dialog == null && !supportFragmentManager.isStateSaved) {
+                scrollTimer.stopHold()
+                scrollTimer.setActive(false)
+                SourceSwitchProgressDialog.newInstance(candidate.title)
+                    .show(supportFragmentManager, SourceSwitchProgressDialog.TAG)
+            }
+        }
+        viewModel.onSourceSwitched.observeEvent(this) { manga ->
+            (supportFragmentManager.findFragmentByTag(SourceSwitchProgressDialog.TAG) as? SourceSwitchProgressDialog)
+                ?.dismissAllowingStateLoss()
+            Toast.makeText(this, getString(R.string.source_switched, manga.source.getTitle(this)), Toast.LENGTH_SHORT)
+                .show()
+            router.openReader(manga)
+            finish()
+        }
         viewModel.onShowOcrSheet.observeEvent(this) {
             org.koitharu.kotatsu.reader.translate.OcrBottomSheet.show(supportFragmentManager)
         }
@@ -336,6 +371,12 @@ class ReaderActivity :
             ::Pair,
         ).flowOn(Dispatchers.Default)
             .observe(this, this::onLoadingStateChanged)
+        viewModel.isLoading.observe(this) { isLoading ->
+            if (!isLoading) {
+                slowSourceSnackbar?.dismiss()
+                slowSourceSnackbar = null
+            }
+        }
         viewModel.isKeepScreenOnEnabled.observe(this, this::setKeepScreenOn)
         viewModel.isInfoBarTransparent.observe(this) { viewBinding.infoBar.drawBackground = !it }
         viewModel.isInfoBarEnabled.observe(this, ::onReaderBarChanged)
@@ -352,7 +393,7 @@ class ReaderActivity :
         viewModel.isZoomControlsEnabled.observe(this) {
             viewBinding.zoomControl.isVisible = it
         }
-        addMenuProvider(ReaderMenuProvider())
+        addMenuProvider(ReaderMenuProvider({ chapterBrowser.isAvailable }, chapterBrowser::open))
 
         observeWindowLayout()
 
@@ -380,6 +421,8 @@ class ReaderActivity :
     }
 
     override fun onPause() {
+        scrollTimer.stopHold()
+        touchedActionPage = null
         // Block new scroll callbacks before fragments pause. Webtoon then invalidates deferred
         // restores and BaseReaderFragment records the first (still live) visible position.
         viewModel.onBackgrounding()
@@ -432,6 +475,38 @@ class ReaderActivity :
         }
     }
 
+    private fun onSourceSwitchSuggestion(suggestion: SourceSwitchSuggestion) {
+        if (isFinishing || isDestroyed || !settings.isSourceSwitchSuggestionEnabled ||
+            viewModel.sourceSwitchTarget.value != null
+        ) return
+        val showDialog = {
+            SourceSwitchDialog.show(
+                context = this,
+                suggestion = suggestion,
+                onSwitch = { candidate ->
+                    viewModel.saveVisibleState(readerManager.currentReader?.getCurrentStateSnapshot())
+                    Toast.makeText(
+                        this,
+                        getString(R.string.source_switch_progress, candidate.title),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                    viewModel.switchSource(candidate)
+                },
+                onAlternatives = { router.openAlternatives(suggestion.manga) },
+                onMute = { viewModel.muteSourceSwitchSuggestion(suggestion.manga.source) },
+            )
+        }
+        if (suggestion.trigger == SourceHealthMonitor.Trigger.SLOW) {
+            slowSourceSnackbar = Snackbar.make(
+                viewBinding.container,
+                R.string.source_switch_slow,
+                Snackbar.LENGTH_INDEFINITE,
+            ).setAction(R.string.source_switch_action) { showDialog() }
+                .also { it.show() }
+        } else {
+            showDialog()
+        }
+    }
     private fun onInitReader(mode: ReaderMode?) {
         if (mode == null) {
             return
@@ -468,9 +543,16 @@ class ReaderActivity :
 
     override fun onGridLongTouch(area: TapGridArea) {
         if (isReaderResumed()) {
-            controlDelegate.onGridLongTouch(area)
+            if (!controlDelegate.onGridLongTouch(area) && settings.isHoldScrollEnabled) {
+                scrollTimer.startHold(settings.holdScrollDirection(area))
+            }
         }
     }
+
+    private var touchedActionPage: ReaderPage? = null
+    private var slowSourceSnackbar: Snackbar? = null
+    private var actionTouchX = 0f
+    private var actionTouchY = 0f
 
     override fun onProcessTouch(rawX: Int, rawY: Int): Boolean {
         return if (
@@ -489,8 +571,26 @@ class ReaderActivity :
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                touchedActionPage = null
+                val page = readerManager.currentReader?.findActionPageAt(ev.rawX, ev.rawY)
+                if (page != null && onProcessTouch(ev.rawX.toInt(), ev.rawY.toInt())) {
+                    touchedActionPage = page
+                    actionTouchX = ev.rawX
+                    actionTouchY = ev.rawY
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+                if (kotlin.math.hypot(ev.rawX - actionTouchX, ev.rawY - actionTouchY) > slop) touchedActionPage = null
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> touchedActionPage = null
+        }
         touchHelper.dispatchTouchEvent(ev)
-        if (!viewBinding.timerControl.hasGlobalPoint(ev.rawX.toInt(), ev.rawY.toInt())) {
+        if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL ||
+            ev.actionMasked == MotionEvent.ACTION_POINTER_DOWN ||
+            !viewBinding.timerControl.hasGlobalPoint(ev.rawX.toInt(), ev.rawY.toInt())) {
             scrollTimer.onTouchEvent(ev)
         }
         return super.dispatchTouchEvent(ev)
@@ -556,10 +656,11 @@ class ReaderActivity :
     private fun setUiIsVisible(isUiVisible: Boolean) {
         if (viewBinding.appbarTop.isVisible != isUiVisible) {
             if (isAnimationsEnabled) {
-                val transition = TransitionSet()
-                    .setOrdering(TransitionSet.ORDERING_TOGETHER)
-                    .addTransition(Slide(Gravity.TOP).addTarget(viewBinding.appbarTop))
-                    .addTransition(Fade().addTarget(viewBinding.infoBar))
+                val transition = TransitionSet().apply {
+                    ordering = TransitionSet.ORDERING_TOGETHER
+                    addTransition(Slide(Gravity.TOP).addTarget(viewBinding.appbarTop))
+                    addTransition(Fade().addTarget(viewBinding.infoBar))
+                }
                 viewBinding.toolbarDocked?.let {
                     transition.addTransition(Slide(Gravity.BOTTOM).addTarget(it))
                 }
@@ -685,7 +786,9 @@ class ReaderActivity :
     override fun openMenu() {
         viewModel.saveVisibleState(readerManager.currentReader?.getCurrentStateSnapshot())
         val currentMode = readerManager.currentMode ?: return
-        router.showReaderConfigSheet(currentMode)
+        val actionPage = touchedActionPage?.let(viewModel::resolveActionPage)
+        touchedActionPage = null
+        router.showReaderConfigSheet(currentMode, actionPage)
     }
 
     override fun scrollBy(delta: Int, smooth: Boolean): Boolean {
@@ -715,6 +818,25 @@ class ReaderActivity :
 
     override fun onSavePageClick() {
         viewModel.saveCurrentPage(pageSaveHelper)
+    }
+
+    override fun onSavePageClick(page: ReaderPage?) {
+        viewModel.saveCurrentPage(pageSaveHelper, page)
+    }
+
+    override fun onSharePageClick(page: ReaderPage?) {
+        val target = viewModel.resolveActionPage(page) ?: return
+        val manga = viewModel.getMangaOrNull() ?: return
+        lifecycleScope.launch {
+            try {
+                val file = pageSaveHelper.saveToTempFile(PageSaveHelper.Task(manga, target.chapterId, target.index + 1, target.toMangaPage()))
+                router.shareFile(file)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                viewModel.reportPageActionError(e)
+            }
+        }
     }
 
     override fun onScrollTimerClick(isLongClick: Boolean) {
@@ -749,6 +871,22 @@ class ReaderActivity :
 
     private fun onReaderBarChanged(isBarEnabled: Boolean) {
         viewBinding.infoBar.isVisible = isBarEnabled && viewBinding.appbarTop.isGone
+    }
+
+    private fun confirmedVisibleChapter(): MangaChapter? {
+        val reader = readerManager.currentReader?.takeIf { it.isResumed } ?: return null
+        if (reader.view?.isLayoutRequested != false) {
+            return null
+        }
+        val state = reader.getModeSwitchStateSnapshot().stateForGeneration(viewModel.content.value.generation)
+            ?: return null
+        return viewModel.uiState.value?.chapter?.takeIf { it.id == state.chapterId }
+    }
+
+    private fun chapterBrowserTarget(): ChapterBrowserTarget? {
+        val chapter = confirmedVisibleChapter() ?: return null
+        val manga = viewModel.getMangaOrNull() ?: return null
+        return ChapterBrowserTarget(manga, chapter)
     }
 
     private fun onUiStateChanged(pair: Pair<ReaderUiState?, ReaderUiState?>) {

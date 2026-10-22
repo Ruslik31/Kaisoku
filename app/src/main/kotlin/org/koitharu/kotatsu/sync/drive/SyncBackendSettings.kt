@@ -24,7 +24,7 @@ enum class SyncBackend {
 }
 
 enum class DriveContentSection(val backupSections: Set<BackupSection>) {
-	LIBRARY(setOf(BackupSection.CATEGORIES, BackupSection.FAVOURITES)),
+	LIBRARY(setOf(BackupSection.CATEGORIES, BackupSection.FAVOURITES, BackupSection.FAVORITE_ORDER)),
 	HISTORY(setOf(BackupSection.HISTORY)),
 	BOOKMARKS(setOf(BackupSection.BOOKMARKS)),
 	TRACKING(setOf(BackupSection.TRACKS, BackupSection.SCROBBLING)),

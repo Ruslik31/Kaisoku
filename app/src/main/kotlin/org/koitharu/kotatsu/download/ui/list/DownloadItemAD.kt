@@ -168,7 +168,8 @@ fun downloadItemAD(
 				binding.textViewPercent.isVisible = false
 				binding.textViewDetails.textAndVisible = item.getErrorMessage(context)
 				binding.buttonCancel.isVisible = false
-				binding.buttonResume.isVisible = false
+				binding.buttonResume.isVisible = true
+				binding.buttonResume.setText(R.string.retry)
 				binding.buttonSkip.isVisible = false
 				binding.buttonSkipAll.isVisible = false
 				binding.buttonPause.isVisible = false

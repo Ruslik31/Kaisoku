@@ -45,7 +45,8 @@ import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableMangaListFilter
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableMangaPage
 import org.koitharu.kotatsu.core.model.unwrap
-import org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaSource
+import org.koitharu.kotatsu.core.parser.hasChapterText
+import org.koitharu.kotatsu.core.parser.mihon.MihonMangaSource
 import org.koitharu.kotatsu.reader.ui.novel.NovelReaderActivity
 import org.koitharu.kotatsu.core.network.CommonHeaders
 import org.koitharu.kotatsu.core.parser.external.ExternalMangaSource
@@ -117,6 +118,7 @@ import org.koitharu.kotatsu.settings.tracker.categories.TrackerCategoriesConfigS
 import org.koitharu.kotatsu.stats.ui.StatsActivity
 import org.koitharu.kotatsu.stats.ui.sheet.MangaStatsSheet
 import org.koitharu.kotatsu.suggestions.ui.SuggestionsActivity
+import org.koitharu.kotatsu.suggestions.domain.RecommendationTagExclusions
 import org.koitharu.kotatsu.tracker.ui.updates.UpdatesActivity
 import java.io.File
 import androidx.appcompat.R as appcompatR
@@ -137,6 +139,10 @@ class AppRouter private constructor(
     /** Activities **/
 
     fun openList(source: MangaSource, filter: MangaListFilter?, sortOrder: SortOrder?) {
+        if ((source.unwrap() as? MihonMangaSource)?.resolved()?.isCatalogue == false) {
+            openSourceSettings(source)
+            return
+        }
         startActivity(listIntent(contextOrNull() ?: return, source, filter, sortOrder))
     }
 
@@ -153,6 +159,10 @@ class AppRouter private constructor(
     fun openSearch(source: MangaSource, query: String) = openList(source, MangaListFilter(query = query), null)
 
     fun openDetails(manga: Manga) {
+        if (manga.source is org.koitharu.kotatsu.suggestions.local.PublicRecommendationSource) {
+            openSearch(manga.title)
+            return
+        }
         startActivity(detailsIntent(contextOrNull() ?: return, manga))
     }
 
@@ -168,7 +178,11 @@ class AppRouter private constructor(
     }
 
     fun openReader(manga: Manga, anchor: View? = null) {
-        if (manga.source.unwrap() is LnReaderMangaSource) {
+        if (manga.source.unwrap() is org.koitharu.kotatsu.suggestions.local.PublicRecommendationSource) {
+            openSearch(manga.title)
+            return
+        }
+        if (manga.source.hasChapterText()) {
             startActivity(
                 Intent(contextOrNull() ?: return, NovelReaderActivity::class.java)
                     .putExtra(KEY_MANGA, ParcelableManga(manga)),
@@ -189,7 +203,7 @@ class AppRouter private constructor(
         // Novels cannot be displayed by the standard reader; divert like openReader(manga),
         // carrying over the requested state/incognito/branch extras.
         val manga = activityIntent.getParcelableExtraCompat<ParcelableManga>(KEY_MANGA)?.manga
-        if (manga?.source?.unwrap() is LnReaderMangaSource) {
+        if (manga?.source?.hasChapterText() == true) {
             val novelIntent = Intent(activityIntent)
                 .setClass(contextOrNull() ?: return, NovelReaderActivity::class.java)
             startActivity(novelIntent, anchor?.let { view -> scaleUpActivityOptionsOf(view) })
@@ -452,6 +466,7 @@ class AppRouter private constructor(
     }
 
     fun showTagDialog(tag: MangaTag) {
+        val excluded = RecommendationTagExclusions.contains(settings.suggestionsTagsBlacklist, tag.title)
         buildAlertDialog(contextOrNull() ?: return) {
             setIcon(R.drawable.ic_tag)
             setTitle(tag.title)
@@ -459,11 +474,21 @@ class AppRouter private constructor(
                 arrayOf(
                     context.getString(R.string.search_on_s, tag.source.getTitle(context)),
                     context.getString(R.string.search_everywhere),
+                    context.getString(if (excluded) R.string.recommendation_genre_allow else R.string.recommendation_genre_exclude),
                 ),
             ) { _, which ->
                 when (which) {
                     0 -> openList(tag)
                     1 -> openSearch(tag.title, SearchKind.TAG)
+                    2 -> {
+                        if (!RecommendationTagExclusions.isValid(tag.title)) {
+                            showErrorDialog(IllegalArgumentException(context.getString(R.string.recommendation_genre_invalid)))
+                        } else {
+                            settings.suggestionsTagsBlacklist = RecommendationTagExclusions.update(
+                                settings.suggestionsTagsBlacklist, tag.title, !excluded,
+                            )
+                        }
+                    }
                 }
             }
             setNegativeButton(R.string.close, null)
@@ -572,9 +597,10 @@ class AppRouter private constructor(
         }.showDistinct()
     }
 
-    fun showReaderConfigSheet(mode: ReaderMode) {
-        ReaderConfigSheet().withArgs(1) {
+    fun showReaderConfigSheet(mode: ReaderMode, actionPage: org.koitharu.kotatsu.reader.ui.pager.ReaderPage? = null) {
+        ReaderConfigSheet().withArgs(2) {
             putInt(KEY_READER_MODE, mode.id)
+            putParcelable("action_page", actionPage)
         }.showDistinct()
     }
 
@@ -713,7 +739,7 @@ class AppRouter private constructor(
             .startChooser()
     }
 
-    private fun shareFile(file: File) { // TODO directory sharing support
+    fun shareFile(file: File) { // TODO directory sharing support
         val context = contextOrNull() ?: return
         val intentBuilder = ShareCompat.IntentBuilder(context)
             .setType(TYPE_CBZ)

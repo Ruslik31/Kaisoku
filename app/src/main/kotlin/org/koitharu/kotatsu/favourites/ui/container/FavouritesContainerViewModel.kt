@@ -32,25 +32,22 @@ class FavouritesContainerViewModel @Inject constructor(
 ) : BaseViewModel() {
 
 	val onActionDone = MutableEventFlow<ReversibleAction>()
+	val showCategoryStrip = settings.observeAsFlow(AppSettings.KEY_FAVORITES_CATEGORY_STRIP) {
+		isFavoritesCategoryStripVisible
+	}.stateIn(viewModelScope, SharingStarted.Eagerly, settings.isFavoritesCategoryStripVisible)
 
-	private val categoriesStateFlow = favouritesRepository.observeCategoriesForLibrary()
-		.withErrorReporting(errorEvent)
-		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+    val overviewEnabled = settings.observeAsFlow(AppSettings.KEY_FAVORITES_OVERVIEW) {
+        isFavoritesOverviewEnabled
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, settings.isFavoritesOverviewEnabled)
 
-	private val allFavouritesVisibility = settings.observeAsFlow(
-		key = AppSettings.KEY_ALL_FAVOURITES_VISIBLE,
-		valueProducer = { isAllFavouritesVisible },
-	)
+    val categoryCards = favouritesRepository.observeCategoryOverview().withErrorReporting(errorEvent)
+        .stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), emptyList())
 
-	val categories = combine(
-		categoriesStateFlow.filterNotNull(),
-		allFavouritesVisibility,
-		::createFavouriteTabs,
-	).stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
+    val categories = categoryCards.map { cards -> cards.map { FavouriteTabModel(it.id, it.title) } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-	val isEmpty = categoriesStateFlow.map {
-		it?.isEmpty() == true
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
+    val isEmpty = categories.map { it.isEmpty() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
 	fun getCategoryPosition(categories: List<FavouriteTabModel>): Int {
 		if (categories.isEmpty()) {

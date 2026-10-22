@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="source_content_classes_enabled">Choose source content classes separately</string>
+    <string name="source_content_classes">Visible source content</string>
+    <string name="source_content_classes_summary">Choose Safe, Mixed or Adult sources independently. Disable NSFW still filters adult titles. Turn this off to restore the previous source restriction.</string>
+    <string name="source_content_classes_none">No content classes selected</string>
+    <string name="source_content_classes_hidden">Some extension sources are hidden by your source content selection. Review Settings → Sources. Installed extensions still need to be enabled with + to appear in Explore.</string>
+    <string-array name="source_content_class_entries">
+        <item>Safe</item>
+        <item>Mixed</item>
+        <item>Adult</item>
+    </string-array>
+    <string-array name="source_content_class_values" translatable="false">
+        <item>SAFE</item>
+        <item>MIXED</item>
+        <item>ADULT</item>
+    </string-array>
+</resources>

@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.reader.ui.pager.webtoon
 
 import android.view.View
+import org.koitharu.kotatsu.reader.ui.pager.PageRotation
 import androidx.core.view.doOnLayout
 import androidx.core.view.doOnNextLayout
 import androidx.lifecycle.LifecycleOwner
@@ -54,7 +55,11 @@ class WebtoonHolder internal constructor(
             binding.ssiv.recycle()
         }
         boundPageKey = newPageKey
-        binding.ssiv.setPlaceholderSize(pageSizeCache[newPageKey])
+        binding.ssiv.setPlaceholderSize(pageSizeCache[newPageKey]?.let { size ->
+            if (PageRotation.orientation(size.width, size.height, settings.widePageRotation) != 0) {
+                WebtoonImageSize(size.height, size.width)
+            } else size
+        })
         binding.ssiv.setCompactPlaceholderEnabled(false)
         scrollPercentToRestore = -1
         scrollToRestore = 0
@@ -94,7 +99,9 @@ class WebtoonHolder internal constructor(
 
     override fun onAnimatedImageShown(width: Int, height: Int) {
         boundPageKey?.let { key ->
-            pageSizeCache.put(key, width, height)
+            val drawable = (binding.animatedView.drawable as? org.koitharu.kotatsu.reader.ui.pager.RotatedPageDrawable)?.source
+                ?: binding.animatedView.drawable
+            pageSizeCache.put(key, drawable?.intrinsicWidth ?: width, drawable?.intrinsicHeight ?: height)
         }
         val pageKey = boundPageKey
         itemView.doOnNextLayout {
@@ -103,13 +110,17 @@ class WebtoonHolder internal constructor(
         itemView.requestLayout()
     }
 
-    override fun onReady() {
+    override fun onPageReady() {
         if (isAnimatedPageDisplayed || !binding.ssiv.isReady) return
+        binding.ssiv.adjustScale()
         binding.ssiv.colorFilter = settings.colorFilter?.toColorFilter()
         boundPageKey?.let { key ->
             pageSizeCache.put(key, binding.ssiv.sWidth, binding.ssiv.sHeight)
         }
-        applyReadyScroll()
+        val key = boundPageKey
+        itemView.doOnLayout {
+            if (boundPageKey == key && !isAnimatedPageDisplayed) applyReadyScroll()
+        }
     }
 
     private val isPresentationReady: Boolean

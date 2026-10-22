@@ -13,5 +13,8 @@ class UncaughtExceptionInterceptor : Interceptor {
 		throw e
 	} catch (e: Exception) {
 		throw IOException(e)
+	} catch (e: LinkageError) {
+		// An extension can reference unavailable host APIs; fail its request without crashing the dispatcher.
+		throw IOException(e)
 	}
 }

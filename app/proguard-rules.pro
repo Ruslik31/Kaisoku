@@ -67,6 +67,11 @@
 -keep class org.koitharu.kotatsu.core.parser.mihon.** { *; }
 -keeppackagenames org.koitharu.kotatsu.core.parser.mihon.**
 
+# ConfigurableSource constructs and calls AndroidX preferences from dynamically loaded APKs.
+# Keep their real constructors/listeners, including methods that the app itself never calls.
+-keep class androidx.preference.** { *; }
+-keep interface androidx.preference.** { *; }
+
 -keep class rx.** { *; }
 -keep interface rx.** { *; }
 -dontwarn rx.**
@@ -155,6 +160,12 @@
 -keep public class org.koitharu.kotatsu.parsers.util.** { public protected *; }
 -keep,allowobfuscation @org.koitharu.kotatsu.parsers.MangaSourceParser class * { *; }
 -keep,allowobfuscation @org.koitharu.kotatsu.parsers.InternalParsersApi class * { *; }
+# tsuki.* parser plugins link against the whole host core at runtime
+-keep class tsuki.** { *; }
+-keep interface tsuki.** { *; }
+-dontwarn tsuki.**
+# Mihon extensions build their settings screens with the host's androidx.preference classes
+-keep class androidx.preference.** { public protected *; }
 
 # INVARIANT: keep every external library kaisoku-parsers links against. R8 keeps the parser classes
 # as frozen entry points (above) but still optimizes/shrinks the libraries they call — it can't see

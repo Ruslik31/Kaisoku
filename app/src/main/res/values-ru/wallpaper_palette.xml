@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="theme_name_wallpaper">Цвета обоев</string>
+    <string name="wallpaper_palette_refresh">Обновить цвета обоев</string>
+    <string name="wallpaper_palette_ready">Используется палитра текущих обоев на Android 11.</string>
+    <string name="wallpaper_palette_choose">Выберите «Цвета обоев» для подготовки палитры. Только Android 11.</string>
+    <string name="wallpaper_palette_pending">Подготовка цветов обоев…</string>
+    <string name="wallpaper_palette_unavailable">Цвета обоев недоступны. Сохранена резервная тема. Нажмите, чтобы повторить.</string>
+    <string name="wallpaper_palette_override_unavailable">Устройству не удалось применить цвета обоев. Сохранена резервная тема. Нажмите, чтобы повторить.</string>
+    <string name="wallpaper_palette_preview_pending">Выберите для подготовки цветов обоев</string>
+</resources>

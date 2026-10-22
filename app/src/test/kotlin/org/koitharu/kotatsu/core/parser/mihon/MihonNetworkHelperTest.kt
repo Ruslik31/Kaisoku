@@ -51,10 +51,10 @@ class MihonNetworkHelperTest {
 	}
 
 	@Test fun fatalErrorsAreNotHidden() {
-		val failure = LinkageError("Missing extension API")
+		val failure = OutOfMemoryError("Fixture VM failure")
 		val base = OkHttpClient.Builder().addInterceptor { throw failure }.build()
 		val helper = MihonNetworkHelper(base) { "fixture" }
-		assertSame(failure, assertThrows(LinkageError::class.java) { helper.client.newCall(request).execute() })
+		assertSame(failure, assertThrows(OutOfMemoryError::class.java) { helper.client.newCall(request).execute() })
 	}
 
 	@Test fun configuredNetworkingAndUserAgentAreRetained() {

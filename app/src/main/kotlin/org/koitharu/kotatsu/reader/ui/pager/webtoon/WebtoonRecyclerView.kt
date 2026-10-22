@@ -29,6 +29,16 @@ internal fun isPageScrolledToBottom(ready: Boolean, scroll: Int, scrollRange: In
 internal fun shouldReportAbsoluteBottom(atAbsoluteBottom: Boolean, wasAtAbsoluteBottom: Boolean): Boolean =
     atAbsoluteBottom && !wasAtAbsoluteBottom
 
+/** Only the remainder after reaching the neighbouring page may scroll inside that page. */
+internal fun remainingWebtoonScroll(delta: Int, consumed: Int, distanceToAlign: Int): Int {
+    val distance = distanceToAlign.coerceAtLeast(0)
+    return when {
+        delta > 0 -> (delta - consumed - distance).coerceAtLeast(0)
+        delta < 0 -> (delta - consumed + distance).coerceAtMost(0)
+        else -> 0
+    }
+}
+
 class WebtoonRecyclerView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
 ) : RecyclerView(context, attrs, defStyleAttr) {
@@ -122,13 +132,15 @@ class WebtoonRecyclerView @JvmOverloads constructor(
         }
         when {
             dy > 0 -> {
-                val child = getChildAt(0) as WebtoonFrameLayout
+                var first = 0
+                while (first < childCount && getChildAt(first).bottom <= 0) first++
+                if (first == childCount || getChildAt(first).top >= height) return 0
+                val child = getChildAt(first) as WebtoonFrameLayout
                 var consumedByChild = child.dispatchVerticalScroll(dy)
                 if (consumedByChild < dy) {
-                    if (childCount > 1) {
-                        val nextChild = getChildAt(1) as WebtoonFrameLayout
-                        val unconsumed =
-                            dy - consumedByChild - nextChild.top //will be consumed by scroll
+                    if (first + 1 < childCount) {
+                        val nextChild = getChildAt(first + 1) as WebtoonFrameLayout
+                        val unconsumed = remainingWebtoonScroll(dy, consumedByChild, nextChild.top)
                         if (unconsumed > 0) {
                             consumedByChild += nextChild.dispatchVerticalScroll(unconsumed)
                         }
@@ -138,13 +150,15 @@ class WebtoonRecyclerView @JvmOverloads constructor(
             }
 
             dy < 0 -> {
-                val child = getChildAt(childCount - 1) as WebtoonFrameLayout
+                var last = childCount - 1
+                while (last >= 0 && getChildAt(last).top >= height) last--
+                if (last < 0 || getChildAt(last).bottom <= 0) return 0
+                val child = getChildAt(last) as WebtoonFrameLayout
                 var consumedByChild = child.dispatchVerticalScroll(dy)
                 if (consumedByChild > dy) {
-                    if (childCount > 1) {
-                        val nextChild = getChildAt(childCount - 2) as WebtoonFrameLayout
-                        val unconsumed =
-                            dy - consumedByChild + (height - nextChild.bottom) //will be consumed by scroll
+                    if (last > 0) {
+                        val nextChild = getChildAt(last - 1) as WebtoonFrameLayout
+                        val unconsumed = remainingWebtoonScroll(dy, consumedByChild, height - nextChild.bottom)
                         if (unconsumed < 0) {
                             consumedByChild += nextChild.dispatchVerticalScroll(unconsumed)
                         }

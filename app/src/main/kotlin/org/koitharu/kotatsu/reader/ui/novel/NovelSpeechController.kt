@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.parser.MangaRepository
-import org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaRepository
+import org.koitharu.kotatsu.core.parser.ChapterTextRepository
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
@@ -271,7 +271,7 @@ internal class NovelSpeechController @Inject constructor(
                     val html = if (chapter.source.name == "LOCAL") {
                         LocalMangaParser(chapter.url.toUri()).getChapterHtml(chapter)
                     } else {
-                        val repository = repositoryFactory.create(value.manga.source) as? LnReaderMangaRepository
+                        val repository = repositoryFactory.create(value.manga.source) as? ChapterTextRepository
                             ?: error("Novel source cannot provide text")
                         repository.getChapterHtml(chapter)
                     }

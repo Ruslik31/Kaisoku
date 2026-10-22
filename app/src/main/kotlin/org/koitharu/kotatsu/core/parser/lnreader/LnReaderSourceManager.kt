@@ -146,4 +146,5 @@ fun LnReaderSourceEntity.toMangaSource(): LnReaderMangaSource = LnReaderMangaSou
 	displayName = name,
 	lang = lang,
 	site = site,
+    recommendationVersion = "$version:${jsCode.hashCode()}",
 )

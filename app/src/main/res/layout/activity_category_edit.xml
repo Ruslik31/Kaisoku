@@ -69,6 +69,13 @@
 			</com.google.android.material.textfield.TextInputLayout>
 
 			<com.google.android.material.materialswitch.MaterialSwitch
+				android:id="@+id/switch_default_sort"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:minHeight="48dp"
+				android:text="@string/use_default_favorites_sort" />
+
+			<com.google.android.material.materialswitch.MaterialSwitch
 				android:id="@+id/switch_tracker"
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"

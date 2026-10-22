@@ -1,6 +1,18 @@
 package org.koitharu.kotatsu.reader.ui
 
+import kotlinx.coroutines.delay
+import org.koitharu.kotatsu.alternatives.domain.SourceSwitchCandidate
+import org.koitharu.kotatsu.alternatives.domain.SourceSwitchCandidatesUseCase
+import org.koitharu.kotatsu.alternatives.domain.SourceSwitchUseCase
+import org.koitharu.kotatsu.core.exceptions.UnsupportedSourceException
+import org.koitharu.kotatsu.core.os.NetworkState
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.reader.domain.PageLoadResult
+import org.koitharu.kotatsu.reader.domain.SourceHealthMonitor
+import org.koitharu.kotatsu.reader.domain.sourceSwitchHandoff
 import org.koitharu.kotatsu.reader.domain.readingOrderIndex
+import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 import android.content.Context
 import android.net.Uri
 import androidx.annotation.AnyThread
@@ -42,7 +54,7 @@ import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
-import org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaSource
+import org.koitharu.kotatsu.core.parser.hasChapterText
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ReaderMode
@@ -76,6 +88,7 @@ import org.koitharu.kotatsu.reader.domain.ChaptersLoader
 import org.koitharu.kotatsu.reader.domain.DetectReaderModeUseCase
 import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.reader.domain.itemsInReadingOrder
+import org.koitharu.kotatsu.reader.domain.boundedPrefetchPages
 import org.koitharu.kotatsu.reader.domain.nextChapterPrefetchPages
 import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
 import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
@@ -86,6 +99,7 @@ import javax.inject.Inject
 
 private const val BOUNDS_PAGE_OFFSET = 2
 private const val PREFETCH_LIMIT = 10
+private const val MAX_SWITCH_CANDIDATES = 3
 
 internal fun calculateReaderPercent(
     chapterIndex: Int,
@@ -128,6 +142,9 @@ class ReaderViewModel @Inject constructor(
     deleteLocalMangaUseCase: DeleteLocalMangaUseCase,
     downloadScheduler: DownloadWorker.Scheduler,
     readerSettingsProducerFactory: ReaderSettings.Producer.Factory,
+    private val networkState: NetworkState,
+    private val sourceSwitchCandidatesUseCase: SourceSwitchCandidatesUseCase,
+    private val sourceSwitchUseCase: SourceSwitchUseCase,
 ) : ChaptersPagesViewModel(
     appContext = context,
     settings = settings,
@@ -159,9 +176,21 @@ class ReaderViewModel @Inject constructor(
     private var nextReaderReplacementId = 0L
     private var pendingReaderReplacement: PendingReaderReplacement? = null
     private val lifecycleStateGuard = ReaderLifecycleStateGuard()
+    private val sourceHealth = SourceHealthMonitor()
+    val sourceSwitchTarget = MutableStateFlow<SourceSwitchCandidate?>(null)
+    private var sourceSwitchJob: Job? = null
+    private var sourceSuggestionJob: Job? = null
 
     init {
         mangaDetails.value = intent.manga?.let { MangaDetails(it) }
+        launchJob(Dispatchers.Default) {
+            pageLoader.pageResults.collect { result ->
+                if (result is PageLoadResult.Failed && result.source != LocalMangaSource) {
+                    sourceHealth.onPageFailure(result.pageId, result.error, networkState.isOnline())
+                        ?.let { suggestSourceSwitch(it, result.error) }
+                }
+            }
+        }
     }
 
     val readerMode = MutableStateFlow<ReaderMode?>(null)
@@ -172,6 +201,8 @@ class ReaderViewModel @Inject constructor(
     val onOpenNovelReader = MutableEventFlow<Manga>()
     val onShowOcrSheet = MutableEventFlow<Unit>()
     val onTranslateConfigMissing = MutableEventFlow<Unit>()
+    val onSourceSwitchSuggestion = MutableEventFlow<SourceSwitchSuggestion>()
+    val onSourceSwitched = MutableEventFlow<Manga>()
     val ocrSheetState = MutableStateFlow<org.koitharu.kotatsu.reader.translate.OcrSheetState>(
         org.koitharu.kotatsu.reader.translate.OcrSheetState.Idle,
     )
@@ -317,6 +348,9 @@ class ReaderViewModel @Inject constructor(
     fun onPause() {
         getMangaOrNull()?.let {
             statsCollector.onPause(it.id)
+            if (isIncognitoMode.value == false && sourceSwitchTarget.value == null) {
+                historyUpdateUseCase.finishReadingSession(it, readingState.value?.chapterId)
+            }
         }
     }
 
@@ -448,7 +482,7 @@ class ReaderViewModel @Inject constructor(
             }
             savedStateHandle[ReaderIntent.EXTRA_STATE] = state
         }
-        if (isIncognitoMode.value != false) {
+        if (isIncognitoMode.value != false || sourceSwitchTarget.value != null) {
             return
         }
         val readerState = state ?: readingState.value ?: return
@@ -467,22 +501,33 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveCurrentPage(
-        pageSaveHelper: PageSaveHelper
+        pageSaveHelper: PageSaveHelper,
+        actionPage: ReaderPage? = null,
     ) {
+        val target = resolveActionPage(actionPage) ?: return
+        val currentManga = manga.value ?: return
         val prevJob = pageSaveJob
         pageSaveJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
-            val state = checkNotNull(getCurrentState())
-            val currentManga = manga.requireValue()
             val task = PageSaveHelper.Task(
                 manga = currentManga,
-                chapterId = state.chapterId,
-                pageNumber = state.page + 1,
-                page = checkNotNull(getCurrentPage()) { "Cannot find current page" },
+                chapterId = target.chapterId,
+                pageNumber = target.index + 1,
+                page = target.toMangaPage(),
             )
             val dest = pageSaveHelper.save(setOf(task))
             onPageSaved.call(dest)
         }
+    }
+
+    fun reportPageActionError(error: Throwable) { errorEvent.call(error) }
+
+    fun resolveActionPage(target: ReaderPage?): ReaderPage? {
+        if (target != null) return content.value.pages.firstOrNull {
+            it.id == target.id && it.chapterId == target.chapterId && it.index == target.index && it.source == target.source
+        }
+        val state = readingState.value ?: return null
+        return content.value.pages.firstOrNull { it.chapterId == state.chapterId && it.index == state.page }
     }
 
     fun getCurrentPage(): MangaPage? {
@@ -492,8 +537,14 @@ class ReaderViewModel @Inject constructor(
         }?.toMangaPage()
     }
 
-    fun requestOcrCurrentPage() {
-        val page = getCurrentPage() ?: return
+    private var ocrActionPage: ReaderPage? = null
+
+    fun rerunOcr() = requestOcrCurrentPage(ocrActionPage)
+
+    fun requestOcrCurrentPage(actionPage: ReaderPage? = null) {
+        val target = resolveActionPage(actionPage) ?: return
+        val page = target.toMangaPage()
+        ocrActionPage = target
         if (!isTranslateConfigured()) {
             onTranslateConfigMissing.call(Unit)
             return
@@ -515,8 +566,9 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun showTranslatedText(expectedPageId: Long? = null, focusedNumber: Int? = null) {
-        val page = expectedPageId?.let { id -> content.value.pages.firstOrNull { it.id == id }?.toMangaPage() }
-            ?: getCurrentPage() ?: return
+        val page = if (expectedPageId == null) getCurrentPage() else {
+            content.value.pages.firstOrNull { it.id == expectedPageId }?.toMangaPage()
+        } ?: return
         val done = translationCoordinator.stateFor(page.id).value as? org.koitharu.kotatsu.reader.translate.PageTranslationState.Done ?: return
         onShowOcrSheet.call(Unit)
         val text = done.blocks.mapIndexedNotNull { index, block ->
@@ -530,15 +582,15 @@ class ReaderViewModel @Inject constructor(
         )
     }
 
-    fun currentTranslationState(): kotlinx.coroutines.flow.StateFlow<org.koitharu.kotatsu.reader.translate.PageTranslationState>? =
-        getCurrentPage()?.let { translationCoordinator.stateFor(it.id) }
+    fun currentTranslationState(actionPage: ReaderPage? = null): kotlinx.coroutines.flow.StateFlow<org.koitharu.kotatsu.reader.translate.PageTranslationState>? =
+        resolveActionPage(actionPage)?.let { translationCoordinator.stateFor(it.id) }
 
     fun rerenderTranslationForCurrentPage() {
         getCurrentPage()?.let(translationCoordinator::rerender)
     }
 
-    fun toggleTranslateCurrentPage() {
-        val page = getCurrentPage() ?: return
+    fun toggleTranslateCurrentPage(actionPage: ReaderPage? = null) {
+        val page = resolveActionPage(actionPage)?.toMangaPage() ?: return
         if (!isTranslateConfigured()) {
             onTranslateConfigMissing.call(Unit)
             return
@@ -664,12 +716,19 @@ class ReaderViewModel @Inject constructor(
             prevJob?.cancelAndJoin()
             prevPreload.join()
             replaceContent(ReaderContent(emptyList(), null))
-            chaptersLoader.loadSingleChapter(chapterId)
+            try {
+                chaptersLoader.loadSingleChapter(chapterId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                reportChapterFailure(e)
+                throw e
+            }
             ensureActive()
             val newState = ReaderState(chapterId, page, scroll)
             replaceContent(ReaderContent(chaptersLoader.snapshot(), newState))
             saveCurrentState(newState)
-        }
+        }.also(::watchSlowLoad)
     }
 
     override suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
@@ -819,7 +878,7 @@ class ReaderViewModel @Inject constructor(
                 }
             }
             if (pageLoader.isPrefetchApplicable()) {
-                pageLoader.prefetch(pages.trySublist(upperPos + 1, upperPos + PREFETCH_LIMIT))
+                pageLoader.prefetch(pages.boundedPrefetchPages(upperPos + 1, upperPos + PREFETCH_LIMIT))
             }
         }
     }
@@ -877,7 +936,7 @@ class ReaderViewModel @Inject constructor(
                         // cannot display them (their only "page" is a data: URL). Details can come
                         // from any entry point (Read button, chapter list, bookmarks, shortcuts),
                         // so divert here rather than at each call site.
-                        val isNovel = manga.source.name.startsWith("lnreader:") ||
+                        val isNovel = manga.source.hasChapterText() ||
                             (manga.isLocal && org.koitharu.kotatsu.local.data.input.LocalMangaParser(
                                 android.net.Uri.parse(manga.url),
                             ).isNovel())
@@ -913,10 +972,10 @@ class ReaderViewModel @Inject constructor(
                         mangaDetails.value = details.filterChapters(selectedBranch.value)
 
                         // save state
-                        if (!isIncognitoMode.firstNotNull()) {
+                        if (!isIncognitoMode.firstNotNull() && sourceSwitchTarget.value == null) {
                             readingState.value?.let {
                                 val percent = computePercent(it.chapterId, it.page)
-                                historyUpdateUseCase(manga, it, percent)
+                                historyUpdateUseCase.invokeAsync(manga, it, percent).join()
                             }
                         }
                         notifyStateChanged()
@@ -949,11 +1008,94 @@ class ReaderViewModel @Inject constructor(
 
                     else -> null
                 } ?: IllegalStateException("Unable to load manga. This should never happen. Please report")
+                reportChapterFailure(loadingError)
                 onLoadingError.call(loadingError)
             } else exception?.let { e ->
                 // manga has been loaded but error occurred
+                reportChapterFailure(e)
                 errorEvent.call(e)
             }
+        }.also(::watchSlowLoad)
+    }
+
+    /** Moves the open title to another implementation of its site; the reader reopens on success. */
+    fun switchSource(candidate: SourceSwitchCandidate) {
+        if (sourceSwitchTarget.value != null) return
+        val manga = mangaDetails.value?.toManga() ?: return
+        val state = readingState.value
+        // The migration moves this title's history; later writes for the old title would bring it back.
+        sourceSwitchTarget.value = candidate
+        sourceSwitchJob = launchLoadingJob(Dispatchers.Default) {
+            var migrated: Manga? = null
+            try {
+                val replacement = sourceSwitchHandoff(
+                    readerJobs = listOf(loadingJob, preloadJob, stateChangeJob),
+                    saveState = {
+                        // Include saves queued before an incognito toggle or an empty load.
+                        historyUpdateUseCase.awaitPendingUpdates()
+                        if (state != null && isIncognitoMode.value == false) {
+                            historyUpdateUseCase(manga, state, computePercent(state.chapterId, state.page))
+                        }
+                    },
+                    migrate = { sourceSwitchUseCase(manga, candidate) { migrated = it } },
+                )
+                onSourceSwitched.call(replacement)
+            } catch (e: Throwable) {
+                val replacement = migrated
+                if (replacement == null) {
+                    sourceSwitchTarget.value = null
+                    throw e
+                }
+                // The DB commit already moved history. A later cancellation/remote failure must
+                // not reopen the outgoing title for writes and recreate its deleted records.
+                onSourceSwitched.call(replacement)
+                if (e is CancellationException) throw e
+                e.printStackTraceDebug()
+            }
+        }
+    }
+
+    fun cancelSourceSwitch() {
+        sourceSwitchJob?.cancel()
+    }
+
+    fun muteSourceSwitchSuggestion(source: MangaSource) {
+        settings.muteSourceSwitchSuggestion(source.name)
+    }
+
+    private fun watchSlowLoad(job: Job) {
+        val watchdog = viewModelScope.launch(Dispatchers.Default) {
+            delay(SourceHealthMonitor.SLOW_LOAD_TIMEOUT_MS)
+            sourceHealth.onSlowLoad(networkState.isOnline())?.let { suggestSourceSwitch(it, null) }
+        }
+        job.invokeOnCompletion { watchdog.cancel() }
+    }
+
+    private fun reportChapterFailure(error: Throwable) {
+        sourceHealth.onChapterFailure(error, networkState.isOnline())?.let { suggestSourceSwitch(it, error) }
+    }
+
+    private fun suggestSourceSwitch(trigger: SourceHealthMonitor.Trigger, error: Throwable?) {
+        if (!settings.isSourceSwitchSuggestionEnabled || sourceSuggestionJob?.isActive == true) return
+        val manga = mangaDetails.value?.toManga() ?: intent.manga ?: return
+        val source = manga.source
+        if (source == LocalMangaSource || settings.isSourceSwitchSuggestionMuted(source.name)) return
+        sourceSuggestionJob = viewModelScope.launch(Dispatchers.Default) {
+            val candidates = runCatchingCancellable { sourceSwitchCandidatesUseCase(source) }
+                .onFailure { it.printStackTraceDebug() }
+                .getOrDefault(emptyList())
+            // The error dialog already offers Alternatives for these.
+            val offerAlternatives = !(error is UnsupportedSourceException ||
+                error is EmptyMangaException && error.reason == EmptyMangaReason.NO_CHAPTERS)
+            if (candidates.isEmpty() && !offerAlternatives) return@launch
+            onSourceSwitchSuggestion.call(
+                SourceSwitchSuggestion(
+                    manga = manga,
+                    trigger = trigger,
+                    candidates = candidates.take(MAX_SWITCH_CANDIDATES),
+                    offerAlternatives = offerAlternatives,
+                ),
+            )
         }
     }
 
@@ -1024,16 +1166,6 @@ class ReaderViewModel @Inject constructor(
                 generation = ++contentGeneration,
                 forceStateRestore = false,
             )
-        }
-    }
-
-    private fun <T> List<T>.trySublist(fromIndex: Int, toIndex: Int): List<T> {
-        val fromIndexBounded = fromIndex.coerceAtMost(lastIndex)
-        val toIndexBounded = toIndex.coerceIn(fromIndexBounded, lastIndex)
-        return if (fromIndexBounded == toIndexBounded) {
-            emptyList()
-        } else {
-            subList(fromIndexBounded, toIndexBounded)
         }
     }
 

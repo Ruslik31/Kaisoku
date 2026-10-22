@@ -127,6 +127,18 @@ class DriveReplicaTest {
         } catch (_: IllegalStateException) { }
     }
 
+    @Test fun manualRanksFollowCategoryAliasesButAllFavoritesNeverNeedsCategoryResolution() {
+        val order = DriveReplicaRecord("favorite_order", "42/old", 2, "a", Json.parseToJsonElement("""{"rank":3,"sync_uid":"old"}"""))
+        val result = DriveReplicaMerge.normalizeCategories(order) { if (it == "old") "new" else error("Unexpected UID") }
+        assertEquals("42/new", result.key)
+        val global = order.copy(key = "42/${DriveReplicaBackup.ALL_FAVORITES_UID}")
+        assertEquals(global.key, DriveReplicaMerge.normalizeCategories(global) { error("All is synthetic") }.key)
+        val deleted = DriveReplicaRecord("categories", "new", 3, "b", null)
+        val values = DriveReplicaMerge.cascadeCategoryDeletions(listOf(result, global, deleted).associateBy { it.identity })
+        assertTrue(values.getValue(result.identity).isDeleted)
+        assertFalse(values.getValue(global.identity).isDeleted)
+    }
+
     private fun category(uid: String, title: String, version: Long) = DriveReplicaRecord("categories", uid, version, "a",
         JsonObject(mapOf("title" to JsonPrimitive(title), "sync_uid" to JsonPrimitive(uid))))
     private fun record(version: Long, author: String, value: kotlinx.serialization.json.JsonElement?) =

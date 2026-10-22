@@ -17,6 +17,32 @@ import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 
 class LNReaderFetchBridgeTest {
+    @Test fun cancellingDiscoveryCancelsAnAlreadyBlockedHttpCall() {
+        val server = ServerSocket(0, 2, InetAddress.getByName("127.0.0.1"))
+        val executor = Executors.newFixedThreadPool(2)
+        val requested = java.util.concurrent.CountDownLatch(1)
+        val job = kotlinx.coroutines.Job()
+        val serving = executor.submit {
+            server.accept().use { socket ->
+                val reader = socket.getInputStream().bufferedReader()
+                reader.readLine()
+                while (!reader.readLine().isNullOrEmpty()) { }
+                requested.countDown()
+                reader.read() // No response: only call cancellation can release the client promptly.
+            }
+        }
+        try {
+            val fetching = executor.submit<String> {
+                LNReaderFetchBridge(OkHttpClient(), "discovery", job).fetch("http://127.0.0.1:${server.localPort}/")
+            }
+            assertTrue(requested.await(3, TimeUnit.SECONDS))
+            job.cancel()
+            val failure = runCatching { fetching.get(3, TimeUnit.SECONDS) }.exceptionOrNull()
+            assertTrue(failure?.cause is kotlinx.coroutines.CancellationException)
+            serving.get(3, TimeUnit.SECONDS)
+        } finally { job.cancel(); server.close(); executor.shutdownNow() }
+    }
+
 	@Test fun protectionResponseRetainsNativeSolverException() {
 		val client = OkHttpClient.Builder().addInterceptor(CloudFlareInterceptor()).addInterceptor { chain ->
 			Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(403).message("Forbidden")

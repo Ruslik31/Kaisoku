@@ -3,9 +3,13 @@ package org.koitharu.kotatsu.settings.sources.manage.plugins
 import android.os.Bundle
 import android.text.InputType
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.Insets
 import androidx.core.view.WindowInsetsCompat
 import androidx.documentfile.provider.DocumentFile
@@ -40,6 +44,7 @@ class PluginsManageFragment :
 
 	private val viewModel by viewModels<PluginsManageViewModel>()
 	private var pluginsAdapter: PluginManageAdapter? = null
+	private var actionMode: ActionMode? = null
 
 	private val importJarLauncher = registerForActivityResult(
 		ActivityResultContracts.OpenDocument(),
@@ -67,7 +72,7 @@ class PluginsManageFragment :
 
 	override fun onViewBindingCreated(binding: FragmentSettingsSourcesBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
-		pluginsAdapter = PluginManageAdapter(::onDeleteClick, ::onUpdateClick)
+		pluginsAdapter = PluginManageAdapter(::onDeleteClick, ::onUpdateClick, ::onItemClick, ::onItemLongClick)
 		with(binding.recyclerView) {
 			setHasFixedSize(true)
 			layoutManager = LinearLayoutManager(context)
@@ -76,6 +81,9 @@ class PluginsManageFragment :
 
 		viewLifecycleOwner.lifecycleScope.launch {
 			viewModel.content.collect { pluginsAdapter?.emit(it) }
+		}
+		viewLifecycleOwner.lifecycleScope.launch {
+			viewModel.selection.collect(::onSelectionChanged)
 		}
 
 		addMenuProvider(
@@ -106,11 +114,122 @@ class PluginsManageFragment :
 		super.onResume()
 		activity?.setTitle(R.string.manage_plugins)
 		viewModel.refresh()
+		viewModel.runAutoUpdate()
 	}
 
 	override fun onDestroyView() {
+		actionMode?.finish()
+		actionMode = null
 		pluginsAdapter = null
 		super.onDestroyView()
+	}
+
+	private fun onItemClick(item: PluginManageItem.Plugin) {
+		if (viewModel.selection.value.isNotEmpty()) {
+			viewModel.toggleSelection(item.jarName)
+			return
+		}
+		val actions = buildList<Pair<Int, () -> Unit>> {
+			add(R.string.rename to { onRenameClick(item) })
+			if (item.hasUpdate) add(R.string.update to { onUpdateClick(item) })
+			add(R.string.delete to { onDeleteClick(item) })
+		}
+		buildAlertDialog(requireContext()) {
+			setTitle(item.displayName)
+			setItems(actions.map { getString(it.first) }.toTypedArray()) { _, which -> actions[which].second() }
+			setNegativeButton(android.R.string.cancel, null)
+		}.show()
+	}
+
+	private fun onItemLongClick(item: PluginManageItem.Plugin) {
+		viewModel.toggleSelection(item.jarName)
+	}
+
+	private fun onRenameClick(item: PluginManageItem.Plugin) {
+		viewLifecycleOwner.lifecycleScope.launch {
+			val name = askText(R.string.rename, item.displayName, R.string.plugin_name)?.trim()
+			if (name.isNullOrEmpty()) return@launch
+			val success = viewModel.renamePlugin(item, name)
+			val binding = viewBinding ?: return@launch
+			Snackbar.make(
+				binding.recyclerView,
+				if (success) R.string.load_success else R.string.load_failed,
+				Snackbar.LENGTH_SHORT,
+			).show()
+		}
+	}
+
+	private fun onSelectionChanged(selected: Set<String>) {
+		if (selected.isEmpty()) {
+			actionMode?.finish()
+			return
+		}
+		val mode = actionMode ?: (activity as? AppCompatActivity)?.startSupportActionMode(selectionCallback)
+			?: return
+		actionMode = mode
+		mode.title = resources.getQuantityString(R.plurals.items, selected.size, selected.size)
+	}
+
+	private val selectionCallback = object : ActionMode.Callback {
+
+		override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+			mode.menuInflater.inflate(R.menu.mode_plugins, menu)
+			return true
+		}
+
+		override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+
+		override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean = when (item.itemId) {
+			R.id.action_delete -> {
+				confirmDeleteSelected()
+				true
+			}
+
+			else -> false
+		}
+
+		override fun onDestroyActionMode(mode: ActionMode) {
+			actionMode = null
+			viewModel.clearSelection()
+		}
+	}
+
+	private fun confirmDeleteSelected() {
+		val selected = viewModel.selection.value
+		buildAlertDialog(requireContext()) {
+			setTitle(R.string.delete_plugin)
+			setMessage(getString(R.string.confirm_delete_plugin, selected.joinToString()))
+			setNegativeButton(android.R.string.cancel, null)
+			setPositiveButton(R.string.delete) { _, _ ->
+				viewLifecycleOwner.lifecycleScope.launch {
+					val success = viewModel.deleteSelected()
+					val binding = viewBinding ?: return@launch
+					Snackbar.make(
+						binding.recyclerView,
+						if (success) R.string.plugins_deleted else R.string.load_failed,
+						Snackbar.LENGTH_SHORT,
+					).show()
+				}
+			}
+		}.show()
+	}
+
+	private suspend fun askSelect(names: List<String>): Int? = withContext(Dispatchers.Main) {
+		suspendCancellableCoroutine { cont ->
+			val dialog = buildAlertDialog(requireContext()) {
+				setTitle(R.string.plugin_select_file)
+				setItems(names.toTypedArray()) { _, which ->
+					if (cont.isActive) cont.resume(which)
+				}
+				setNegativeButton(android.R.string.cancel) { _, _ ->
+					if (cont.isActive) cont.resume(null)
+				}
+			}
+			dialog.setOnDismissListener {
+				if (cont.isActive) cont.resume(null)
+			}
+			dialog.show()
+		}
 	}
 
 	private fun showImportDialog() {
@@ -134,6 +253,7 @@ class PluginsManageFragment :
 			dialog.dismiss()
 			viewModel.importGithubPlugin(
 				askInput = { askText(R.string.import_from_github, "", null) },
+				askSelect = ::askSelect,
 				askOverwrite = ::askOverwrite,
 				onResult = ::showImportResult,
 			)

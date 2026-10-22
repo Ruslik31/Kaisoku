@@ -13,6 +13,7 @@ class LnReaderMangaSource(
 	val displayName: String,
 	val lang: String? = null,
 	val site: String? = null,
+    val recommendationVersion: String = "",
 ) : MangaSource {
 
 	override val name: String

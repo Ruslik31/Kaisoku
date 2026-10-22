@@ -59,6 +59,7 @@ class TypedListSpacingDecoration(
 			ListItemType.FOOTER_BUTTON,
 			ListItemType.STATE_LOADING,
 			ListItemType.STATE_ERROR,
+			ListItemType.RECOMMENDATION_WARNING,
 			ListItemType.STATE_EMPTY,
 			ListItemType.EXPLORE_SOURCE_GRID,
 			ListItemType.EXPLORE_SUGGESTION,

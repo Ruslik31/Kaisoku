@@ -46,6 +46,10 @@ import org.koitharu.kotatsu.reader.data.TapGridSettings
 import org.koitharu.kotatsu.reader.domain.TapGridArea
 import org.koitharu.kotatsu.reader.translate.TranslateException
 import org.koitharu.kotatsu.reader.ui.ReaderControlDelegate
+import org.koitharu.kotatsu.reader.ui.ChapterBrowserTarget
+import org.koitharu.kotatsu.reader.ui.PresentedChapter
+import org.koitharu.kotatsu.reader.ui.ReaderChapterBrowser
+import org.koitharu.kotatsu.reader.ui.ReaderChapterHaptics
 import org.koitharu.kotatsu.reader.ui.tapgrid.TapAction
 import org.koitharu.kotatsu.reader.ui.tapgrid.TapGridDispatcher
 import javax.inject.Inject
@@ -69,9 +73,13 @@ class NovelReaderActivity :
     @Inject
     lateinit var settings: org.koitharu.kotatsu.core.prefs.AppSettings
 
+    @Inject
+    lateinit var mangaRepositoryFactory: org.koitharu.kotatsu.core.parser.MangaRepository.Factory
+
     private val viewModel by viewModels<NovelReaderViewModel>()
 
     private lateinit var controlDelegate: ReaderControlDelegate
+    private lateinit var chapterBrowser: ReaderChapterBrowser
     private var isUiVisible = true
     private var systemBarsBottomInset: Int = 0
     private var isScrollMode = false
@@ -99,6 +107,13 @@ class NovelReaderActivity :
         supportActionBar?.subtitle = getString(R.string.novel_reader_beta)
 
         controlDelegate = ReaderControlDelegate(resources, settings, tapGridSettings, this)
+        chapterBrowser = ReaderChapterBrowser(this, viewBinding.root, mangaRepositoryFactory, ::chapterBrowserTarget)
+        ReaderChapterHaptics(viewBinding.root, lifecycle, { settings.isReaderChapterHapticsEnabled }) {
+            val index = confirmedVisibleChapterIndex() ?: return@ReaderChapterHaptics null
+            val mangaId = viewModel.manga.value?.id ?: return@ReaderChapterHaptics null
+            val chapter = viewModel.chapters.value.getOrNull(index) ?: return@ReaderChapterHaptics null
+            PresentedChapter(mangaId, chapter.id)
+        }
 
         viewBinding.actionsView.listener = this
         viewBinding.actionsView.isSliderEnabled = true
@@ -466,6 +481,33 @@ class NovelReaderActivity :
         lastLoadedChapterIndex to viewBinding.readerView.getProgressRatio()
     } else null
 
+    private fun confirmedVisibleChapterIndex(): Int? {
+        val index = if (isScrollMode) {
+            val recycler = viewBinding.continuousScrollView
+            if (scrollLayoutManager.pendingAnchor != null || recycler.isComputingLayout || recycler.isLayoutRequested) {
+                return null
+            }
+            val position = scrollLayoutManager.findFirstVisibleItemPosition()
+            val child = scrollLayoutManager.findViewByPosition(position) as? NovelChapterView ?: return null
+            if (child.bottom <= recycler.paddingTop || child.top >= recycler.height - recycler.paddingBottom) return null
+            continuousAdapter?.getItems()?.getOrNull(position)?.chapterIndex ?: return null
+        } else {
+            val reader = viewBinding.readerView
+            if (reader.isLayoutRequested || reader.width <= 0 || reader.height <= 0 || reader.getChapterLength() <= 0) {
+                return null
+            }
+            lastLoadedChapterIndex
+        }
+        return index.takeIf { it >= 0 && it == viewModel.currentChapterIndex.value }
+    }
+
+    private fun chapterBrowserTarget(): ChapterBrowserTarget? {
+        val index = confirmedVisibleChapterIndex() ?: return null
+        val manga = viewModel.manga.value ?: return null
+        val chapter = viewModel.chapters.value.getOrNull(index) ?: return null
+        return ChapterBrowserTarget(manga, chapter)
+    }
+
     private fun toggleChapterTranslation() {
         stopSpeech()
         if (translationJob?.isActive == true) { translationJob?.cancel(); return }
@@ -616,6 +658,7 @@ class NovelReaderActivity :
             }
 
             override fun onPrepareMenu(menu: android.view.Menu) {
+                menu.findItem(R.id.action_open_chapter_browser)?.isEnabled = chapterBrowser.isAvailable
                 menu.findItem(R.id.action_novel_read_aloud)?.apply {
                     isEnabled = visibleAnchor() != null
                     setTitle(if (speechController.isActive || speechJob?.isActive == true)
@@ -640,6 +683,7 @@ class NovelReaderActivity :
 
             override fun onMenuItemSelected(menuItem: android.view.MenuItem): Boolean {
                 return when (menuItem.itemId) {
+                    R.id.action_open_chapter_browser -> { chapterBrowser.open(); true }
                     R.id.action_novel_read_aloud -> { toggleSpeech(); true }
                     R.id.action_novel_speech_pause -> { speechController.toggle(); true }
                     R.id.action_novel_translate -> { toggleChapterTranslation(); true }

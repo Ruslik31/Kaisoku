@@ -1,0 +1,4 @@
+Fix suggestion refresh scheduling crashes.
+Reduce recommendation requests and reuse cached results.
+Keep cached recommendations readable on refresh errors.
+Add copyable recommendation error details.

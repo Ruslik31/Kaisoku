@@ -27,9 +27,12 @@ class MihonIndexFetchTest {
 
     @Test fun genuineEmptyIndexDoesNotFallThroughToAnotherIndex() = runBlocking {
         val paths = mutableListOf<String>()
-        val service = service { path -> paths.add(path); 200 to " \n[]" }
+        val service = service { path ->
+            paths.add(path)
+            if (path == "/repo.json") 404 to "" else 200 to " \n[]"
+        }
         assertTrue(service.fetchExtensions(repo).isEmpty())
-        assertEquals(listOf("/index.min.json"), paths)
+        assertEquals(listOf("/repo.json", "/index.min.json"), paths)
     }
 
     @Test fun missingLegacyIndexFallsBackToModernJson() = runBlocking {

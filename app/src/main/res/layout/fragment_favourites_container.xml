@@ -15,6 +15,14 @@
 		app:tabGravity="start"
 		app:tabMode="scrollable" />
 
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/overview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:padding="12dp"
+        android:visibility="gone" />
+
 	<androidx.viewpager2.widget.ViewPager2
 		android:id="@+id/pager"
 		android:layout_width="match_parent"

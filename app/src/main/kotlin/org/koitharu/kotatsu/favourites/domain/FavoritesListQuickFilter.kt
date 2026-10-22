@@ -38,6 +38,9 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 		}
 	}
 
+    suspend fun panelOptions(): List<ListFilterOption> =
+        getAvailableFilterOptions() + org.koitharu.kotatsu.parsers.model.MangaState.entries.map { ListFilterOption.State(it) }
+
 	@AssistedFactory
 	interface Factory {
 

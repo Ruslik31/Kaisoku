@@ -1,5 +1,8 @@
 package org.koitharu.kotatsu.settings.about
 
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import org.koitharu.kotatsu.core.diagnostics.LocalDiagnostics
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
@@ -54,6 +57,21 @@ class AboutSettingsFragment : BasePreferenceFragment(R.string.about) {
 
 	override fun onPreferenceTreeClick(preference: Preference): Boolean {
 		return when (preference.key) {
+            "copy_local_diagnostics" -> {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val report = LocalDiagnostics.export()
+                    if (report.isNotEmpty()) requireContext().copyToClipboard(getString(R.string.local_diagnostics), report)
+                    Snackbar.make(listView, if (report.isEmpty()) R.string.local_diagnostics_empty else R.string.local_diagnostics_copied, Snackbar.LENGTH_SHORT).show()
+                }
+                true
+            }
+            "clear_local_diagnostics" -> {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    LocalDiagnostics.clear()
+                    Snackbar.make(listView, R.string.local_diagnostics_cleared, Snackbar.LENGTH_SHORT).show()
+                }
+                true
+            }
 			AppSettings.KEY_APP_VERSION -> {
 				viewModel.checkForUpdates()
 				true

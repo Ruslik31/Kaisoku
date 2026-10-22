@@ -111,6 +111,9 @@ abstract class BaseReaderFragment<B : ViewBinding> : BaseFragment<B>(), ZoomCont
 
 	open fun scrollBy(delta: Int, smooth: Boolean): Boolean = false
 
+	/** Action target only; never used for history, progress or chapter navigation. */
+	open fun findActionPageAt(rawX: Float, rawY: Float): ReaderPage? = null
+
 	abstract fun getCurrentState(): ReaderState?
 
 	/**

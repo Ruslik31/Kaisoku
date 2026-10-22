@@ -61,6 +61,20 @@ class MihonExtensionRepoStore @Inject constructor(
 		return true
 	}
 
+	/**
+	 * Adds the default repositories once. A repository the user removes later is not added again.
+	 */
+	fun seedDefaults() {
+		if (prefs.getBoolean(KEY_DEFAULTS_SEEDED, false)) {
+			return
+		}
+		val merged = withDefaults(getAll())
+		prefs.edit {
+			merged?.let { putString(KEY_REPOS, json.encodeToString(it)) }
+			putBoolean(KEY_DEFAULTS_SEEDED, true)
+		}
+	}
+
 	private fun save(value: List<MihonExtensionRepo>) {
 		prefs.edit {
 			putString(KEY_REPOS, json.encodeToString(value))
@@ -73,8 +87,34 @@ class MihonExtensionRepoStore @Inject constructor(
 		data class DuplicateFingerprint(val existingRepo: MihonExtensionRepo) : AddResult
 	}
 
-	private companion object {
-		const val PREFS_NAME = "mihon_extension_repos"
-		const val KEY_REPOS = "repos"
+	companion object {
+		const val KEIYOUSHI_INDEX_URL = "https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.json"
+
+		val KEIYOUSHI_REPO = MihonExtensionRepo(
+			baseUrl = KEIYOUSHI_INDEX_URL.removeSuffix("/index.json"),
+			name = "Keiyoushi",
+			shortName = "KEI",
+			website = "https://keiyoushi.github.io",
+			signingKeyFingerprint = "9add655a78e96c4ec7a53ef89dccb557cb5d767489fac5e785d671a5a75d4da2",
+			isStoreFormat = true,
+			indexUrl = KEIYOUSHI_INDEX_URL,
+		)
+
+		private val DEFAULT_REPOS = listOf(KEIYOUSHI_REPO)
+
+		/** [existing] plus any missing default repository, or null when nothing needs adding. */
+		internal fun withDefaults(
+			existing: List<MihonExtensionRepo>,
+			defaults: List<MihonExtensionRepo> = DEFAULT_REPOS,
+		): List<MihonExtensionRepo>? {
+			val missing = defaults.filter { repo ->
+				existing.none { it.baseUrl == repo.baseUrl || it.signingKeyFingerprint == repo.signingKeyFingerprint }
+			}
+			return if (missing.isEmpty()) null else existing + missing
+		}
+
+		private const val PREFS_NAME = "mihon_extension_repos"
+		private const val KEY_REPOS = "repos"
+		private const val KEY_DEFAULTS_SEEDED = "defaults_seeded_v1"
 	}
 }

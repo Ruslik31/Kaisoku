@@ -202,7 +202,7 @@ class NovelReaderViewModel @Inject constructor(
             lastSavedState = state
             lastSavedPercent = percent
             if (!isIncognitoMode) {
-                lastHistoryUpdate = historyUpdateUseCase.invokeAsync(target, state, percent.coerceIn(0f, 1f), chapterCompleted = ratio.isFinite() && ratio >= 1f)
+                lastHistoryUpdate = historyUpdateUseCase.invokeAsync(target, state, percent.coerceIn(0f, 1f), chapterCompleted = ratio.isFinite() && ratio >= 1f, positionOnly = true)
             }
         }
         if (displayPage != null) onReadingPositionChanged(chapterIndex, displayPage)
@@ -238,7 +238,10 @@ class NovelReaderViewModel @Inject constructor(
     fun onPause() {
         isReadingActive = false
         lastStatsState = null
-        manga.value?.let { statsCollector.onPause(it.id) }
+        manga.value?.let {
+            statsCollector.onPause(it.id)
+            if (!isIncognitoMode) historyUpdateUseCase.finishReadingSession(it, lastSavedState?.chapterId)
+        }
     }
 
     /**
@@ -293,9 +296,9 @@ class NovelReaderViewModel @Inject constructor(
         val chapter = chapters.value.getOrNull(index) ?: return null
         if (chapter.source.name == "LOCAL") return LocalMangaParser(chapter.url.toUri()).getChapterHtml(chapter)
         val repository = repositoryFactory.create(target.source)
-        val novelRepository = repository as? org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaRepository
+        val novelRepository = repository as? org.koitharu.kotatsu.core.parser.ChapterTextRepository
             ?: return null
-        return novelRepository.getChapterHtml(chapter).also { imageHeaders = novelRepository.imageHeaders }
+        return novelRepository.getChapterHtml(chapter).also { imageHeaders = novelRepository.getImageHeaders() }
     }
 
 }

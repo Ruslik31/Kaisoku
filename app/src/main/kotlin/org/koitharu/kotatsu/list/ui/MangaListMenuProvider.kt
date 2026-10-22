@@ -21,6 +21,12 @@ class MangaListMenuProvider(
 		menuInflater.inflate(R.menu.opt_list, menu)
 	}
 
+    override fun onPrepareMenu(menu: Menu) {
+        menu.findItem(R.id.action_list_mode)?.isVisible =
+            (fragment.parentFragment as? org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment)
+                ?.isCategoryOverviewVisible != true
+    }
+
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
 		R.id.action_list_mode -> {
 			val section: ListConfigSection = when (fragment) {

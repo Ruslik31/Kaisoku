@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.onStart
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
 import org.koitharu.kotatsu.core.db.TABLE_FAVOURITE_CATEGORIES
@@ -16,6 +19,8 @@ import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.entity.toMangaList
 import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.model.toMangaSources
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MetadataRefreshSettings
 import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.core.util.ext.mapItems
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
@@ -36,7 +41,15 @@ import java.time.Instant
 class FavouritesRepository @Inject constructor(
 	private val db: MangaDatabase,
 	private val localObserver: LocalFavoritesObserver,
+	private val settings: AppSettings,
+    private val metadataRefreshSettings: MetadataRefreshSettings,
 ) {
+    fun observeMembershipChanges(): Flow<Unit> = db.invalidationTracker.createFlow(TABLE_FAVOURITES, TABLE_FAVOURITE_CATEGORIES)
+        .map { Unit }
+
+    suspend fun getVisibleCategories(ids: Collection<Long>): Map<Long, List<FavouriteCategory>> =
+        ids.distinct().chunked(400).flatMap { db.getFavouritesDao().searchCategories(it) }
+            .groupBy { it.mangaId }.mapValues { (_, rows) -> rows.map { it.category.toFavouriteCategory() } }
 
 	suspend fun getAllManga(): List<Manga> {
 		val entities = db.getFavouritesDao().findAll()
@@ -109,12 +122,35 @@ class FavouritesRepository @Inject constructor(
 		}.distinctUntilChanged()
 	}
 
+    fun observeCategoryOverview(): Flow<List<CategoryOverview>> = combine(
+        db.invalidationTracker.createFlow(TABLE_FAVOURITES, TABLE_FAVOURITE_CATEGORIES, "manga", "preferences"),
+        settings.observeChanges().onStart { emit(null) },
+    ) { _, _ -> Unit }.mapLatest {
+        db.withTransaction {
+            val categories = db.getFavouriteCategoriesDao().findAll().filter { it.isVisibleInLibrary }
+            val dao = db.getFavouritesDao()
+            val counts = dao.categoryCounts(settings.isNsfwContentDisabled).associate { it.category_id to it.count }
+            val sorted = sortFavoriteCategories(categories.map {
+                CategorySortKey(it.categoryId.toLong(), it.title, it.sortKey, it.createdAt, counts[it.categoryId.toLong()] ?: 0)
+            }, settings.favoritesCategorySort, settings.isFavoritesCategorySortAscending)
+            buildList {
+                if (categories.isNotEmpty() && settings.isAllFavouritesVisible) {
+                    add(CategoryOverview(0, null, dao.visibleFavoritesCount(settings.isNsfwContentDisabled),
+                        if (settings.isFavoritesOverviewEnabled) dao.categoryPreviewCovers(0, settings.isNsfwContentDisabled, 4) else emptyList()))
+                }
+                for (key in sorted) add(CategoryOverview(key.id, key.title, key.count,
+                    if (settings.isFavoritesOverviewEnabled) dao.categoryPreviewCovers(key.id, settings.isNsfwContentDisabled, 4) else emptyList()))
+            }
+        }
+    }.distinctUntilChanged()
+
 	fun observeCategoriesWithCovers(): Flow<Map<FavouriteCategory, List<Cover>>> {
-		return db.invalidationTracker.createFlow(
-			TABLE_FAVOURITES,
-			TABLE_FAVOURITE_CATEGORIES,
-			emitInitialState = true,
-		).mapLatest {
+        return combine(
+            db.invalidationTracker.createFlow(TABLE_FAVOURITES, TABLE_FAVOURITE_CATEGORIES, emitInitialState = true),
+            settings.observeChanges().filter {
+                it == null || it == AppSettings.KEY_FAVORITES_ORDER || it == AppSettings.KEY_FAVORITES_DEFAULT_CATEGORIES
+            }.onStart { emit(null) },
+        ) { _, _ -> Unit }.mapLatest {
 			db.withTransaction {
 				val categories = db.getFavouriteCategoriesDao().findAll()
 				val res = LinkedHashMap<FavouriteCategory, List<Cover>>(categories.size)
@@ -122,7 +158,7 @@ class FavouritesRepository @Inject constructor(
 					val cat = entity.toFavouriteCategory()
 					res[cat] = db.getFavouritesDao().findCovers(
 						categoryId = cat.id,
-						order = cat.order,
+						order = effectiveOrder(cat.id, cat.order),
 					)
 				}
 				res
@@ -203,6 +239,7 @@ class FavouritesRepository @Inject constructor(
 		sortOrder: ListSortOrder,
 		isTrackerEnabled: Boolean,
 		isVisibleOnShelf: Boolean,
+		useDefaultOrder: Boolean = false,
 	): FavouriteCategory {
 		val entity = FavouriteCategoryEntity(
 			title = title,
@@ -216,6 +253,7 @@ class FavouritesRepository @Inject constructor(
 		)
 		val id = db.getFavouriteCategoriesDao().insert(entity)
 		val category = entity.toFavouriteCategory(id)
+		settings.setUsesDefaultFavoritesOrder(id, useDefaultOrder)
 		return category
 	}
 
@@ -243,12 +281,14 @@ class FavouritesRepository @Inject constructor(
 				db.getFavouritesDao().deleteAll(id)
 				db.getFavouriteCategoriesDao().delete(id)
 			}
-			db.getChaptersDao().gc()
+			db.getChaptersDao().gc(metadataRefreshSettings.retainedMangaIds())
 		}
+        ids.forEach { settings.setUsesDefaultFavoritesOrder(it, false) }
 	}
 
 	suspend fun setCategoryOrder(id: Long, order: ListSortOrder) {
 		db.getFavouriteCategoriesDao().updateOrder(id, order.name)
+		settings.setUsesDefaultFavoritesOrder(id, false)
 	}
 
 	suspend fun reorderCategories(orderedIds: List<Long>) {
@@ -267,25 +307,31 @@ class FavouritesRepository @Inject constructor(
 				val tags = manga.tags.toEntities()
 				db.getTagsDao().upsert(tags)
 				db.getMangaDao().upsert(manga.toEntity(), tags)
-				val entity = FavouriteEntity(
-					mangaId = manga.id,
-					categoryId = categoryId,
-					createdAt = createdAt - index,
-					sortKey = 0,
-					deletedAt = 0L,
-					isPinned = false,
-				)
-				db.getFavouritesDao().insert(entity)
+				val dao = db.getFavouritesDao()
+                val existing = dao.findForRestore(manga.id, categoryId)
+                val entity = favoriteMembership(existing, manga.id, categoryId, createdAt - index)
+                if (entity != existing) dao.upsert(entity)
 			}
 		}
 	}
+
+    suspend fun reorderFavorites(scopeId: Long, orderedIds: List<Long>) = db.withTransaction {
+        val active = if (scopeId == 0L) db.getFavouritesDao().findAll() else db.getFavouritesDao().findAll(scopeId)
+        val eligible = active.mapTo(HashSet()) { it.manga.id }
+        val dao = db.getFavoriteOrderDao()
+        val revision = java.util.UUID.randomUUID().toString()
+        val updatedAt = maxOf(System.currentTimeMillis(), dao.lastRevision(scopeId) + 1)
+        orderedIds.distinct().filter { it in eligible }.forEachIndexed { rank, id ->
+            dao.upsert(org.koitharu.kotatsu.favourites.data.FavoriteOrderEntity(id, scopeId, rank, updatedAt, revision))
+        }
+    }
 
 	suspend fun removeFromFavourites(ids: Collection<Long>): ReversibleHandle {
 		db.withTransaction {
 			for (id in ids) {
 				db.getFavouritesDao().delete(mangaId = id)
 			}
-			db.getChaptersDao().gc()
+			db.getChaptersDao().gc(metadataRefreshSettings.retainedMangaIds())
 		}
 		return ReversibleHandle { recoverToFavourites(ids) }
 	}
@@ -295,17 +341,23 @@ class FavouritesRepository @Inject constructor(
 			for (id in ids) {
 				db.getFavouritesDao().delete(categoryId = categoryId, mangaId = id)
 			}
-			db.getChaptersDao().gc()
+			db.getChaptersDao().gc(metadataRefreshSettings.retainedMangaIds())
 		}
 		return ReversibleHandle { recoverToCategory(categoryId, ids) }
 	}
 
-	private fun observeOrder(categoryId: Long): Flow<ListSortOrder> {
-		return db.getFavouriteCategoriesDao().observe(categoryId)
-			.filterNotNull()
-			.map { x -> ListSortOrder(x.order, ListSortOrder.NEWEST) }
+	fun observeOrder(categoryId: Long): Flow<ListSortOrder> {
+		return combine(
+			db.getFavouriteCategoriesDao().observe(categoryId).filterNotNull(),
+			settings.observeChanges().filter {
+				it == null || it == AppSettings.KEY_FAVORITES_ORDER || it == AppSettings.KEY_FAVORITES_DEFAULT_CATEGORIES
+			}.onStart { emit(null) },
+		) { category, _ -> effectiveOrder(categoryId, ListSortOrder(category.order, ListSortOrder.NEWEST)) }
 			.distinctUntilChanged()
 	}
+
+	private fun effectiveOrder(categoryId: Long, saved: ListSortOrder): ListSortOrder =
+		if (settings.usesDefaultFavoritesOrder(categoryId)) settings.allFavoritesSortOrder else saved
 
 	suspend fun getMostUpdatedCategories(limit: Int): List<FavouriteCategory> {
 		return db.getFavouriteCategoriesDao().getMostUpdatedCategories(limit).map {

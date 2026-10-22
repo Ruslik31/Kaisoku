@@ -112,7 +112,119 @@ class BackupRoundTripTest {
         } finally { directory.deleteRecursively() }
     }
 
-    private fun repository(context: Context, db: MangaDatabase) = BackupRepository(context, db, settings, tapGrid, sources, filters)
+    @Test fun independentManualOrdersRoundTripAndRemapCategoriesWithoutChangingReaderHistory() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val category = org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity(1, 10, 0, "Reading", "MANUAL", false, true, 0)
+        val manga = MangaBackup(900, "Order fixture", url = "/order", publicUrl = "https://example.org/order", coverUrl = "", source = "MANGADEX")
+        val ranks = listOf(
+            org.koitharu.kotatsu.favourites.data.FavoriteOrderEntity(900, 0, 3, 100, "global"),
+            org.koitharu.kotatsu.favourites.data.FavoriteOrderEntity(900, 1, 8, 101, "category"),
+        )
+        Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build().use { first ->
+            first.getMangaDao().upsert(manga.toEntity(), emptyList())
+            first.getFavouriteCategoriesDao().upsert(category)
+            ranks.forEach { first.getFavoriteOrderDao().upsert(it) }
+            val sections = setOf(BackupSection.CATEGORIES, BackupSection.FAVORITE_ORDER)
+            val output = ByteArrayOutputStream()
+            ZipOutputStream(output).use { repository(context, first).createBackup(it, null, sections) }
+            Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build().use { second ->
+                second.getFavouriteCategoriesDao().upsert(category.copy(title = "Other"))
+                val repo = repository(context, second)
+                val result = repo.restoreBackup(ZipInputStream(ByteArrayInputStream(output.toByteArray())), sections, null, isMerge = true)
+                assertTrue(result.failures.toString(), result.isAllSuccess)
+                val restoredCategory = second.getFavouriteCategoriesDao().findAll().single { it.title == "Reading" }
+                assertNotEquals(1, restoredCategory.categoryId)
+                assertEquals(ranks[0], second.getFavoriteOrderDao().find(900, 0))
+                assertEquals(ranks[1].copy(scopeId = restoredCategory.categoryId.toLong()),
+                    second.getFavoriteOrderDao().find(900, restoredCategory.categoryId.toLong()))
+                val snapshot = second.getFavoriteOrderDao().dump()
+                // A backup without the optional section is not a reset instruction.
+                repo.restoreBackup(ZipInputStream(ByteArrayInputStream(archive("index", "[]"))), setOf(BackupSection.INDEX), null, isMerge = true)
+                assertEquals(snapshot, second.getFavoriteOrderDao().dump())
+                val older = org.koitharu.kotatsu.backups.data.model.FavoriteOrderBackup(900, 0, 99, 1, "older", manga)
+                repo.restoreBackup(ZipInputStream(ByteArrayInputStream(archive("favorite_order", Json.encodeToString(listOf(older))))),
+                    setOf(BackupSection.FAVORITE_ORDER), null, isMerge = true)
+                assertEquals(ranks[0], second.getFavoriteOrderDao().find(900, 0))
+                assertTrue(second.getHistoryDao().findAllForBackup(0, 100).isEmpty())
+                assertTrue(second.getFavouritesDao().findAll().isEmpty())
+            }
+        }
+    }
+
+    @Test fun sanitizedForeignBackupsRestoreAllRecordsWithoutTouchingCurrentSettingsOrMissingSections() = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val app = instrumentation.targetContext
+        val prefix = "foreign-backup-${UUID.randomUUID()}-"
+        val context = object : ContextWrapper(app) {
+            override fun getApplicationContext(): Context = this
+            override fun getSharedPreferences(name: String, mode: Int) = app.getSharedPreferences(prefix + name, mode)
+        }
+        val isolatedSettings = AppSettings(context)
+        val decoder = Json { ignoreUnknownKeys = true; coerceInputValues = true; allowSpecialFloatingPointValues = true }
+        val selected = setOf(BackupSection.HISTORY, BackupSection.CATEGORIES, BackupSection.FAVOURITES,
+            BackupSection.SOURCES)
+        val settingsBefore = isolatedSettings.getAllValues().toMap()
+        for (name in listOf("kotatsu.bk.zip", "futon.bk.zip")) {
+            val bytes = instrumentation.context.assets.open("foreign-backups/$name").use { it.readBytes() }
+            val sections = ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                buildMap {
+                    var entry = zip.nextEntry
+                    while (entry != null) {
+                        put(entry.name, zip.readBytes().decodeToString())
+                        entry = zip.nextEntry
+                    }
+                }
+            }
+            val expectedHistory = decoder.decodeFromString<List<org.koitharu.kotatsu.backups.data.model.HistoryBackup>>(
+                sections.getValue("history")).map { it.toEntity() }.toSet()
+            val expectedFavorites = decoder.decodeFromString<List<org.koitharu.kotatsu.backups.data.model.FavouriteBackup>>(
+                sections.getValue("favourites")).map { it.toEntity() }.toSet()
+            for (merge in listOf(false, true)) Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build().use { db ->
+                val repo = repository(context, db, isolatedSettings)
+                val sentinel = MangaBackup(99001, "Existing", url = "/existing", publicUrl = "https://fixture.invalid/existing",
+                    coverUrl = "", source = "lnreader:missing-fixture")
+                db.getMangaDao().upsert(sentinel.toEntity(), emptyList())
+                val order = org.koitharu.kotatsu.favourites.data.FavoriteOrderEntity(99001, 0, 17, 100, "keep")
+                db.getFavoriteOrderDao().upsert(order)
+                val track = TrackBackup(sentinel, 5, 1, 123, 456, -1, null).toEntity()
+                db.getTracksDao().upsert(track)
+                repeat(2) {
+                    val result = repo.restoreBackup(ZipInputStream(ByteArrayInputStream(bytes)), selected, null, isMerge = merge)
+                    assertTrue(result.failures.toString(), result.isAllSuccess)
+                    assertEquals(expectedHistory, db.getHistoryDao().findAllForBackup(0, 1000).map { it.history }.toSet())
+                    assertEquals(expectedFavorites, db.getFavouritesDao().findAllForBackup(0, 1000).map { it.favourite }.toSet())
+                    assertEquals(2, db.getFavouriteCategoriesDao().findAll().size)
+                    assertEquals(order, db.getFavoriteOrderDao().find(99001, 0))
+                    assertEquals(track, db.getTracksDao().find(99001))
+                    assertEquals(settingsBefore, isolatedSettings.getAllValues())
+                }
+                // Current adult filtering changes visibility, never imported record counts or flags.
+                val adultCondition = checkNotNull(db.getFavouritesDao().getCondition(
+                    org.koitharu.kotatsu.list.domain.ListFilterOption.Macro.NSFW))
+                db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM favourites JOIN manga USING(manga_id) " +
+                    "WHERE favourites.deleted_at=0 AND NOT($adultCondition)").use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals(14, cursor.getInt(0))
+                }
+                assertEquals(97, db.getFavouritesDao().findAllForBackup(0, 1000).size)
+                val output = ByteArrayOutputStream()
+                ZipOutputStream(output).use { repo.createBackup(it, null, selected) }
+                Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build().use { restored ->
+                    val result = repository(context, restored, isolatedSettings).restoreBackup(
+                        ZipInputStream(ByteArrayInputStream(output.toByteArray())), selected, null)
+                    assertTrue(result.failures.toString(), result.isAllSuccess)
+                    assertEquals(expectedHistory, restored.getHistoryDao().findAllForBackup(0, 1000).map { it.history }.toSet())
+                    assertEquals(expectedFavorites, restored.getFavouritesDao().findAllForBackup(0, 1000).map { it.favourite }.toSet())
+                }
+            }
+        }
+    }
+
+    private fun repository(context: Context, db: MangaDatabase, scopedSettings: AppSettings = settings): BackupRepository {
+        // Production's DatabasePrePopulateCallback installs this journal. Isolated test DBs omit prepopulation.
+        org.koitharu.kotatsu.sync.drive.DriveReplicaJournal.install(db.openHelper.writableDatabase)
+        return BackupRepository(context, db, scopedSettings, tapGrid, sources, filters)
+    }
 
     private inline fun <T> MangaDatabase.use(block: (MangaDatabase) -> T): T =
         try { block(this) } finally { close() }

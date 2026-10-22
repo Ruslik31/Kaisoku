@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar_inline_chapters"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:title="@string/chapters" />
+
+    <HorizontalScrollView
+        android:id="@+id/scroll_inline_branches"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="@dimen/list_spacing"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <org.koitharu.kotatsu.core.ui.widgets.ChipsView
+            android:id="@+id/chips_inline_branches"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingVertical="4dp"
+            app:chipIconVisible="false"
+            app:chipStyle="@style/Widget.Kotatsu.Chip.Filter"
+            app:singleLine="true" />
+    </HorizontalScrollView>
+
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/progress_inline_chapters"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/text_inline_chapters_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:padding="@dimen/margin_normal"
+        android:textAppearance="?attr/textAppearanceBodyLarge"
+        android:visibility="gone" />
+</LinearLayout>

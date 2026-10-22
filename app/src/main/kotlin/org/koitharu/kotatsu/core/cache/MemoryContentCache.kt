@@ -34,6 +34,10 @@ class MemoryContentCache @Inject constructor(application: Application) : Compone
 		detailsCache[Key(source, url)] = details
 	}
 
+    fun removeDetails(source: MangaSource, url: String, expected: SafeDeferred<Manga>) {
+        detailsCache.remove(Key(source, url), expected)
+    }
+
 	suspend fun getPages(source: MangaSource, url: String, mangaUrl: String? = null): List<MangaPage>? {
 		return pagesCache[Key(source, url, mangaUrl)]?.awaitOrNull()
 	}

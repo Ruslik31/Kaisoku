@@ -8,25 +8,51 @@ import okhttp3.Request
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.network.MangaHttpClient
 import org.koitharu.kotatsu.core.prefs.AppSettings
-import org.koitharu.kotatsu.parsers.model.MangaParserSource
+import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
+import org.koitharu.kotatsu.core.exceptions.InteractiveActionRequiredException
+import org.koitharu.kotatsu.core.exceptions.ProxyConfigException
+import org.koitharu.kotatsu.parsers.exception.AuthRequiredException
+import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.await
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
-import java.util.EnumSet
 import javax.inject.Inject
+
+/** A repository whose site can be served from one of several preset domains. */
+interface MirrorableRepository {
+
+	val source: MangaSource
+
+	var domain: String
+
+	val domains: Array<out String>
+}
 
 class MirrorSwitcher @Inject constructor(
 	private val settings: AppSettings,
 	@MangaHttpClient private val okHttpClient: OkHttpClient,
 ) {
 
-	private val blacklist = EnumSet.noneOf(MangaParserSource::class.java)
+	private val blacklist = HashSet<String>()
 	private val mutex: Mutex = Mutex()
 
 	val isEnabled: Boolean
 		get() = settings.isMirrorSwitchingEnabled
 
-	suspend fun <T : Any> trySwitchMirror(repository: ParserMangaRepository, loader: suspend () -> T?): T? {
-		val source = repository.source
+	/** Runs [block]; when it fails or returns nothing, retries it on the repository's other mirrors. */
+	suspend fun <T : Any> withMirrors(repository: MirrorableRepository, block: suspend () -> T): T {
+		if (!isEnabled) {
+			return block()
+		}
+		val initialResult = runCatchingCancellable { block() }
+		if (initialResult.isValidResult()) {
+			return initialResult.getOrThrow()
+		}
+		val newResult = trySwitchMirror(repository, block)
+		return newResult ?: initialResult.getOrThrow()
+	}
+
+	suspend fun <T : Any> trySwitchMirror(repository: MirrorableRepository, loader: suspend () -> T?): T? {
+		val source = repository.source.name
 		if (!isEnabled || source in blacklist) {
 			return null
 		}
@@ -65,7 +91,7 @@ class MirrorSwitcher @Inject constructor(
 		}
 	}
 
-	suspend fun findRedirect(repository: ParserMangaRepository): String? {
+	suspend fun findRedirect(repository: MirrorableRepository): String? {
 		if (!isEnabled) {
 			return null
 		}
@@ -88,6 +114,25 @@ class MirrorSwitcher @Inject constructor(
 			null
 		}
 	}
+
+	private fun Result<Any>.isValidResult() = fold(
+		onSuccess = {
+			when (it) {
+				is Collection<*> -> it.isNotEmpty()
+				else -> true
+			}
+		},
+		onFailure = {
+			when (it.cause) {
+				is CloudFlareProtectedException,
+				is AuthRequiredException,
+				is InteractiveActionRequiredException,
+				is ProxyConfigException -> true
+
+				else -> false
+			}
+		},
+	)
 
 	private fun <T : Any> T.takeIfValid() = takeIf {
 		when (it) {

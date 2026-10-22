@@ -15,6 +15,7 @@ import kotlinx.serialization.json.floatOrNull
 import org.koitharu.kotatsu.backups.data.model.BookmarkBackup
 import org.koitharu.kotatsu.backups.data.model.CategoryBackup
 import org.koitharu.kotatsu.backups.data.model.FavouriteBackup
+import org.koitharu.kotatsu.backups.data.model.FavoriteOrderBackup
 import org.koitharu.kotatsu.backups.data.model.HistoryBackup
 import org.koitharu.kotatsu.backups.data.model.MangaPreferencesBackup
 import org.koitharu.kotatsu.backups.data.model.ScrobblingBackup
@@ -39,6 +40,7 @@ object DriveReplicaValidation {
             when (record.section) {
                 "categories" -> json.decodeFromJsonElement<CategoryBackup>(value)
                 "favourites" -> json.decodeFromJsonElement<FavouriteBackup>(value)
+                "favorite_order" -> json.decodeFromJsonElement<FavoriteOrderBackup>(value).toEntity()
                 "history" -> json.decodeFromJsonElement<HistoryBackup>(value)
                 "bookmarks" -> json.decodeFromJsonElement<BookmarkBackup>(value)
                 "sources" -> json.decodeFromJsonElement<SourceBackup>(value)

@@ -23,116 +23,133 @@ import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.util.ext.isHttpUrl
 
 class DetailsMenuProvider(
-	private val activity: FragmentActivity,
-	private val viewModel: DetailsViewModel,
-	private val snackbarHost: View,
-	private val appShortcutManager: AppShortcutManager,
+    private val activity: FragmentActivity,
+    private val viewModel: DetailsViewModel,
+    private val snackbarHost: View,
+    private val appShortcutManager: AppShortcutManager,
 ) : MenuProvider, ActivityResultCallback<ActivityResult> {
 
-	private val activityForResultLauncher = activity.registerForActivityResult(
-		ActivityResultContracts.StartActivityForResult(),
-		this,
-	)
+    private val activityForResultLauncher = activity.registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+        this,
+    )
 
-	private val router: AppRouter
-		get() = activity.router
+    private val router: AppRouter
+        get() = activity.router
 
-	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-		menuInflater.inflate(R.menu.opt_details, menu)
-	}
+    override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+        menuInflater.inflate(R.menu.opt_details, menu)
+    }
 
-	override fun onPrepareMenu(menu: Menu) {
-		val manga = viewModel.manga.value
-		menu.findItem(R.id.action_share).isVisible = manga != null && AppRouter.isShareSupported(manga)
-		menu.findItem(R.id.action_save).isVisible = manga?.source != null && manga.source != LocalMangaSource
-		menu.findItem(R.id.action_delete).isVisible = manga?.source == LocalMangaSource
-		menu.findItem(R.id.action_browser).isVisible = manga?.publicUrl?.isHttpUrl() == true
-		menu.findItem(R.id.action_alternatives).isVisible = manga?.source != LocalMangaSource
-		menu.findItem(R.id.action_replace_source).isVisible = manga?.source != LocalMangaSource && manga?.id != 0L
-		menu.findItem(R.id.action_shortcut).isVisible = ShortcutManagerCompat.isRequestPinShortcutSupported(activity)
-		menu.findItem(R.id.action_scrobbling).isVisible = viewModel.isScrobblingAvailable
-		menu.findItem(R.id.action_online).isVisible = viewModel.remoteManga.value != null
-		menu.findItem(R.id.action_stats).isVisible = viewModel.isStatsAvailable.value
-		val isFavourite = viewModel.favouriteCategories.value.isNotEmpty()
-		menu.findItem(R.id.action_favourite).setIcon(
-			if (isFavourite) R.drawable.ic_heart else R.drawable.ic_heart_outline,
-		)
-	}
+    override fun onPrepareMenu(menu: Menu) {
+        val manga = viewModel.manga.value
+        menu.findItem(R.id.action_share).isVisible = manga != null && AppRouter.isShareSupported(manga)
+        menu.findItem(R.id.action_save).isVisible = manga?.source != null && manga.source != LocalMangaSource
+        menu.findItem(R.id.action_delete).isVisible = manga?.source == LocalMangaSource
+        menu.findItem(R.id.action_browser).isVisible = manga?.publicUrl?.isHttpUrl() == true
+        menu.findItem(R.id.action_alternatives).isVisible = manga?.source != LocalMangaSource
+        menu.findItem(R.id.action_replace_source).isVisible = manga?.source != LocalMangaSource && manga?.id != 0L
+        menu.findItem(R.id.action_shortcut).isVisible = ShortcutManagerCompat.isRequestPinShortcutSupported(activity)
+        menu.findItem(R.id.action_scrobbling).isVisible = viewModel.isScrobblingAvailable
+        menu.findItem(R.id.action_online).isVisible = viewModel.remoteManga.value != null
+        menu.findItem(R.id.action_stats).isVisible = viewModel.isStatsAvailable.value
+        menu.findItem(R.id.action_saved_metadata_only).apply {
+            isVisible = manga != null && manga.source != LocalMangaSource && manga.id != 0L
+            isChecked = viewModel.isSavedMetadataOnly.value
+        }
+        val isFavourite = viewModel.favouriteCategories.value.isNotEmpty()
+        menu.findItem(R.id.action_favourite).setIcon(
+            if (isFavourite) R.drawable.ic_heart else R.drawable.ic_heart_outline,
+        )
+    }
 
-	override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
-		val manga = viewModel.getMangaOrNull() ?: return false
-		when (menuItem.itemId) {
-			R.id.action_share -> {
-				router.showShareDialog(manga)
-			}
+    override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
+        val manga = viewModel.getMangaOrNull() ?: return false
+        when (menuItem.itemId) {
+            R.id.action_share -> {
+                router.showShareDialog(manga)
+            }
 
-			R.id.action_favourite -> {
-				router.showFavoriteDialog(manga)
-			}
+            R.id.action_favourite -> {
+                router.showFavoriteDialog(manga)
+            }
 
-			R.id.action_delete -> {
-				buildAlertDialog(activity) {
-					setTitle(R.string.delete_manga)
-					setMessage(activity.getString(R.string.text_delete_local_manga, manga.title))
-					setPositiveButton(R.string.delete) { _, _ -> viewModel.deleteLocal() }
-					setNegativeButton(android.R.string.cancel, null)
-				}.show()
-			}
+            R.id.action_delete -> {
+                buildAlertDialog(activity) {
+                    setTitle(R.string.delete_manga)
+                    setMessage(activity.getString(R.string.text_delete_local_manga, manga.title))
+                    setPositiveButton(R.string.delete) { _, _ -> viewModel.deleteLocal() }
+                    setNegativeButton(android.R.string.cancel, null)
+                }.show()
+            }
 
-			R.id.action_save -> {
-				router.showDownloadDialog(manga, snackbarHost)
-			}
+            R.id.action_save -> {
+                router.showDownloadDialog(manga, snackbarHost)
+            }
 
-			R.id.action_browser -> {
-				router.openBrowser(url = manga.publicUrl, source = manga.source, title = manga.title)
-			}
+            R.id.action_browser -> {
+                router.openBrowser(url = manga.publicUrl, source = manga.source, title = manga.title)
+            }
 
-			R.id.action_online -> {
-				router.openDetails(viewModel.remoteManga.value ?: return false)
-			}
+            R.id.action_online -> {
+                router.openDetails(viewModel.remoteManga.value ?: return false)
+            }
 
-			R.id.action_related -> {
-				router.openSearch(manga.title)
-			}
+            R.id.action_related -> {
+                router.openSearch(manga.title)
+            }
 
-			R.id.action_alternatives -> {
-				router.openAlternatives(manga)
-			}
+            R.id.action_alternatives -> {
+                router.openAlternatives(manga)
+            }
 
-			R.id.action_replace_source -> {
-				router.openSourceReplacement(listOf(manga.id))
-			}
+            R.id.action_replace_source -> {
+                router.openSourceReplacement(listOf(manga.id))
+            }
 
-			R.id.action_stats -> {
-				router.showStatisticSheet(manga)
-			}
+            R.id.action_stats -> {
+                router.showStatisticSheet(manga)
+            }
 
-			R.id.action_scrobbling -> {
-				router.showScrobblingSelectorSheet(manga, null)
-			}
+            R.id.action_scrobbling -> {
+                router.showScrobblingSelectorSheet(manga, null)
+            }
 
-			R.id.action_shortcut -> {
-				activity.lifecycleScope.launch {
-					if (!appShortcutManager.requestPinShortcut(manga)) {
-						Snackbar.make(snackbarHost, R.string.operation_not_supported, Snackbar.LENGTH_SHORT)
-							.show()
-					}
-				}
-			}
+            R.id.action_shortcut -> {
+                activity.lifecycleScope.launch {
+                    if (!appShortcutManager.requestPinShortcut(manga)) {
+                        Snackbar.make(snackbarHost, R.string.operation_not_supported, Snackbar.LENGTH_SHORT)
+                            .show()
+                    }
+                }
+            }
 
-			R.id.action_edit_override -> {
-				val intent = AppRouter.overrideEditIntent(activity, manga)
-				activityForResultLauncher.launch(intent)
-			}
+            R.id.action_edit_override -> {
+                val intent = AppRouter.overrideEditIntent(activity, manga)
+                activityForResultLauncher.launch(intent)
+            }
 
-			else -> return false
-		}
-		return true
-	}
+            R.id.action_saved_metadata_only -> {
+                if (viewModel.isSavedMetadataOnly.value) {
+                    viewModel.setSavedMetadataOnly(false)
+                } else {
+                    buildAlertDialog(activity) {
+                        setTitle(R.string.saved_metadata_only)
+                        setMessage(R.string.saved_metadata_only_summary)
+                        setPositiveButton(android.R.string.ok) { _, _ -> viewModel.setSavedMetadataOnly(true) }
+                        setNegativeButton(android.R.string.cancel, null)
+                    }.show()
+                }
+            }
 
-	override fun onActivityResult(result: ActivityResult) {
-		if (result.resultCode == Activity.RESULT_OK) {
-			viewModel.reload()
-		}
-	}
+            else -> return false
+        }
+        return true
+    }
+
+    override fun onActivityResult(result: ActivityResult) {
+        if (result.resultCode == Activity.RESULT_OK) {
+            viewModel.reload(force = false)
+        }
+    }
 }

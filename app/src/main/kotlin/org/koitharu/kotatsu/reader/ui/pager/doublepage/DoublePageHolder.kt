@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.reader.ui.pager.doublepage
 
+import org.koitharu.kotatsu.reader.ui.pager.displaySourceWidth
+import org.koitharu.kotatsu.reader.ui.pager.displaySourceHeight
 import android.graphics.PointF
 import android.view.Gravity
 import android.view.ViewGroup
@@ -69,21 +71,21 @@ class DoublePageHolder(
 		settings.applyBackground(itemView)
 	}
 
-	override fun onReady() {
+	override fun onPageReady() {
 		with(binding.ssiv) {
 			colorFilter = settings.colorFilter?.toColorFilter()
 			minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE
 			maxScale = minScale
 			setScaleAndCenter(
 				minScale,
-				PointF(sWidth / 2f, sHeight / 2f),
+				PointF(displaySourceWidth / 2f, displaySourceHeight / 2f),
 			)
-			if (sWidth.toFloat() / sHeight > WIDE_IMAGE_RATIO) {
+			if (displaySourceWidth.toFloat() / displaySourceHeight > WIDE_IMAGE_RATIO) {
 				val containerWidth = width.toFloat()
 				val parent = itemView.parent as? ViewGroup
 				val fullWidth = parent?.width?.toFloat() ?: (containerWidth * 2f)
 				val fullHeight = parent?.height?.toFloat() ?: height.toFloat()
-				val fitScale = minOf(fullWidth / sWidth, fullHeight / sHeight)
+				val fitScale = minOf(fullWidth / displaySourceWidth, fullHeight / displaySourceHeight)
 				val ratio = (fitScale / minScale).coerceAtLeast(1f)
 				scaleX = ratio
 				scaleY = ratio
@@ -96,7 +98,7 @@ class DoublePageHolder(
 				scaleY = 1f
 				background = null
 				itemView.translationZ = 0f
-				val imageDisplayWidth = sWidth * minScale
+				val imageDisplayWidth = displaySourceWidth * minScale
 				val offset = (width - imageDisplayWidth) / 2f
 				translationX = if (offset > 0f) {
 					if (isEven) offset else -offset

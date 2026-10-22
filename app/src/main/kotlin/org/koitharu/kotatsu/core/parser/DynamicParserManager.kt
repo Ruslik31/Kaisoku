@@ -6,6 +6,7 @@ import dalvik.system.DexClassLoader
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSourceRegistry
 import org.koitharu.kotatsu.core.model.PluginMangaSource
+import org.koitharu.kotatsu.core.parser.tsuki.TsukiLoaderContext
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaParser
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
@@ -20,6 +21,8 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
+import tsuki.MangaParser as TsukiMangaParser
+import tsuki.model.MangaSource as TsukiMangaSource
 
 class PluginClassLoader(
 	dexPath: String,
@@ -29,6 +32,11 @@ class PluginClassLoader(
 ) : DexClassLoader(dexPath, optimizedDirectory, librarySearchPath, parent) {
 
 	override fun loadClass(name: String, resolve: Boolean): Class<*> {
+		// tsuki.* plugins link against the host's Tsuki core; their own sites/factory are found
+		// in the plugin dex after the parent lookup misses.
+		if (name.startsWith("tsuki.")) {
+			return super.loadClass(name, resolve)
+		}
 		if (name == "org.koitharu.kotatsu.parsers.util.LinkResolver" ||
 			name.startsWith("org.koitharu.kotatsu.parsers.util.LinkResolver$") ||
 			name == "org.koitharu.kotatsu.parsers.MangaLoaderContext" ||
@@ -65,10 +73,43 @@ object DynamicParserManager {
 		val delegate: Any,
 	)
 
-	private val classLoaders = mutableMapOf<String, ClassLoader>()
-	private val newParserMethods = mutableMapOf<String, Method>()
+	data class LoadedTsukiParser(
+		val source: PluginMangaSource,
+		val parser: TsukiMangaParser,
+	)
+
+	private enum class PluginFormat(
+		val factoryClass: String,
+		val sourceClass: String,
+		val contextClass: String,
+	) {
+		TSUKI("tsuki.MangaParserFactoryKt", "tsuki.model.MangaParserSource", "tsuki.MangaLoaderContext"),
+		LEGACY(
+			"org.koitharu.kotatsu.parsers.MangaParserFactoryKt",
+			"org.koitharu.kotatsu.parsers.model.MangaParserSource",
+			"org.koitharu.kotatsu.parsers.MangaLoaderContext",
+		),
+	}
+
+	private val sourceLookup = PluginSourceLookup()
+
+	@Volatile
+	private var loadErrors: Map<String, Throwable> = emptyMap()
+
+	private const val LOAD_COPY_PREFIX = "plugin_load_"
+
+	private data class PluginFactories(
+		val classLoaders: Map<String, ClassLoader> = emptyMap(),
+		val methods: Map<String, Method> = emptyMap(),
+		val sources: Map<String, PluginMangaSource> = emptyMap(),
+	)
+
+	@Volatile
+	private var factories = PluginFactories()
 	private val methodCache = ConcurrentHashMap<MethodKey, Method>()
 
+	// Serialized: startup, imports and auto-updates reload concurrently and share the code-cache copies.
+	@Synchronized
 	@Throws(Exception::class)
 	fun loadParsersFromDirectory(context: Context, pluginDir: File) {
 		val cacheDir = context.codeCacheDir.absolutePath
@@ -76,19 +117,37 @@ object DynamicParserManager {
 		val sources = mutableListOf<MangaSource>()
 		val methods = mutableMapOf<String, Method>()
 		val loaders = mutableMapOf<String, ClassLoader>()
+		val errors = mutableMapOf<String, Throwable>()
 		if (!pluginDir.exists()) {
 			pluginDir.mkdirs()
 		}
-		for (jar in pluginDir.listFiles { file -> file.extension == "jar" } ?: emptyArray()) {
+		val codeCache = context.codeCacheDir
+		// Load from a per-version copy so replacing a jar never touches a file an old class loader maps.
+		codeCache.listFiles { file -> file.name.startsWith(LOAD_COPY_PREFIX) && file.extension == "jar" }
+			?.forEach { stale ->
+				stale.setWritable(true, true)
+				stale.delete()
+			}
+		val jars = (pluginDir.listFiles { file -> file.extension == "jar" } ?: emptyArray()).sortedBy { it.name }
+		for (jar in jars) {
 			jar.setReadOnly()
-			val classLoader = PluginClassLoader(jar.absolutePath, cacheDir, null, parent)
+			val loadFile = runCatching {
+				File(codeCache, "$LOAD_COPY_PREFIX${jar.nameWithoutExtension}_${jar.lastModified()}.jar").also { copy ->
+					jar.copyTo(copy, overwrite = true)
+					copy.setReadOnly()
+				}
+			}.getOrElse { jar }
+			val classLoader = PluginClassLoader(loadFile.absolutePath, cacheDir, null, parent)
 			try {
-				val factory = classLoader.loadClass("org.koitharu.kotatsu.parsers.MangaParserFactoryKt")
-				val enumClass = classLoader.loadClass("org.koitharu.kotatsu.parsers.model.MangaParserSource")
-				val contextClass = classLoader.loadClass("org.koitharu.kotatsu.parsers.MangaLoaderContext")
+				val format = PluginFormat.entries.firstNotNullOfOrNull { format ->
+					runCatching { format to classLoader.loadClass(format.factoryClass) }.getOrNull()
+				} ?: throw ClassNotFoundException("No parser factory in ${jar.name}")
+				val factory = format.second
+				val enumClass = classLoader.loadClass(format.first.sourceClass)
+				val contextClass = classLoader.loadClass(format.first.contextClass)
 				val newParser = factory.getMethod("newParser", enumClass, contextClass)
 				enumClass.enumConstants?.forEach { constant ->
-					if (constant is MangaSource) {
+					if (constant is MangaSource || constant is TsukiMangaSource) {
 						val source = PluginMangaSource(constant, jar.name)
 						sources.add(source)
 						methods[source.name] = newParser
@@ -97,17 +156,26 @@ object DynamicParserManager {
 				loaders[jar.name] = classLoader
 			} catch (e: Throwable) {
 				Log.w(TAG, "Failed to load parser plugin ${jar.name}", e)
+				errors[jar.name] = e
 			}
 		}
 		synchronized(this) {
-			classLoaders.clear()
-			newParserMethods.clear()
 			methodCache.clear()
-			classLoaders.putAll(loaders)
-			newParserMethods.putAll(methods)
+			loadErrors = errors
+			val plugins = sources.filterIsInstance<PluginMangaSource>()
+			factories = PluginFactories(loaders.toMap(), methods.toMap(), plugins.associateBy { it.name })
+			sourceLookup.replace(plugins)
 			MangaSourceRegistry.replaceAll(sources)
 		}
 	}
+
+	/** Why a jar in the plugins directory could not be loaded, keyed by file name. */
+	fun getLoadErrors(): Map<String, Throwable> = loadErrors
+
+	/** The loaded plugin source that wraps a plugin's own enum constant, if any. */
+	fun findPluginSource(delegate: Any): PluginMangaSource? = sourceLookup.find(delegate)
+
+	fun getTsukiSources(): List<TsukiMangaSource> = sourceLookup.sources().mapNotNull { it.delegate as? TsukiMangaSource }
 
 	fun deletePlugin(context: Context, jarName: String) {
 		val dir = PluginFileLoader.pluginsDir(context)
@@ -127,13 +195,15 @@ object DynamicParserManager {
 	fun createParser(
 		source: MangaSource,
 		loaderContext: MangaLoaderContext,
+		tsukiContext: TsukiLoaderContext?,
 		appContext: Context,
 	): LoadedParser {
 		val context = appContext.applicationContext
-		val pluginSource = resolvePluginSource(source)
+		val snapshot = factories
+		val pluginSource = snapshot.sources[source.name]
 			?: throw IllegalArgumentException(context.getString(R.string.plugin_not_found, source.name))
-		val classLoader = classLoaders[pluginSource.jarName]
-		val factoryMethod = newParserMethods[pluginSource.name]
+		val classLoader = snapshot.classLoaders[pluginSource.jarName]
+		val factoryMethod = snapshot.methods[pluginSource.name]
 		if (classLoader == null || factoryMethod == null) {
 			throw IllegalStateException(
 				if (classLoader == null) {
@@ -143,13 +213,31 @@ object DynamicParserManager {
 				},
 			)
 		}
-		val enumClass = classLoader.loadClass("org.koitharu.kotatsu.parsers.model.MangaParserSource")
-		val constant = enumClass.enumConstants?.firstOrNull {
-			(it as MangaSource).name == pluginSource.sourceName
+		// Re-resolve from the current class loader: a source captured before a reload wraps a stale constant.
+		val format = if (pluginSource.isTsuki) PluginFormat.TSUKI else PluginFormat.LEGACY
+		val constant = classLoader.loadClass(format.sourceClass).enumConstants?.firstOrNull {
+			(it as? Enum<*>)?.name == pluginSource.sourceName
 		} ?: throw IllegalArgumentException(context.getString(R.string.missing_in_plugin, pluginSource.sourceName))
-		val delegate = factoryMethod.invoke(null, constant, loaderContext)
-			?: throw IllegalStateException(context.getString(R.string.loaded_null))
+		val parserContext: Any = if (pluginSource.isTsuki) {
+			tsukiContext ?: throw UnsupportedOperationException("No tsuki.* host for ${pluginSource.name}")
+		} else {
+			loaderContext
+		}
+		val delegate = try {
+			factoryMethod.invoke(null, constant, parserContext)
+		} catch (e: InvocationTargetException) {
+			throw e.targetException
+		} ?: throw IllegalStateException(context.getString(R.string.loaded_null))
 		return LoadedParser(pluginSource, delegate)
+	}
+
+	fun createTsukiParser(
+		source: MangaSource,
+		tsukiContext: TsukiLoaderContext,
+		appContext: Context,
+	): LoadedTsukiParser {
+		val loaded = createParser(source, tsukiContext.hostContext, tsukiContext, appContext)
+		return LoadedTsukiParser(loaded.source, loaded.delegate as TsukiMangaParser)
 	}
 
 	fun createParserProxy(
@@ -157,7 +245,11 @@ object DynamicParserManager {
 		loaderContext: MangaLoaderContext,
 		appContext: Context,
 	): MangaParser {
-		val loaded = createParser(source, loaderContext, appContext)
+		val pluginSource = resolvePluginSource(source)
+		if (pluginSource?.isTsuki == true) {
+			throw UnsupportedOperationException("tsuki.* plugin ${pluginSource.name} has no org.koitharu parser")
+		}
+		val loaded = createParser(source, loaderContext, tsukiContext = null, appContext = appContext)
 		return Proxy.newProxyInstance(
 			MangaParser::class.java.classLoader,
 			arrayOf(MangaParser::class.java),

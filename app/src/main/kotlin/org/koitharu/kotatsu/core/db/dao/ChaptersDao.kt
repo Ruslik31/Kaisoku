@@ -16,8 +16,8 @@ abstract class ChaptersDao {
 	@Query("DELETE FROM chapters WHERE manga_id = :mangaId")
 	abstract suspend fun deleteAll(mangaId: Long)
 
-	@Query("DELETE FROM chapters WHERE manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0) AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)")
-	abstract suspend fun gc()
+    @Query("DELETE FROM chapters WHERE manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0) AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0) AND manga_id NOT IN (:idsToKeep)")
+    abstract suspend fun gc(idsToKeep: Set<Long>)
 
 	@Transaction
 	open suspend fun replaceAll(mangaId: Long, entities: Collection<ChapterEntity>) {

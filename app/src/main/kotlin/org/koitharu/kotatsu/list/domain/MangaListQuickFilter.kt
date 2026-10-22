@@ -60,6 +60,10 @@ abstract class MangaListQuickFilter(
 		appliedFilter.value = emptySet()
 	}
 
+    fun replaceOptions(options: Collection<ListFilterOption>) {
+        appliedFilter.value = normalizeListFilters(options)
+    }
+
 	suspend fun filterItem(
 		selectedOptions: Set<ListFilterOption>,
 	): QuickFilter? {
@@ -113,4 +117,18 @@ abstract class MangaListQuickFilter(
 			removeIf { it is ListFilterOption.Inverted && it.option == option }
 		}
 	}
+}
+
+internal fun normalizeListFilters(options: Collection<ListFilterOption>): Set<ListFilterOption> {
+    val result = LinkedHashSet<ListFilterOption>()
+    for (option in options) {
+        if (option is ListFilterOption.State) {
+            result.removeAll { it is ListFilterOption.State }
+            if (option.state == null) continue
+        }
+        if (option is ListFilterOption.Inverted) result.remove(option.option)
+        else result.removeAll { it is ListFilterOption.Inverted && it.option == option }
+        result.add(option)
+    }
+    return result
 }

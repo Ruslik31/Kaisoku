@@ -73,4 +73,13 @@
 		app:layout_constraintTop_toBottomOf="@+id/thumbnail"
 		tools:text="@tools:sample/lorem" />
 
+    <TextView
+        android:id="@+id/textView_recommendation_reason"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:textColor="?android:attr/textColorSecondary"
+        android:visibility="gone" />
 </LinearLayout>

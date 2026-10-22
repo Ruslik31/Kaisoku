@@ -84,9 +84,28 @@
 
     <SwitchPreferenceCompat
         android:defaultValue="false"
+        android:key="source_content_classes_enabled"
+        android:summary="@string/source_content_classes_summary"
+        android:title="@string/source_content_classes_enabled" />
+
+    <MultiSelectListPreference
+        android:dependency="source_content_classes_enabled"
+        android:key="source_content_classes"
+        android:entries="@array/source_content_class_entries"
+        android:entryValues="@array/source_content_class_values"
+        android:title="@string/source_content_classes" />
+
+    <SwitchPreferenceCompat
+        android:defaultValue="false"
         android:key="sources_hide_broken"
         android:summary="@string/hide_broken_sources_summary"
         android:title="@string/hide_broken_sources" />
+
+    <SwitchPreferenceCompat
+        android:defaultValue="false"
+        android:key="saved_metadata_unavailable_sources"
+        android:summary="@string/saved_metadata_unavailable_sources_summary"
+        android:title="@string/saved_metadata_unavailable_sources" />
 
 	<Preference
 		android:key="repair_broken_sources"

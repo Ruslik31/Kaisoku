@@ -71,6 +71,8 @@ class CoverStackView @JvmOverloads constructor(
 		}
 	}
 
+    fun disposeCovers() = coverViews.forEach { it.disposeImage() }
+
 	@JvmName("setMangaCoversAsync")
 	fun setCoversAsync(manga: List<Manga>) {
 		coverViews.forEachIndexed { index, view ->

@@ -8,6 +8,11 @@
         android:key="color_theme"
         android:title="@string/color_theme" />
 
+    <Preference
+        android:key="wallpaper_palette_refresh"
+        android:persistent="false"
+        android:title="@string/wallpaper_palette_refresh" />
+
     <ListPreference
         android:defaultValue="-1"
         android:entries="@array/themes"
@@ -50,6 +55,73 @@
             app:defaultValue="100" />
 
         <SwitchPreferenceCompat
+            android:key="grid_fixed_columns"
+            android:defaultValue="false"
+            android:title="@string/fixed_grid_columns"
+            android:summary="@string/fixed_grid_columns_summary" />
+
+        <org.koitharu.kotatsu.settings.utils.SliderPreference
+            android:key="grid_columns"
+            android:dependency="grid_fixed_columns"
+            android:title="@string/grid_columns"
+            android:valueFrom="1"
+            android:valueTo="12"
+            android:stepSize="1"
+            app:defaultValue="3" />
+
+        <SwitchPreferenceCompat
+            android:key="favorites_overview"
+            android:defaultValue="false"
+            android:title="@string/favorites_overview"
+            android:summary="@string/favorites_overview_summary" />
+
+        <SwitchPreferenceCompat
+            android:key="search_favorite_categories"
+            android:defaultValue="false"
+            android:title="@string/search_favorite_categories"
+            android:summary="@string/search_favorite_categories_summary" />
+
+        <ListPreference
+            android:key="favorites_category_sort"
+            android:defaultValue="MANUAL"
+            android:entries="@array/favorites_category_sorts"
+            android:entryValues="@array/favorites_category_sort_values"
+            android:title="@string/favorites_category_sort"
+            app:useSimpleSummaryProvider="true" />
+
+        <SwitchPreferenceCompat
+            android:key="favorites_category_sort_ascending"
+            android:defaultValue="true"
+            android:title="@string/favorites_category_sort_ascending" />
+
+        <ListPreference
+            android:key="list_long_press_delay"
+            android:defaultValue="0"
+            android:entries="@array/list_long_press_delays"
+            android:entryValues="@array/list_long_press_delay_values"
+            android:title="@string/list_long_press_delay"
+            android:summary="@string/list_long_press_delay_summary"
+            app:useSimpleSummaryProvider="true" />
+
+        <SwitchPreferenceCompat
+            android:key="favorites_category_strip"
+            android:defaultValue="true"
+            android:title="@string/show_favorites_category_strip"
+            android:summary="@string/show_favorites_category_strip_summary" />
+
+        <SwitchPreferenceCompat
+            android:key="new_chapter_counter"
+            android:defaultValue="true"
+            android:title="@string/show_new_chapter_counters"
+            android:summary="@string/show_new_chapter_counters_summary" />
+
+        <ListPreference
+            android:key="fav_order"
+            android:title="@string/default_favorites_sort"
+            android:dialogMessage="@string/default_favorites_sort_summary"
+            app:useSimpleSummaryProvider="true" />
+
+        <SwitchPreferenceCompat
             android:defaultValue="true"
             android:key="quick_filter"
             android:summary="@string/show_quick_filters_summary"
@@ -77,6 +149,12 @@
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/details">
+
+        <SwitchPreferenceCompat
+            android:key="details_chapters_inline"
+            android:defaultValue="false"
+            android:title="@string/details_chapters_inline"
+            android:summary="@string/details_chapters_inline_summary" />
 
         <SwitchPreferenceCompat
             android:defaultValue="true"

@@ -37,7 +37,7 @@ class OcrBottomSheet : BaseAdaptiveSheet<SheetOcrBinding>() {
 
 	override fun onViewBindingCreated(binding: SheetOcrBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
-		binding.buttonRerun.setOnClickListener { viewModel.requestOcrCurrentPage() }
+		binding.buttonRerun.setOnClickListener { viewModel.rerunOcr() }
 		binding.buttonCopy.setOnClickListener { copyToClipboard() }
 		binding.buttonShare.setOnClickListener { shareResult() }
 		viewModel.ocrSheetState.observe(viewLifecycleOwner) { renderState(binding, it) }

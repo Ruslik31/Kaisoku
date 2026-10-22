@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.core.parser.mihon
 
 import android.content.Context
+import org.koitharu.kotatsu.core.model.SourceContentClass
 import org.koitharu.kotatsu.parsers.model.MangaSource
 
 class MihonMangaSource(
@@ -9,6 +10,11 @@ class MihonMangaSource(
 	val displayName: String? = null,
 	val locale: String? = null,
 	val isNsfwSource: Boolean = false,
+    val recommendationVersion: String = "",
+    val isNovelSource: Boolean = false,
+    val isConfigurable: Boolean = false,
+    val isCatalogue: Boolean = true,
+    val contentClass: SourceContentClass = if (isNsfwSource) SourceContentClass.ADULT else SourceContentClass.SAFE,
 ) : MangaSource {
 
 	override val name: String

@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.core.util.ext.resetTransformations
 import org.koitharu.kotatsu.databinding.FragmentReaderPagerBinding
 import org.koitharu.kotatsu.reader.domain.PageLoader
 import org.koitharu.kotatsu.reader.ui.ReaderState
+import org.koitharu.kotatsu.reader.ui.config.ReaderZoomScope
 import org.koitharu.kotatsu.reader.ui.pager.standard.NoAnimPageTransformer
 import org.koitharu.kotatsu.reader.ui.pager.standard.PageAnimTransformer
 import org.koitharu.kotatsu.reader.ui.pager.standard.PageHolder
@@ -39,155 +40,157 @@ import kotlin.math.sign
 
 @AndroidEntryPoint
 abstract class BasePagerReaderFragment : BaseReaderFragment<FragmentReaderPagerBinding>(),
-	View.OnGenericMotionListener {
+    View.OnGenericMotionListener {
 
-	@Inject
-	lateinit var networkState: NetworkState
+    @Inject
+    lateinit var networkState: NetworkState
 
-	@Inject
-	lateinit var pageLoader: PageLoader
+    @Inject
+    lateinit var pageLoader: PageLoader
 
-	private var pagerLifecycleDispatcher: PagerLifecycleDispatcher? = null
+    private var pagerLifecycleDispatcher: PagerLifecycleDispatcher? = null
+    protected open val readerZoomScope: ReaderZoomScope = ReaderZoomScope.STANDARD
 
-	override fun onCreateViewBinding(
-		inflater: LayoutInflater,
-		container: ViewGroup?,
-	) = FragmentReaderPagerBinding.inflate(inflater, container, false)
+    override fun onCreateViewBinding(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+    ) = FragmentReaderPagerBinding.inflate(inflater, container, false)
 
-	override fun onViewBindingCreated(
-		binding: FragmentReaderPagerBinding,
-		savedInstanceState: Bundle?,
-	) {
-		super.onViewBindingCreated(binding, savedInstanceState)
-		with(binding.pager) {
-			onInitPager(this)
-			doOnPageChanged { notifyPageChanged(it) }
-			setOnGenericMotionListener(this@BasePagerReaderFragment)
-			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-				recyclerView?.defaultFocusHighlightEnabled = false
-			}
-			PagerEventSupplier(this).attach()
-			pagerLifecycleDispatcher = PagerLifecycleDispatcher(this).also {
-				registerOnPageChangeCallback(it)
-			}
-			adapter = readerAdapter
-		}
+    override fun onViewBindingCreated(
+        binding: FragmentReaderPagerBinding,
+        savedInstanceState: Bundle?,
+    ) {
+        super.onViewBindingCreated(binding, savedInstanceState)
+        with(binding.pager) {
+            onInitPager(this)
+            doOnPageChanged { notifyPageChanged(it) }
+            setOnGenericMotionListener(this@BasePagerReaderFragment)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                recyclerView?.defaultFocusHighlightEnabled = false
+            }
+            PagerEventSupplier(this).attach()
+            pagerLifecycleDispatcher = PagerLifecycleDispatcher(this).also {
+                registerOnPageChangeCallback(it)
+            }
+            adapter = readerAdapter
+        }
 
-		viewModel.pageAnimation.observe(viewLifecycleOwner) {
-			val transformer = when (it) {
-				ReaderAnimation.NONE -> NoAnimPageTransformer(binding.pager.orientation)
-				ReaderAnimation.DEFAULT -> null
-				ReaderAnimation.ADVANCED -> onCreateAdvancedTransformer()
-			}
-			binding.pager.setPageTransformer(transformer)
-			if (transformer == null) {
-				binding.pager.recyclerView?.children?.forEach { view ->
-					view.resetTransformations()
-				}
-			}
-		}
-	}
+        viewModel.pageAnimation.observe(viewLifecycleOwner) {
+            val transformer = when (it) {
+                ReaderAnimation.NONE -> NoAnimPageTransformer(binding.pager.orientation)
+                ReaderAnimation.DEFAULT -> null
+                ReaderAnimation.ADVANCED -> onCreateAdvancedTransformer()
+            }
+            binding.pager.setPageTransformer(transformer)
+            if (transformer == null) {
+                binding.pager.recyclerView?.children?.forEach { view ->
+                    view.resetTransformations()
+                }
+            }
+        }
+    }
 
-	override fun onDestroyView() {
-		pagerLifecycleDispatcher = null
-		requireViewBinding().pager.adapter = null
-		super.onDestroyView()
-	}
+    override fun onDestroyView() {
+        pagerLifecycleDispatcher = null
+        requireViewBinding().pager.adapter = null
+        super.onDestroyView()
+    }
 
-	override fun onZoomIn() {
-		(viewBinding?.pager?.findCurrentViewHolder() as? PageHolder)?.onZoomIn()
-	}
+    override fun onZoomIn() {
+        (viewBinding?.pager?.findCurrentViewHolder() as? PageHolder)?.onZoomIn()
+    }
 
-	override fun onZoomOut() {
-		(viewBinding?.pager?.findCurrentViewHolder() as? PageHolder)?.onZoomOut()
-	}
+    override fun onZoomOut() {
+        (viewBinding?.pager?.findCurrentViewHolder() as? PageHolder)?.onZoomOut()
+    }
 
-	override fun onGenericMotion(v: View?, event: MotionEvent): Boolean {
-		if (event.source and InputDevice.SOURCE_CLASS_POINTER != 0) {
-			if (event.actionMasked == MotionEvent.ACTION_SCROLL) {
-				val axisValue = event.getAxisValue(MotionEvent.AXIS_VSCROLL)
-				val withCtrl = event.metaState and KeyEvent.META_CTRL_MASK != 0
-				if (!withCtrl) {
-					onWheelScroll(axisValue)
-					return true
-				}
-			}
-		}
-		return false
-	}
+    override fun onGenericMotion(v: View?, event: MotionEvent): Boolean {
+        if (event.source and InputDevice.SOURCE_CLASS_POINTER != 0) {
+            if (event.actionMasked == MotionEvent.ACTION_SCROLL) {
+                val axisValue = event.getAxisValue(MotionEvent.AXIS_VSCROLL)
+                val withCtrl = event.metaState and KeyEvent.META_CTRL_MASK != 0
+                if (!withCtrl) {
+                    onWheelScroll(axisValue)
+                    return true
+                }
+            }
+        }
+        return false
+    }
 
-	override suspend fun onPagesChanged(pages: List<ReaderPage>, pendingState: ReaderState?) = coroutineScope {
-		val items = launch {
-			requireAdapter().setItems(adapterPages(pages))
-			yield()
-			pagerLifecycleDispatcher?.postInvalidate()
-		}
-		if (pendingState != null) {
-			val position = adapterPages(pages).indexOfFirst {
-				it.chapterId == pendingState.chapterId && it.index == pendingState.page
-			}
-			items.join()
-			if (position != -1) {
-				requireViewBinding().pager.setCurrentItem(position, false)
-				notifyPageChanged(position)
-			} else {
-				Snackbar.make(requireView(), R.string.not_found_404, Snackbar.LENGTH_SHORT)
-					.show()
-			}
-		} else {
-			items.join()
-		}
-	}
+    override suspend fun onPagesChanged(pages: List<ReaderPage>, pendingState: ReaderState?) = coroutineScope {
+        val items = launch {
+            requireAdapter().setItems(adapterPages(pages))
+            yield()
+            pagerLifecycleDispatcher?.postInvalidate()
+        }
+        if (pendingState != null) {
+            val position = adapterPages(pages).indexOfFirst {
+                it.chapterId == pendingState.chapterId && it.index == pendingState.page
+            }
+            items.join()
+            if (position != -1) {
+                requireViewBinding().pager.setCurrentItem(position, false)
+                notifyPageChanged(position)
+            } else {
+                Snackbar.make(requireView(), R.string.not_found_404, Snackbar.LENGTH_SHORT)
+                    .show()
+            }
+        } else {
+            items.join()
+        }
+    }
 
-	override fun onCreateAdapter(): BaseReaderAdapter<*> = PagesAdapter(
-		lifecycleOwner = viewLifecycleOwner,
-		loader = pageLoader,
-		readerSettingsProducer = viewModel.readerSettingsProducer,
-		networkState = networkState,
-		exceptionResolver = exceptionResolver,
-	)
+    override fun onCreateAdapter(): BaseReaderAdapter<*> = PagesAdapter(
+        lifecycleOwner = viewLifecycleOwner,
+        loader = pageLoader,
+        readerSettingsProducer = viewModel.readerSettingsProducer,
+        networkState = networkState,
+        exceptionResolver = exceptionResolver,
+        zoomScope = readerZoomScope,
+    )
 
-	override fun switchPageBy(delta: Int) {
-		with(requireViewBinding().pager) {
-			setCurrentItem(currentItem + delta, isAnimationEnabled())
-		}
-	}
+    override fun switchPageBy(delta: Int) {
+        with(requireViewBinding().pager) {
+            setCurrentItem(currentItem + delta, isAnimationEnabled())
+        }
+    }
 
-	override fun switchPageTo(position: Int, smooth: Boolean) {
-		with(requireViewBinding().pager) {
-			setCurrentItem(
-				position,
-				smooth && isAnimationEnabled() && (currentItem - position).absoluteValue < SMOOTH_SCROLL_LIMIT,
-			)
-		}
-	}
+    override fun switchPageTo(position: Int, smooth: Boolean) {
+        with(requireViewBinding().pager) {
+            setCurrentItem(
+                position,
+                smooth && isAnimationEnabled() && (currentItem - position).absoluteValue < SMOOTH_SCROLL_LIMIT,
+            )
+        }
+    }
 
-	override fun getCurrentState(): ReaderState? = viewBinding?.run {
-		val adapter = pager.adapter as? BaseReaderAdapter<*>
-		val page = adapter?.getItemOrNull(pager.currentItem) ?: return@run null
-		ReaderState(
-			chapterId = page.chapterId,
-			page = page.index,
-			scroll = 0,
-		)
-	}
+    override fun getCurrentState(): ReaderState? = viewBinding?.run {
+        val adapter = pager.adapter as? BaseReaderAdapter<*>
+        val page = adapter?.getItemOrNull(pager.currentItem) ?: return@run null
+        ReaderState(
+            chapterId = page.chapterId,
+            page = page.index,
+            scroll = 0,
+        )
+    }
 
-	protected open fun onWheelScroll(axisValue: Float) {
-		switchPageBy(-axisValue.sign.toInt())
-	}
+    protected open fun onWheelScroll(axisValue: Float) {
+        switchPageBy(-axisValue.sign.toInt())
+    }
 
-	protected open fun onCreateAdvancedTransformer(): PageTransformer = PageAnimTransformer()
+    protected open fun onCreateAdvancedTransformer(): PageTransformer = PageAnimTransformer()
 
-	protected open fun onInitPager(pager: ViewPager2) {
-		pager.offscreenPageLimit = 2
-	}
+    protected open fun onInitPager(pager: ViewPager2) {
+        pager.offscreenPageLimit = 2
+    }
 
-	protected open fun notifyPageChanged(page: Int) {
-		viewModel.onCurrentPageChanged(page, page, contentGeneration = adapterContentGeneration)
-	}
+    protected open fun notifyPageChanged(page: Int) {
+        viewModel.onCurrentPageChanged(page, page, contentGeneration = adapterContentGeneration)
+    }
 
-	companion object {
+    companion object {
 
-		const val SMOOTH_SCROLL_LIMIT = 3
-	}
+        const val SMOOTH_SCROLL_LIMIT = 3
+    }
 }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_open_chapter_browser">Открыть главу в браузере</string>
+    <string name="reader_chapter_browser_unavailable">Для этой главы нет ссылки на сайт.</string>
+    <string name="reader_chapter_haptics">Отклик при смене главы</string>
+    <string name="reader_chapter_haptics_summary">Короткий тактильный отклик при переходе к другой главе.</string>
+</resources>

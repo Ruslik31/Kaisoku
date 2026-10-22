@@ -47,6 +47,7 @@ class HistoryRepository @Inject constructor(
     private val mangaRepository: MangaDataRepository,
     private val localObserver: HistoryLocalObserver,
     private val newChaptersUseCaseProvider: Provider<CheckNewChaptersUseCase>,
+    private val recommendationStore: org.koitharu.kotatsu.suggestions.local.RecommendationStore,
 ) {
 
     suspend fun getList(offset: Int, limit: Int): List<Manga> {
@@ -136,11 +137,28 @@ class HistoryRepository @Inject constructor(
             )
         }
         newChaptersUseCaseProvider.get()(manga, chapterId)
+        if (force) recommendationStore.manualProgress(manga)
         if (chapterCompleted) trackerSync.onChapterCompleted(manga, chapterId)
     }
 
     suspend fun getOne(manga: Manga): MangaHistory? {
         return db.getHistoryDao().find(manga.id)?.recoverIfNeeded(manga)?.toMangaHistory()
+    }
+
+    suspend fun updateNovelPosition(
+        manga: Manga, chapterId: Long, page: Int, scroll: Int, percent: Float, chapterCompleted: Boolean,
+    ) {
+        if (shouldSkip(manga)) return
+        val chapter = manga.chapters?.findById(chapterId)
+        val count = manga.chapters?.count { it.branch == chapter?.branch } ?: 0
+        val updated = if (chapter != null) db.getHistoryDao().updatePosition(
+            manga.id, chapterId, count, page, scroll.toFloat(), percent, System.currentTimeMillis(),
+        ) else 0
+        if (updated == 0) {
+            addOrUpdate(manga, chapterId, page, scroll, percent, force = false, chapterCompleted = chapterCompleted)
+        } else if (chapterCompleted) {
+            trackerSync.onChapterCompleted(manga, chapterId)
+        }
     }
 
     /**

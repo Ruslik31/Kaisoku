@@ -23,7 +23,7 @@ class ExploreRepository @Inject constructor(
 ) {
 
 	suspend fun findRandomManga(tagsLimit: Int): Manga {
-		val tagsBlacklist = TagsBlacklist(settings.suggestionsTagsBlacklist, 0.4f)
+		val tagsBlacklist = TagsBlacklist(settings.suggestionsTagsBlacklist)
 		val tags = historyRepository.getPopularTags(tagsLimit).mapNotNull {
 			if (it in tagsBlacklist) null else it.title
 		}
@@ -44,7 +44,7 @@ class ExploreRepository @Inject constructor(
 	}
 
 	suspend fun findRandomManga(source: MangaSource, tagsLimit: Int): Manga {
-		val tagsBlacklist = TagsBlacklist(settings.suggestionsTagsBlacklist, 0.4f)
+		val tagsBlacklist = TagsBlacklist(settings.suggestionsTagsBlacklist)
 		val skipNsfw = settings.isSuggestionsExcludeNsfw && !source.isNsfw()
 		val tags = historyRepository.getPopularTags(tagsLimit).mapNotNull {
 			if (it in tagsBlacklist) null else it.title

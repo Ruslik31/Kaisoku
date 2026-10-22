@@ -81,7 +81,7 @@ object DriveReplicaMerge {
         val result = linkedMapOf<Pair<String, String>, DriveReplicaRecord>()
         for (record in records.values) {
             val oldUid = if (record.section == "categories") record.key
-                else if (record.section == "favourites") record.key.substringAfter('/') else null
+                else if (record.section in setOf("favourites", "favorite_order")) record.key.substringAfter('/') else null
             val target = oldUid?.let { aliases[it] }
             val normalized = if (target == null) record else {
                 val key = if (record.section == "categories") target else "${record.key.substringBefore('/')}/$target"
@@ -97,7 +97,7 @@ object DriveReplicaMerge {
     fun normalizeCategories(record: DriveReplicaRecord, resolve: (String) -> String): DriveReplicaRecord {
         val uid = when (record.section) {
             "categories" -> resolve(record.key)
-            "favourites" -> resolve(record.key.substringAfter('/'))
+            "favourites", "favorite_order" -> if (record.key.substringAfter('/') == DriveReplicaBackup.ALL_FAVORITES_UID) DriveReplicaBackup.ALL_FAVORITES_UID else resolve(record.key.substringAfter('/'))
             else -> return record
         }
         val key = if (record.section == "categories") uid else "${record.key.substringBefore('/')}/$uid"
@@ -108,7 +108,7 @@ object DriveReplicaMerge {
     /** A membership cannot remain live when its owning category has been deleted. */
     fun cascadeCategoryDeletions(records: Map<Pair<String, String>, DriveReplicaRecord>): Map<Pair<String, String>, DriveReplicaRecord> =
         records.mapValues { (_, record) ->
-            val category = if (record.section == "favourites") records["categories" to record.key.substringAfter('/')] else null
+            val category = if (record.section in setOf("favourites", "favorite_order")) records["categories" to record.key.substringAfter('/')] else null
             if (category?.isDeleted == true && !record.isDeleted) record.copy(value = null,
                 version = maxOf(record.version, category.version), author = category.author) else record
         }

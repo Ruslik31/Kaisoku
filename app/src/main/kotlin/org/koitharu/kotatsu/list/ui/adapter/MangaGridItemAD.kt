@@ -14,28 +14,34 @@ import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.ItemSizeResolver
 
 fun mangaGridItemAD(
-	sizeResolver: ItemSizeResolver,
-	clickListener: OnListItemClickListener<MangaListModel>,
+    sizeResolver: ItemSizeResolver,
+    clickListener: OnListItemClickListener<MangaListModel>,
 ) = adapterDelegateViewBinding<MangaGridModel, ListModel, ItemMangaGridBinding>(
-	{ inflater, parent -> ItemMangaGridBinding.inflate(inflater, parent, false) },
+    { inflater, parent -> ItemMangaGridBinding.inflate(inflater, parent, false) },
 ) {
 
-	AdapterDelegateClickListenerAdapter(this, clickListener).attach(itemView)
-	sizeResolver.attachToView(itemView, binding.textViewTitle, binding.progressView)
+    AdapterDelegateClickListenerAdapter(this, clickListener).attach(itemView)
+    sizeResolver.attachToView(itemView, binding.textViewTitle, binding.progressView)
 
-	bind { payloads ->
-		itemView.setTooltipCompat(item.getSummary(context))
-		binding.textViewTitle.text = item.title
-		binding.textViewTitle.isVisible = !item.isTitleHidden
-		binding.progressView.setProgress(item.progress, PAYLOAD_PROGRESS_CHANGED in payloads)
-		with(binding.iconsView) {
-			clearIcons()
-			if (item.isSaved) addIcon(R.drawable.ic_storage)
-			if (item.isFavorite) addIcon(R.drawable.ic_heart_outline)
-			isVisible = iconsCount > 0
-		}
-		binding.imageViewCover.setImageAsync(item.coverUrl, item.manga)
-		binding.badge.number = item.counter
-		binding.badge.isVisible = item.counter > 0
-	}
+    bind { payloads ->
+        itemView.setTooltipCompat(item.getSummary(context))
+        binding.textViewTitle.text = item.title
+        binding.textViewTitle.isVisible = !item.isTitleHidden
+        binding.textViewRecommendationReason.text = item.recommendation?.let {
+            org.koitharu.kotatsu.suggestions.local.recommendationReasonText(it, context)
+        }
+        binding.textViewRecommendationReason.isVisible = item.recommendation != null
+        if (item.recommendation == null) binding.textViewRecommendationReason.bindFavoriteCategories(item.favoriteCategories)
+        else binding.textViewRecommendationReason.setOnClickListener(null)
+        binding.progressView.setProgress(item.progress, PAYLOAD_PROGRESS_CHANGED in payloads)
+        with(binding.iconsView) {
+            clearIcons()
+            if (item.isSaved) addIcon(R.drawable.ic_storage)
+            if (item.isFavorite) addIcon(R.drawable.ic_heart_outline)
+            isVisible = iconsCount > 0
+        }
+        binding.imageViewCover.setImageAsync(item.coverUrl, item.manga)
+        binding.badge.number = item.counter
+        binding.badge.isVisible = item.counter > 0
+    }
 }

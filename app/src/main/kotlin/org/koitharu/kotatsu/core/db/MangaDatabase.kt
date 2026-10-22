@@ -63,6 +63,9 @@ import org.koitharu.kotatsu.favourites.data.FavouriteCategoriesDao
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouritesDao
+import org.koitharu.kotatsu.favourites.data.FavoriteOrderDao
+import org.koitharu.kotatsu.favourites.data.FavoriteOrderEntity
+import org.koitharu.kotatsu.core.db.migrations.Migration32To33
 import org.koitharu.kotatsu.history.data.HistoryDao
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndexDao
@@ -77,7 +80,7 @@ import org.koitharu.kotatsu.tracker.data.TrackEntity
 import org.koitharu.kotatsu.tracker.data.TrackLogEntity
 import org.koitharu.kotatsu.tracker.data.TracksDao
 
-const val DATABASE_VERSION = 32
+const val DATABASE_VERSION = 33
 
 @Database(
     entities = [
@@ -85,6 +88,7 @@ const val DATABASE_VERSION = 32
         FavouriteCategoryEntity::class, FavouriteEntity::class, MangaPrefsEntity::class, TrackEntity::class,
         TrackLogEntity::class, SuggestionEntity::class, BookmarkEntity::class, ScrobblingEntity::class,
         MangaSourceEntity::class, StatsEntity::class, LocalMangaIndexEntity::class, LnReaderSourceEntity::class,
+        FavoriteOrderEntity::class,
     ],
     version = DATABASE_VERSION,
 )
@@ -97,6 +101,8 @@ abstract class MangaDatabase : RoomDatabase() {
     abstract fun getMangaDao(): MangaDao
 
     abstract fun getFavouritesDao(): FavouritesDao
+
+    abstract fun getFavoriteOrderDao(): FavoriteOrderDao
 
     abstract fun getPreferencesDao(): PreferencesDao
 
@@ -156,6 +162,7 @@ fun getDatabaseMigrations(context: Context): Array<Migration> = arrayOf(
     Migration29To30(),
     Migration30To31(),
     Migration31To32(context),
+    Migration32To33(),
 )
 
 fun MangaDatabase(context: Context): MangaDatabase = Room

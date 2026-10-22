@@ -44,6 +44,14 @@
 		android:title="@string/tracking"
 		app:showAsAction="never" />
 
+    <item
+        android:id="@+id/action_saved_metadata_only"
+        android:checkable="true"
+        android:checked="false"
+        android:orderInCategory="50"
+        android:title="@string/saved_metadata_only"
+        app:showAsAction="never" />
+
 	<item
 		android:id="@+id/action_stats"
 		android:orderInCategory="50"

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_pacing">Download pacing</string>
+    <string name="download_request_interval">Minimum image-request interval</string>
+    <string name="download_request_interval_info">Minimum interval between image requests to the same source. An enabled source slowdown can add more delay.</string>
+    <string name="download_chapter_delay">Delay between chapter starts</string>
+    <string name="download_chapter_delay_info">Space chapter starts across all downloads. The first chapter starts immediately.</string>
+    <string name="download_chapter_concurrency">Concurrent chapters</string>
+    <string name="download_chapter_concurrency_info">Limit chapters across all downloads. Each title keeps its chapter order. Paused chapters keep their slot until resumed, skipped or cancelled.</string>
+    <string name="download_controls_info">Chapter delay and concurrency apply to all downloads. Paused chapters keep their slot until resumed, skipped or cancelled.</string>
+    <string name="download_source_pacing">Use source settings</string>
+    <string name="download_no_added_delay">No added delay</string>
+    <string name="download_no_added_limit">No additional limit</string>
+    <string name="download_interval_1000">1 second</string>
+    <string name="download_interval_1600">1.6 seconds</string>
+    <string name="download_interval_3000">3 seconds</string>
+    <string name="download_interval_5000">5 seconds</string>
+    <string name="download_interval_10000">10 seconds</string>
+    <string name="download_interval_30000">30 seconds</string>
+    <string-array name="download_request_intervals">
+        <item>@string/download_source_pacing</item>
+        <item>@string/download_interval_1600</item>
+        <item>@string/download_interval_3000</item>
+        <item>@string/download_interval_5000</item>
+    </string-array>
+    <string-array name="download_request_interval_values">
+        <item>0</item>
+        <item>1600</item>
+        <item>3000</item>
+        <item>5000</item>
+    </string-array>
+    <string-array name="download_chapter_delays">
+        <item>@string/download_no_added_delay</item>
+        <item>@string/download_interval_1000</item>
+        <item>@string/download_interval_3000</item>
+        <item>@string/download_interval_5000</item>
+        <item>@string/download_interval_10000</item>
+        <item>@string/download_interval_30000</item>
+    </string-array>
+    <string-array name="download_chapter_delay_values">
+        <item>0</item>
+        <item>1000</item>
+        <item>3000</item>
+        <item>5000</item>
+        <item>10000</item>
+        <item>30000</item>
+    </string-array>
+    <string-array name="download_chapter_concurrency_options">
+        <item>@string/download_no_added_limit</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+    <string-array name="download_chapter_concurrency_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+</resources>

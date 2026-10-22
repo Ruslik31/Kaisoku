@@ -14,14 +14,14 @@ class RecoverMangaUseCase @Inject constructor(
 	private val repositoryFactory: MangaRepository.Factory,
 ) {
 
-	suspend operator fun invoke(manga: Manga): Manga? = runCatchingCancellable {
-		if (manga.isLocal) {
+	suspend operator fun invoke(manga: Manga, force: Boolean = false): Manga? = runCatchingCancellable {
+		if (manga.isLocal || (!force && repositoryFactory.isMetadataRefreshPaused(manga))) {
 			return@runCatchingCancellable null
 		}
 		val repository = repositoryFactory.create(manga.source)
 		val list = repository.getList(offset = 0, null, MangaListFilter(query = manga.title))
 		val newManga = list.find { x -> x.title == manga.title }?.let {
-			repository.getDetails(it)
+			if (force) repository.refreshDetails(it) else repository.getDetails(it)
 		} ?: return@runCatchingCancellable null
 		val merged = merge(manga, newManga)
 		mangaDataRepository.storeManga(merged, replaceExisting = true)

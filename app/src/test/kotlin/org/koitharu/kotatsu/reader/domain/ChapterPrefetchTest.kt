@@ -32,6 +32,24 @@ class ChapterPrefetchTest {
         assertTrue((chapter(29, 15) + chapter(30, 15)).nextChapterPrefetchPages(29, 0).isEmpty())
     }
 
+    @Test fun currentPagePrefetchIncludesTheLastKnownPage() {
+        val pages = chapter(29, 3)
+        assertEquals(pages.drop(1), pages.boundedPrefetchPages(1, 10))
+        assertEquals(listOf(pages.last()), pages.boundedPrefetchPages(2, 10))
+    }
+
+    @Test fun currentPagePrefetchDoesNotExceedItsExistingWindow() {
+        val pages = chapter(29, 30)
+        assertEquals(pages.subList(5, 14), pages.boundedPrefetchPages(5, 14))
+    }
+
+    @Test fun currentPagePrefetchHandlesEmptyAndStaleBounds() {
+        assertTrue(emptyList<ReaderPage>().boundedPrefetchPages(1, 10).isEmpty())
+        assertTrue(chapter(29, 3).boundedPrefetchPages(3, 10).isEmpty())
+        assertTrue(chapter(29, 3).boundedPrefetchPages(20, 10).isEmpty())
+        assertTrue(chapter(29, 3).boundedPrefetchPages(-10, -5).isEmpty())
+    }
+
     private fun chapter(id: Long, count: Int) = List(count) { index ->
         ReaderPage(id * 1000 + index, "https://example.org/$id/$index", null, id, index, TestMangaSource)
     }

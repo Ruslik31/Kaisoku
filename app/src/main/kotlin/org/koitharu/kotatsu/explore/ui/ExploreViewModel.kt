@@ -1,10 +1,11 @@
 package org.koitharu.kotatsu.explore.ui
 
+import org.koitharu.kotatsu.core.parser.hasChapterText
+
 import androidx.collection.LongSet
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,6 +13,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSourceInfo
@@ -34,7 +37,6 @@ import org.koitharu.kotatsu.explore.ui.model.BrowserSourceItem
 import org.koitharu.kotatsu.explore.ui.model.ExploreButtons
 import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
 import org.koitharu.kotatsu.explore.ui.model.RecommendationsItem
-import org.koitharu.kotatsu.core.parser.lnreader.LnReaderMangaSource
 import org.koitharu.kotatsu.list.ui.model.EmptyHint
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -42,17 +44,21 @@ import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.list.ui.model.MangaCompactListModel
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.settings.sources.manage.plugins.UpdatePluginsProvider
 import org.koitharu.kotatsu.suggestions.domain.SuggestionRepository
+import org.koitharu.kotatsu.suggestions.local.shareRecommendations
 import javax.inject.Inject
 
 @HiltViewModel
 class ExploreViewModel @Inject constructor(
 	private val settings: AppSettings,
+	private val updatePluginsProvider: UpdatePluginsProvider,
 	private val suggestionRepository: SuggestionRepository,
 	private val exploreRepository: ExploreRepository,
 	private val sourcesRepository: MangaSourcesRepository,
 	private val customSourcesRepository: CustomSourcesRepository,
 	private val shortcutManager: AppShortcutManager,
+    private val recommendationEngine: org.koitharu.kotatsu.suggestions.local.RecommendationEngine,
 ) : BaseViewModel() {
 
 	val isGrid = settings.observeAsStateFlow(
@@ -82,28 +88,23 @@ class ExploreViewModel @Inject constructor(
 	val onActionDone = MutableEventFlow<ReversibleAction>()
 	val onShowSuggestionsTip = MutableEventFlow<Unit>()
 	private val isRandomLoading = MutableStateFlow(false)
-	private val mutableContent = MutableStateFlow(buildExploreLoadingStateList(isRandomLoading.value))
-	private var contentJob: Job? = null
 
-	val content: StateFlow<List<ListModel>> = mutableContent
+    fun setRecommendationMedia(value: String) { settings.recommendationMedia = value }
+
+	val content: StateFlow<List<ListModel>> = combine(
+        isLoading,
+        createContentFlow(),
+        isRandomLoading,
+        ::mergeExploreContent,
+    ).shareRecommendations(viewModelScope + Dispatchers.Default, buildExploreLoadingStateList(false))
 
 	init {
+		launchJob(Dispatchers.Default) {
+			updatePluginsProvider.runAutoUpdate(settings)
+		}
 		if (shouldShowSuggestionsTip(settings)) {
 			onShowSuggestionsTip.call(Unit)
 		}
-		val loading = isLoading
-		val contentFlow = createContentFlow()
-		val randomLoading = isRandomLoading
-		val contentState = mutableContent
-		contentJob = launchJob(Dispatchers.Default) {
-			collectExploreContent(loading, contentFlow, randomLoading, contentState)
-		}
-	}
-
-	override fun onCleared() {
-		contentJob?.cancel()
-		contentJob = null
-		super.onCleared()
 	}
 
 	fun openRandom() {
@@ -177,7 +178,7 @@ class ExploreViewModel @Inject constructor(
 	private fun createContentFlow(): Flow<List<ListModel>> {
 		return createExploreContentFlow(
 			enabledSources = sourcesRepository.observeEnabledSources().combine(novelSourcesFirst) { sources, novelsFirst ->
-				if (novelsFirst) sources.sortedBy { it.mangaSource !is LnReaderMangaSource } else sources
+				if (novelsFirst) sources.sortedBy { !it.mangaSource.hasChapterText() } else sources
 			},
 			browserSources = customSourcesRepository.sources,
 			isSuggestionsEnabled = isSuggestionsEnabled,
@@ -188,6 +189,7 @@ class ExploreViewModel @Inject constructor(
 			isAllSourcesEnabled = isAllSourcesEnabled,
 			hasNewSources = sourcesRepository.observeHasNewSourcesForBadge(),
 			onError = errorEvent,
+            recommendationEngine = recommendationEngine,
 		)
 	}
 
@@ -201,7 +203,7 @@ class ExploreViewModel @Inject constructor(
 private fun buildExploreContentList(
 	sources: List<MangaSourceInfo>,
 	browserSources: List<CustomSource>,
-	recommendation: List<Manga>,
+	recommendation: List<MangaCompactListModel>,
 	isGrid: Boolean,
 	randomLoading: Boolean,
 	allSourcesEnabled: Boolean,
@@ -211,7 +213,7 @@ private fun buildExploreContentList(
 	result += ExploreButtons(randomLoading)
 	if (recommendation.isNotEmpty()) {
 		result += ListHeader(R.string.suggestions, R.string.more, R.id.nav_suggestions)
-		result += RecommendationsItem(recommendation.toRecommendationList())
+		result += RecommendationsItem(recommendation)
 	}
 	if (browserSources.isNotEmpty()) {
 		result += ListHeader(textRes = R.string.browser_sources)
@@ -255,17 +257,37 @@ private fun createExploreContentFlow(
 	isAllSourcesEnabled: Flow<Boolean>,
 	hasNewSources: Flow<Boolean>,
 	onError: MutableEventFlow<Throwable>,
+    recommendationEngine: org.koitharu.kotatsu.suggestions.local.RecommendationEngine,
 ): Flow<List<ListModel>> = combine(
 	enabledSources,
 	browserSources.map { sources ->
 		sources.filter { it.isEnabled && it.type == CustomSourceType.BROWSER_SOURCE }
 	},
-	observeExploreSuggestions(isSuggestionsEnabled, suggestionRepository, suggestionsCount),
+    recommendationEngine.settings.observe(*org.koitharu.kotatsu.suggestions.local.RecommendationEngine.KEYS).onStart { emit(null) }.flatMapLatest {
+        if (recommendationEngine.settings.useLegacySuggestions) observeExploreSuggestions(isSuggestionsEnabled, suggestionRepository, suggestionsCount).map { RecommendationsItem(it.toRecommendationList()) }
+        else if (!recommendationEngine.settings.isSuggestionsEnabled) kotlinx.coroutines.flow.flowOf(RecommendationsItem(emptyList()))
+        else suggestionRepository.observeDisplay(suggestionsCount).map { snapshot -> RecommendationsItem(snapshot.results.map { item ->
+            MangaCompactListModel(item.manga, null, "", 0, item)
+        }, error = snapshot.error) }
+    },
 	isGrid,
 	isRandomLoading,
 	isAllSourcesEnabled,
 	hasNewSources,
-	::buildExploreContentList,
+    { sources, browser, recommendations, grid, random, allSources, hasNew ->
+        val content = buildExploreContentList(sources, browser, recommendations.manga, grid, random, allSources, hasNew).toMutableList()
+        if (!recommendationEngine.settings.useLegacySuggestions && recommendationEngine.settings.isSuggestionsEnabled) {
+            val index = content.indexOfFirst { it is RecommendationsItem }
+            if (index >= 0) {
+                content[index] = (content[index] as RecommendationsItem).copy(mediaFilter = recommendationEngine.settings.recommendationMedia, error = recommendations.error)
+                content[index - 1] = ListHeader(R.string.recommendations_beta, R.string.more, R.id.nav_suggestions)
+            } else {
+                content.add(1, ListHeader(R.string.recommendations_beta, R.string.more, R.id.nav_suggestions))
+                content.add(2, RecommendationsItem(emptyList(), recommendationEngine.settings.recommendationMedia, recommendations.error))
+            }
+        }
+        content
+    },
 ).catch { error ->
 	error.printStackTraceDebug()
 	onError.call(error)
@@ -282,17 +304,6 @@ private fun observeExploreSuggestions(
 		}.getOrDefault(emptyList())
 	} else {
 		emptyList()
-	}
-}
-
-private suspend fun collectExploreContent(
-	isLoading: Flow<Boolean>,
-	content: Flow<List<ListModel>>,
-	isRandomLoading: Flow<Boolean>,
-	target: MutableStateFlow<List<ListModel>>,
-) {
-	combine(isLoading, content, isRandomLoading, ::mergeExploreContent).collect {
-		target.value = it
 	}
 }
 

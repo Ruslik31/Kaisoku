@@ -64,8 +64,10 @@ private const val IMAGE_FORMAT_NOT_SUPPORTED = "Image format not supported"
 
 private val FNFE_MESSAGE_REGEX = Regex("^(/[^\\s:]+)?.+?\\s([A-Z]{2,6})?\\s.+$")
 
-fun Throwable.getDisplayMessage(resources: Resources): String = getDisplayMessageOrNull(resources)
-    ?: resources.getString(R.string.error_occurred)
+fun Throwable.getDisplayMessage(resources: Resources): String {
+    org.koitharu.kotatsu.core.diagnostics.LocalDiagnostics.error(this)
+    return getDisplayMessageOrNull(resources) ?: resources.getString(R.string.error_occurred)
+}
 
 private fun Throwable.getDisplayMessageOrNull(resources: Resources): String? = when (this) {
     is CancellationException -> cause?.getDisplayMessageOrNull(resources) ?: message

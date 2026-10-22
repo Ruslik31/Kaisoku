@@ -50,7 +50,7 @@ class MihonRepositoryResolutionTest {
 		val service = service(mapOf("$base/index.pb" to (200 to index)), requests)
 		val repo = MihonExtensionRepo(base, "Cursed", null, "", "existing-key")
 		assertTrue(service.fetchExtensions(repo).isNotEmpty())
-		assertEquals(listOf("$base/index.min.json", "$base/index.json", "$base/index.pb"), requests)
+		assertEquals(listOf("$base/repo.json", "$base/index.min.json", "$base/index.json", "$base/index.pb"), requests)
 	}
 
 	@Test

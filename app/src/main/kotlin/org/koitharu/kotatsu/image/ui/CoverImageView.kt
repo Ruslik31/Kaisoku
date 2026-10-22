@@ -259,24 +259,12 @@ class CoverImageView @JvmOverloads constructor(
 			}
 		}
 
-		private fun getSize(view: CoverImageView): Size? {
-			var width = getWidth(view)
-			var height = getHeight(view)
-			when {
-				width == null && height == null -> {
-					return null
-				}
-
-				height == null -> {
-					height = Dimension(width!!.px * view.aspectRationHeight / view.aspectRationWidth)
-				}
-
-				width == null -> {
-					width = Dimension(height.px * view.aspectRationWidth / view.aspectRationHeight)
-				}
-			}
-			return Size(width, height)
-		}
+		private fun getSize(view: CoverImageView): Size? = resolveCoverImageSize(
+			width = getWidth(view),
+			height = getHeight(view),
+			aspectWidth = view.aspectRationWidth,
+			aspectHeight = view.aspectRationHeight,
+		)
 
 		private fun getWidth(view: CoverImageView) = getDimension(
 			paramSize = view.layoutParams?.width ?: -1,

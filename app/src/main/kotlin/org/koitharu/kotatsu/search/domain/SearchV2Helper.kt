@@ -4,6 +4,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import org.koitharu.kotatsu.core.model.isNsfw
+import org.koitharu.kotatsu.core.model.isNsfwForFiltering
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -27,7 +28,7 @@ class SearchV2Helper @AssistedInject constructor(
 ) {
 
 	suspend operator fun invoke(query: String, kind: SearchKind): SearchResults? {
-		if (settings.isNsfwContentDisabled && source.isNsfw()) {
+		if (!settings.sourceContentPolicy.allows(source)) {
 			return null
 		}
 		val repository = mangaRepositoryFactory.create(source)
@@ -76,7 +77,7 @@ class SearchV2Helper @AssistedInject constructor(
 
 	private fun MutableList<Manga>.postFilter(query: String, kind: SearchKind) {
 		if (settings.isNsfwContentDisabled) {
-			removeAll { it.isNsfw() }
+			removeAll { it.isNsfwForFiltering(settings.useSeparateSourceContentClasses) }
 		}
 		when (kind) {
 			SearchKind.TITLE -> retainAll { m ->

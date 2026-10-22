@@ -11,6 +11,7 @@ enum class BackupSection(
 	HISTORY("history"),
 	CATEGORIES("categories"),
 	FAVOURITES("favourites"),
+    FAVORITE_ORDER("favorite_order"),
 	SETTINGS("settings"),
 	SETTINGS_READER_GRID("reader_grid"),
 	BOOKMARKS("bookmarks"),

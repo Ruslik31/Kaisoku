@@ -6,7 +6,6 @@ import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import androidx.core.text.getSpans
 import androidx.core.text.parseAsHtml
-import coil3.request.CachePolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -19,7 +18,6 @@ import kotlinx.coroutines.runInterruptible
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.os.NetworkState
-import org.koitharu.kotatsu.core.parser.CachingMangaRepository
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.ui.model.MangaOverride
@@ -92,7 +90,9 @@ class DetailsLoadUseCase @Inject constructor(
                     manga = localDetails,
                     localManga = null,
                     override = override,
-                    description = localDetails.description?.parseAsHtml(withImages = true),
+                    description = localDetails.description?.parseAsHtml(
+                        withImages = !mangaRepositoryFactory.isMetadataRefreshPaused(manga),
+                    ),
                     isLoaded = true,
                 ),
             )
@@ -102,11 +102,13 @@ class DetailsLoadUseCase @Inject constructor(
                 manga = remoteDetails ?: remoteManga,
                 localManga = LocalManga(localDetails),
                 override = override,
-                description = (remoteDetails ?: localDetails).description?.parseAsHtml(withImages = true),
+                description = (remoteDetails ?: localDetails).description?.parseAsHtml(
+                    withImages = !mangaRepositoryFactory.isMetadataRefreshPaused(remoteManga),
+                ),
                 isLoaded = true,
             )
             emit(mangaDetails)
-            if (remoteDetails != null) {
+            if (remoteDetails != null && (force || !mangaRepositoryFactory.isMetadataRefreshPaused(remoteManga))) {
                 mangaDataRepository.updateChapters(mangaDetails.toManga())
             }
         }
@@ -124,14 +126,20 @@ class DetailsLoadUseCase @Inject constructor(
         val remoteDeferred = async {
             getDetails(manga, force)
         }
-        val localManga = localMangaRepository.findSavedManga(manga, withDetails = true)
+        val localManga = if (!force && mangaRepositoryFactory.isMetadataRefreshPaused(manga)) {
+            localMangaRepository.findIndexedSavedManga(manga, withDetails = true)
+        } else {
+            localMangaRepository.findSavedManga(manga, withDetails = true)
+        }
         if (localManga != null) {
             emit(
                 MangaDetails(
                     manga = manga,
                     localManga = localManga,
                     override = override,
-                    description = localManga.manga.description?.parseAsHtml(withImages = true),
+                    description = localManga.manga.description?.parseAsHtml(
+                        withImages = !mangaRepositoryFactory.isMetadataRefreshPaused(manga),
+                    ),
                     isLoaded = false,
                 ),
             )
@@ -142,36 +150,36 @@ class DetailsLoadUseCase @Inject constructor(
             localManga = localManga,
             override = override,
             description = (remoteDetails.description
-                ?: localManga?.manga?.description)?.parseAsHtml(withImages = true),
+                ?: localManga?.manga?.description)?.parseAsHtml(
+                    withImages = !mangaRepositoryFactory.isMetadataRefreshPaused(manga),
+                ),
             isLoaded = true,
         )
         emit(mangaDetails)
-        mangaDataRepository.updateChapters(mangaDetails.toManga())
+        if (force || !mangaRepositoryFactory.isMetadataRefreshPaused(manga)) {
+            mangaDataRepository.updateChapters(mangaDetails.toManga())
+        }
     }
 
-	private suspend fun getDetails(seed: Manga, force: Boolean) = runCatchingCancellable {
-		val repository = mangaRepositoryFactory.create(seed.source)
-		val details = if (repository is CachingMangaRepository) {
-			repository.getDetails(seed, if (force) CachePolicy.WRITE_ONLY else CachePolicy.ENABLED)
-		} else {
-			repository.getDetails(seed)
-		}
-		details.withSeedIdentityIfSameManga(seed).withMissingDetailsFrom(seed)
-	}.recoverNotNull { e ->
-		if (e is NotFoundException && isMangaDetailsUrl(e.url, seed.url, seed.publicUrl)) {
-			recoverUseCase(seed)
-		} else {
-			null
-		}
-	}
+    private suspend fun getDetails(seed: Manga, force: Boolean) = runCatchingCancellable {
+        val repository = mangaRepositoryFactory.create(seed.source)
+        val details = if (force) repository.refreshDetails(seed) else repository.getDetails(seed)
+        details.withSeedIdentityIfSameManga(seed).withMissingDetailsFrom(seed)
+    }.recoverNotNull { e ->
+        if (e is NotFoundException && isMangaDetailsUrl(e.url, seed.url, seed.publicUrl)) {
+            recoverUseCase(seed, force)
+        } else {
+            null
+        }
+    }
 
-	private fun Manga.withSeedIdentityIfSameManga(seed: Manga): Manga {
-		return if (id != seed.id && source == seed.source && (url == seed.url || publicUrl == seed.publicUrl)) {
-			copy(id = seed.id)
-		} else {
-			this
-		}
-	}
+    private fun Manga.withSeedIdentityIfSameManga(seed: Manga): Manga {
+        return if (id != seed.id && source == seed.source && (url == seed.url || publicUrl == seed.publicUrl)) {
+            copy(id = seed.id)
+        } else {
+            this
+        }
+    }
 
     private suspend fun String.parseAsHtml(withImages: Boolean): CharSequence? = if (withImages) {
         runInterruptible(Dispatchers.IO) {

@@ -64,6 +64,7 @@ interface NetworkModule {
 			settings: AppSettings,
 			proxyProvider: ProxyProvider,
 		): OkHttpClient = OkHttpClient.Builder().apply {
+			addInterceptor(org.koitharu.kotatsu.core.diagnostics.DiagnosticInterceptor())
 			connectTimeout(20, TimeUnit.SECONDS)
 			readTimeout(60, TimeUnit.SECONDS)
 			writeTimeout(20, TimeUnit.SECONDS)
